@@ -232,7 +232,9 @@ function CreateTools() {
           collection: bank.collection,
           c,
           drafts: c.questions.map((q) => {
-            const suggested = suggestPresentations([...q.stems, questionFullText(q)].join("\n"));
+            // The bank and case titles say what the case is about; weight them above the stem's incidental symptoms.
+            const heading = [bank.collection ?? "", c.title].join(" ");
+            const suggested = suggestPresentations([heading, heading, heading, ...q.stems, questionFullText(q)].join("\n"));
             return { ...q, key: newId(), presentations: presetPresentation ? [presetPresentation] : suggested.slice(0, 1), suggested };
           }),
         })),
