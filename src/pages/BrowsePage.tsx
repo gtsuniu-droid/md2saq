@@ -27,8 +27,8 @@ export default function BrowsePage() {
   };
 
   const data = useLiveQuery(async () => {
-    const [questions, sets, attempts, marks, settings] = await Promise.all([
-      db.questions.orderBy("createdAt").reverse().toArray(),
+    const [rawQuestions, sets, attempts, marks, settings] = await Promise.all([
+      db.questions.toArray(),
       db.sets.toArray(),
       db.attempts.filter((a) => a.submittedAt !== undefined).toArray(),
       db.marks.toArray(),
@@ -41,6 +41,11 @@ export default function BrowsePage() {
       const cur = lastMark.get(m.questionId);
       if (!cur || m.markedAt > cur.at) lastMark.set(m.questionId, { score: m.score, max: m.maxScore, at: m.markedAt });
     }
+    // Newest set first, then the paper's own order within a set.
+    const setCreated = new Map(sets.map((s) => [s.id, s.createdAt]));
+    const questions = rawQuestions.sort(
+      (a, b) => (setCreated.get(b.setId) ?? 0) - (setCreated.get(a.setId) ?? 0) || a.setId.localeCompare(b.setId) || a.order - b.order,
+    );
     return { questions, sets: new Map(sets.map((s) => [s.id, s])), attemptsByQ, lastMark, settings: settings ?? DEFAULT_SETTINGS };
   }, []);
 
@@ -74,9 +79,13 @@ export default function BrowsePage() {
   const selectRandom = (n: number) => setSelected(new Set(shuffle(filtered).slice(0, n).map((q) => q.id)));
 
   const selectedQuestions = filtered.filter((q) => selected.has(q.id));
-  const suggestedMinutes = Math.round(
-    selectedQuestions.reduce((acc, q) => acc + (totalMarks(q) ?? 4) * data.settings.minutesPerMark, 0),
-  );
+  const selectedSetIds = new Set(selectedQuestions.map((q) => q.setId));
+  const singleSet = selectedSetIds.size === 1 ? data.sets.get([...selectedSetIds][0]) : undefined;
+  const wholeSet = !!singleSet && data.questions.filter((q) => q.setId === singleSet.id).every((q) => selected.has(q.id));
+  const suggestedMinutes =
+    wholeSet && singleSet?.suggestedMinutes
+      ? singleSet.suggestedMinutes
+      : Math.round(selectedQuestions.reduce((acc, q) => acc + (totalMarks(q) ?? 4) * data.settings.minutesPerMark, 0));
   const start = () => {
     const ids = data.questions.filter((q) => selected.has(q.id)).map((q) => q.id);
     if (ids.length === 0) return;
@@ -143,7 +152,7 @@ export default function BrowsePage() {
           </select>
           <label style={{ margin: 0 }}>Minutes</label>
           <input type="number" min={0} placeholder={String(suggestedMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-          <span className="muted">blank = {suggestedMinutes} min from marks, 0 = no timer</span>
+          <span className="muted">blank = {suggestedMinutes} min {wholeSet && singleSet?.suggestedMinutes ? "as the paper suggests" : "from marks"}, 0 = no timer</span>
           <button className="primary" onClick={start}>Start {selected.size} question{selected.size === 1 ? "" : "s"}</button>
         </div>
       )}
@@ -169,7 +178,7 @@ export default function BrowsePage() {
                 </td>
                 <td>
                   {truncate(q.text || q.parts[0]?.text || "")}
-                  <div className="muted">{data.sets.get(q.setId)?.name} · Q{q.order + 1}{q.parts.length ? ` · ${q.parts.length} parts` : ""}{q.modelAnswer || q.parts.some((p) => p.modelAnswer) ? " · has model answer" : ""}</div>
+                  <div className="muted">{data.sets.get(q.setId)?.name} · Q{q.order + 1}{q.stems?.length ? ` · ${q.stems.length} stem${q.stems.length === 1 ? "" : "s"}` : ""}{q.parts.length ? ` · ${q.parts.length} parts` : ""}{q.modelAnswer || q.parts.some((p) => p.modelAnswer) ? " · has model answer" : ""}</div>
                 </td>
                 <td>{q.presentations.map((p) => <span key={p} className="chip static">{presentationName(p)}</span>)}</td>
                 <td>{totalMarks(q) ?? "—"}</td>

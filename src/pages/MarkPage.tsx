@@ -5,7 +5,7 @@ import { db, newId } from "../data/db";
 import { ERROR_TAGS, type ErrorTag, type Mark, type PartMark } from "../data/types";
 import AnswerHtml from "../components/AnswerHtml";
 import { hitTerms, markingPoints } from "../lib/marking";
-import { answerParts, formatDuration, partLabel } from "../lib/questions";
+import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
 
@@ -64,7 +64,7 @@ export default function MarkPage() {
   const { attempt, question, existing } = data;
 
   const hasModel = partsInfo.some((pi) => pi.points.length > 0);
-  const ambossTexts = [question.text, ...question.parts.map((p) => p.text), ...partsInfo.flatMap((pi) => pi.points)];
+  const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((p) => p.text), ...partsInfo.flatMap((pi) => pi.points)];
   const needsConfidence = hasModel && confidence === undefined && !existing;
   const wholeModel = question.parts.length > 0 && question.modelAnswer && !question.parts.some((p) => p.modelAnswer);
 
@@ -143,6 +143,14 @@ export default function MarkPage() {
         </span>
       </div>
       <div className="card" style={{ margin: "0.8rem 0" }}>
+        {stemsOf(question).length > 0 && (
+          <details style={{ marginBottom: "0.5rem" }}>
+            <summary className="muted" style={{ cursor: "pointer" }}>Case stems ({stemsOf(question).length})</summary>
+            {stemsOf(question).map((st, si) => (
+              <div key={si} className="stem-block"><AmbossText cacheKey={question.id} texts={ambossTexts} text={st} /></div>
+            ))}
+          </details>
+        )}
         <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} />
       </div>
       {wholeModel && (

@@ -4,7 +4,7 @@ import { db } from "../data/db";
 import { ERROR_TAGS } from "../data/types";
 import PresentationPicker from "../components/PresentationPicker";
 import AnswerHtml from "../components/AnswerHtml";
-import { answerParts, formatDate, formatDuration, partLabel, totalMarks } from "../lib/questions";
+import { answerParts, formatDate, formatDuration, partLabel, stemsOf, totalMarks } from "../lib/questions";
 import { startSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
 
@@ -25,6 +25,7 @@ export default function QuestionPage() {
   if (data === undefined) return null;
   if (data === null) return <p>Question not found.</p>;
   const { q, set, attempts, marks } = data;
+  const qTexts = [...stemsOf(q), q.text, ...q.parts.map((p) => p.text)];
 
   const remove = async () => {
     if (!confirm("Delete this question and its attempts?")) return;
@@ -51,11 +52,17 @@ export default function QuestionPage() {
         </div>
       </div>
       <div className="card" style={{ marginTop: "0.8rem" }}>
-        <AmbossText cacheKey={q.id} texts={[q.text, ...q.parts.map((p) => p.text)]} text={q.text} />
+        {stemsOf(q).map((st, si) => (
+          <div key={si} className="stem-block">
+            {stemsOf(q).length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
+            <AmbossText cacheKey={q.id} texts={qTexts} text={st} />
+          </div>
+        ))}
+        <AmbossText cacheKey={q.id} texts={qTexts} text={q.text} />
         {q.parts.map((p) => (
           <div key={p.label} className="part-head" style={{ marginTop: "0.6rem" }}>
             <span className="label">{partLabel(p.label)}</span>
-            <AmbossText cacheKey={q.id} texts={[q.text, ...q.parts.map((x) => x.text)]} text={p.text} className="text" />
+            <AmbossText cacheKey={q.id} texts={qTexts} text={p.text} className="text" />
             {p.marks !== undefined && <span className="marks">({p.marks})</span>}
           </div>
         ))}

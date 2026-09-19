@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 import { db, newId } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
-import { answerParts, formatDuration, partLabel } from "../lib/questions";
+import { answerParts, formatDuration, lockedIndices, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
 import { getSettings } from "../data/db";
@@ -159,7 +159,7 @@ export default function PaperPage() {
   };
 
   const goTo = async (i: number, label = "") => {
-    if (!session) return;
+    if (!session || locked[i]) return;
     if (attempt) await flushAttempt(attempt.id);
     const next = { ...session, index: i };
     saveSession(next);
@@ -175,6 +175,11 @@ export default function PaperPage() {
     nav(`/mark/${attempt.id}`);
   };
 
+  const locked = useMemo(
+    () => (data ? lockedIndices(data.questions, data.attempts.map((a) => !!a.submittedAt)) : []),
+    [data],
+  );
+
   const sidebar = useMemo(() => {
     if (!data) return [];
     return data.questions.flatMap((q, i) =>
@@ -183,7 +188,8 @@ export default function PaperPage() {
   }, [data]);
 
   if (!session || !data || !question || !attempt) return null;
-  const locked = !!attempt.submittedAt || expired;
+  const editorLocked = !!attempt.submittedAt || expired;
+  const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((x) => x.text)];
   const parts = answerParts(question);
   const cached = answersRef.current.get(attempt.id) ?? attempt.answers;
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
@@ -197,7 +203,7 @@ export default function PaperPage() {
         )}
         <span style={{ flex: 1 }} />
         {session.mode === "practice" ? (
-          <button className="primary" onClick={submitCurrent} disabled={locked}>
+          <button className="primary" onClick={submitCurrent} disabled={editorLocked}>
             {attempt.submittedAt ? "Submitted" : "Submit answer"}
           </button>
         ) : (
@@ -210,20 +216,29 @@ export default function PaperPage() {
             const a = data.attempts[row.i];
             const flagged = (answersRef.current.get(a.id) ?? a.answers).find((x) => x.label === row.label)?.flagged;
             const current = row.i === index && (row.label === activePart || parts.length === 1);
+            const isLocked = locked[row.i];
             return (
               <button
                 key={`${row.i}-${row.label}`}
                 className={(current ? "current " : "") + (a.submittedAt ? "done" : "")}
                 onClick={() => goTo(row.i, row.label)}
+                disabled={isLocked}
+                title={isLocked ? "Answer the earlier stage first" : undefined}
               >
-                {row.text}{flagged ? <span className="flag">⚑</span> : null}
+                {row.text}{isLocked ? <span className="flag">🔒</span> : flagged ? <span className="flag">⚑</span> : null}
               </button>
             );
           })}
         </div>
         <div className="paper-stem">
           <div className="qnum">Question {index + 1}</div>
-          <AmbossText cacheKey={question.id} texts={[question.text, ...question.parts.map((p) => p.text)]} text={question.text} disabled={!ambossOnPaper} />
+          {stemsOf(question).map((st, si) => (
+            <div key={si} className="stem-block">
+              {stemsOf(question).length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
+              <AmbossText cacheKey={question.id} texts={ambossTexts} text={st} disabled={!ambossOnPaper} />
+            </div>
+          ))}
+          <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} disabled={!ambossOnPaper} />
         </div>
         <div className="paper-answers">
           {parts.map((p) => {
@@ -232,13 +247,13 @@ export default function PaperPage() {
               <div key={`${attempt.id}-${p.label}`} className="part" id={`part-${p.label || "stem"}`}>
                 <div className="part-head">
                   {p.label && <span className="label">{partLabel(p.label)}</span>}
-                  <AmbossText cacheKey={question.id} texts={[question.text, ...question.parts.map((x) => x.text)]} text={p.text} className="text" disabled={!ambossOnPaper} />
+                  <AmbossText cacheKey={question.id} texts={ambossTexts} text={p.text} className="text" disabled={!ambossOnPaper} />
                   {p.marks !== undefined && <span className="marks">({p.marks} mark{p.marks === 1 ? "" : "s"})</span>}
                   <button className={"small" + (ans?.flagged ? " active" : "")} title="Flag for review" onClick={() => toggleFlag(attempt.id, p.label)}>⚑</button>
                 </div>
                 <Editor
                   initial={ans?.doc}
-                  locked={locked}
+                  locked={editorLocked}
                   onChange={(doc, text) => onAnswerChange(attempt.id, p.label, doc, text)}
                   onFocus={() => setActivePart(p.label)}
                 />
@@ -247,7 +262,9 @@ export default function PaperPage() {
           })}
           {index < data.questions.length - 1 && (
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button onClick={() => goTo(index + 1)}>Next question →</button>
+              <button onClick={() => goTo(index + 1)} disabled={locked[index + 1]} title={locked[index + 1] ? "Submit this stage first" : undefined}>
+                Next question →{locked[index + 1] ? " 🔒" : ""}
+              </button>
             </div>
           )}
         </div>

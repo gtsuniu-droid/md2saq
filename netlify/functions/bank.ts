@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import type { Config } from "@netlify/functions";
-import { parseQuestions, questionFullText } from "../../src/lib/parser";
+import { parsePaper, questionFullText } from "../../src/lib/parser";
 import { suggestPresentations } from "../../src/lib/suggest";
 import { PRESENTATION_BY_ID } from "../../src/data/presentations";
 
@@ -36,23 +36,24 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function packFromText(u: TextUpload) {
-  const parsed = parseQuestions(u.text);
+  const { questions: parsed, meta } = parsePaper(u.text);
   const extra = (u.presentations ?? []).filter((id) => PRESENTATION_BY_ID.has(id));
   const setId = crypto.randomUUID();
   const now = Date.now();
   return {
     format: "saq-practice-set" as const,
     version: 1 as const,
-    set: { id: setId, name: u.name, source: u.source, createdAt: now },
+    set: { id: setId, name: u.name === "Untitled set" && meta.title ? meta.title : u.name, source: u.source, suggestedMinutes: meta.minutes, createdAt: now },
     questions: parsed.map((q, i) => ({
       id: crypto.randomUUID(),
       setId,
       order: i,
+      stems: q.stems.length ? q.stems : undefined,
       text: q.text,
       marks: q.marks,
       modelAnswer: q.modelAnswer,
       parts: q.parts,
-      presentations: [...new Set([...suggestPresentations(questionFullText(q), 1), ...extra])],
+      presentations: [...new Set([...suggestPresentations([...q.stems, questionFullText(q)].join("\n"), 1), ...extra])],
       tags: [],
       createdAt: now,
     })),

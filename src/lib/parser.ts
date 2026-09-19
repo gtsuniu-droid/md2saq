@@ -2,15 +2,28 @@ import type { SubPart } from "../data/types";
 
 export interface ParsedQuestion {
   number?: number;
+  /** Case stems that precede this question, in order (cumulative across stages). */
+  stems: string[];
   text: string;
   marks?: number;
   modelAnswer?: string;
   parts: SubPart[];
 }
 
+export interface PaperMeta {
+  title?: string;
+  minutes?: number;
+  totalMarks?: number;
+}
+
+export interface ParsedPaper {
+  questions: ParsedQuestion[];
+  meta: PaperMeta;
+}
+
 /** "1." "1)" "Q1" "Q1." "Question 1:" "Question 1" — captures number and remainder. */
 const NUMBERED_START =
-  /^\s*(?:(?:q|question)\s*)?(\d{1,3})\s*(?:[.):\-–]|(?=\s)|$)\s*(.*)$/i;
+  /^\s*(?:(?:q|question)\s*)?(\d{1,3})\s*(?:[.):\-–—]|(?=\s)|$)\s*(.*)$/i;
 /** "Question 1" / "Q1" style is a strong marker even when out of sequence. */
 const STRONG_START = /^\s*(?:q|question)\s*(\d{1,3})\b/i;
 /** Unnumbered "Q:" / "Question:" */
@@ -23,6 +36,12 @@ const SUBPART =
   /^\s*\(?((?:[a-h])|(?:i{1,3}|iv|v|vi{1,3}|ix|x))\s*[.)]\s+(.*)$/i;
 /** Numeric sub-parts "1)" "2." inside a question body (only accepted when they run 1, 2, 3…). */
 const NUMERIC_SUBPART = /^\s*\(?(\d{1,2})\s*[.)]\s+(.*)$/;
+
+/** "Stage 1", "Stage 2:", "Part B", "Scenario", "Case 1 — title" on a line of their own. */
+const STAGE_HEADER = /^\s*(?:stage|part|scenario|case|vignette|update)\s*(?:\d{1,2}|[a-h])?\s*(?:[:.\-–—]\s*(.*))?$/i;
+const TOTAL_LINE = /^\s*total\s*[:\-–—]?\s*\d+(?:\.\d+)?\s*marks?\.?\s*$/i;
+const TITLE_LINE = /^\s*(?:saq|title|case|topic)\s*[:\-–—]\s*(.+?)(?:\s*[—–-]\s*(\d+)\s*marks?)?\s*$/i;
+const TIME_LINE = /^\s*(?:suggested\s+)?time\s*(?:allowed|limit)?\s*[:\-–—]?\s*(\d+)\s*(?:min|mins|minutes)\b/i;
 
 const QUESTION_WORDS =
   /\b(list|outline|describe|what|name|explain|discuss|give|state|identify|suggest|which|how|why|define|compare|justify|interpret|calculate|write|provide)\b|\?\s*$/i;
@@ -65,18 +84,41 @@ function normalise(input: string): string[] {
 interface Segment {
   number?: number;
   lines: string[];
+  stems: string[];
 }
 
-/** Split lines into question segments using numbered starts. */
-function segmentByNumber(lines: string[]): Segment[] {
+interface Segmented {
+  segments: Segment[];
+  meta: PaperMeta;
+}
+
+/** Split lines into question segments using numbered starts, collecting stage stems along the way. */
+function segmentByNumber(lines: string[]): Segmented {
   const segments: Segment[] = [];
   let current: Segment | null = null;
   let lastNumber = 0;
   let inAnswer = false;
   let lastAnswerListNumber = 0;
+  const meta: PaperMeta = {};
+  const stems: string[] = [];
+  let stageLines: string[] | null = null;
+  let sawStage = false;
+  const preamble: string[] = [];
+
+  const closeStage = () => {
+    if (stageLines) {
+      const text = stageLines.join("\n").trim();
+      if (text) stems.push(text);
+      stageLines = null;
+    }
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (TOTAL_LINE.test(line)) {
+      meta.totalMarks = Number(/\d+(?:\.\d+)?/.exec(line)![0]);
+      continue;
+    }
     const strong = STRONG_START.exec(line);
     const numbered = NUMBERED_START.exec(line);
     const unnumbered = UNNUMBERED_START.exec(line);
@@ -89,7 +131,7 @@ function segmentByNumber(lines: string[]): Segment[] {
     if (strong) {
       isStart = true;
       number = Number(strong[1]);
-      remainder = numbered ? numbered[2] : line.replace(STRONG_START, "").replace(/^\s*[.):\-–]\s*/, "");
+      remainder = numbered ? numbered[2] : line.replace(STRONG_START, "").replace(/^\s*[.):\-–—]\s*/, "");
     } else if (unnumbered) {
       isStart = true;
       remainder = unnumbered[1];
@@ -111,20 +153,63 @@ function segmentByNumber(lines: string[]): Segment[] {
     }
 
     if (isStart) {
+      closeStage();
       if (current) segments.push(current);
-      current = { number, lines: [remainder] };
+      current = { number, lines: [remainder], stems: [...stems] };
       if (number !== undefined) lastNumber = number;
       inAnswer = false;
       lastAnswerListNumber = 0;
       continue;
     }
 
+    const stage = STAGE_HEADER.exec(line);
+    if (stage && !inAnswer) {
+      closeStage();
+      if (current) {
+        segments.push(current);
+        current = null;
+      }
+      sawStage = true;
+      stageLines = stage[1]?.trim() ? [stage[1].trim()] : [];
+      continue;
+    }
+
+    if (stageLines) {
+      stageLines.push(line);
+      continue;
+    }
+
     if (ANSWER_MARKER.test(line)) inAnswer = true;
-    if (!current) current = { lines: [] };
+    if (!current) {
+      // Before the first question: preamble (title, time, instructions) when stages exist,
+      // otherwise the text belongs to the first question.
+      preamble.push(line);
+      continue;
+    }
     current.lines.push(line);
   }
+  closeStage();
   if (current) segments.push(current);
-  return segments.filter((s) => s.lines.some((l) => l.trim() !== ""));
+
+  for (const line of preamble) {
+    const t = TITLE_LINE.exec(line);
+    if (t && !meta.title) {
+      meta.title = t[1].trim();
+      if (t[2]) meta.totalMarks = meta.totalMarks ?? Number(t[2]);
+    }
+    const m = TIME_LINE.exec(line);
+    if (m && !meta.minutes) meta.minutes = Number(m[1]);
+  }
+  const preambleText = preamble.join("\n").trim();
+  if (!sawStage && preambleText && segments.length > 0 && segments[0].lines.length > 0 && !TITLE_LINE.test(preambleText.split("\n")[0])) {
+    // No stages: the leading text is the first question's stem, as before.
+    segments.unshift({ lines: preamble, stems: [] });
+  }
+
+  return {
+    segments: segments.filter((s) => s.lines.some((l) => l.trim() !== "")),
+    meta,
+  };
 }
 
 /** Fallback: split on blank lines, attaching answer and sub-part blocks to the preceding block. */
@@ -149,7 +234,7 @@ function segmentByBlank(lines: string[]): Segment[] {
     if (attaches && last) {
       last.lines.push("", ...block);
     } else {
-      segments.push({ lines: block });
+      segments.push({ lines: block, stems: [] });
     }
   }
   return segments;
@@ -213,6 +298,7 @@ function buildQuestion(seg: Segment): ParsedQuestion {
 
   return {
     number: seg.number,
+    stems: seg.stems,
     text: stemExtract.text,
     marks,
     modelAnswer: modelAnswer || undefined,
@@ -242,16 +328,21 @@ function distributeModelAnswer(modelAnswer: string, parts: SubPart[]): void {
   }
 }
 
-export function parseQuestions(input: string): ParsedQuestion[] {
+export function parsePaper(input: string): ParsedPaper {
   const lines = normalise(input);
-  if (lines.every((l) => l.trim() === "")) return [];
+  if (lines.every((l) => l.trim() === "")) return { questions: [], meta: {} };
 
-  let segments = segmentByNumber(lines);
+  const numbered = segmentByNumber(lines);
+  let segments = numbered.segments;
   if (segments.length < 2) {
     const byBlank = segmentByBlank(lines);
     if (byBlank.length > segments.length) segments = byBlank;
   }
-  return segments.map(buildQuestion).filter((q) => q.text || q.parts.length);
+  return { questions: segments.map(buildQuestion).filter((q) => q.text || q.parts.length), meta: numbered.meta };
+}
+
+export function parseQuestions(input: string): ParsedQuestion[] {
+  return parsePaper(input).questions;
 }
 
 /** Flatten a question to a single searchable string. */

@@ -193,3 +193,6 @@ span.amboss-marker:hover { background: color-mix(in srgb, #0fcad4 18%, transpare
 .amboss-media { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
 .amboss-media img { height: 56px; border-radius: 4px; border: 1px solid var(--border); }
 .amboss-dest { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+
+.stem-block { margin-bottom: 0.9rem; padding-bottom: 0.9rem; border-bottom: 1px dashed var(--border); }
+.paper-side button:disabled { opacity: 0.5; cursor: not-allowed; }

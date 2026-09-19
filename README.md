@@ -61,6 +61,17 @@ Three ways, fastest first:
    cleared, so you can paste the next one straight away.
 3. **Push from a script.** See "Pushing questions from your own generator" below.
 
+## Staged cases and stems
+
+A question can carry any number of stems: the case information the candidate reads
+before answering. Papers written as "Stage 1 … Question 1 … Stage 2 … Question 3" parse
+into exactly that, with each question holding the stems that precede it. On Create you
+can also add a stem to any question by hand; it applies to that question and every
+later one. In a paper, later stages stay locked until the earlier stage's questions are
+submitted, so "answer each stage before reading the next" is enforced. A "Suggested
+time" line in the paper is remembered and offered as the timer when you sit the whole
+set.
+
 ## Import formats
 
 Numbered questions (`1.`, `1)`, `Q1`, `Question 1:`), or blank-line separated blocks.

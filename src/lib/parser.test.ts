@@ -127,3 +127,36 @@ A woman presents with dyspnoea.
     expect(qs[1].parts[0].modelAnswer).toBeUndefined();
   });
 });
+
+describe("staged papers with stems", () => {
+  const S = "/private/tmp/claude-502/-Users-gabe-Desktop-Frontal/384f50d6-d1cb-4be0-8ed0-69046cf8a54c/scratchpad";
+  it("parses the dizziness paper", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { parsePaper } = await import("./parser");
+    const { questions: qs, meta } = parsePaper(readFileSync(`${S}/dizzy.txt`, "utf8"));
+    expect(qs).toHaveLength(6);
+    expect(meta.title).toBe("“I feel dizzy”");
+    expect(meta.minutes).toBe(25);
+    expect(meta.totalMarks).toBe(20);
+    expect(qs.map((q) => q.marks)).toEqual([3, 4, 4, 4, 3, 2]);
+    expect(qs[0].stems).toHaveLength(1);
+    expect(qs[0].stems[0]).toMatch(/^Michael Tan/);
+    expect(qs[0].text).toMatch(/^Generate an initial differential\./);
+    expect(qs[0].text).toContain("List THREE plausible diagnoses");
+    expect(qs[0].text).toContain("½ mark per diagnosis");
+    expect(qs[1].stems).toHaveLength(1);
+    expect(qs[2].stems).toHaveLength(2);
+    expect(qs[2].stems[1]).toMatch(/^Further history reveals/);
+    expect(qs[2].stems[1]).toContain("Marked unsteadiness");
+    expect(qs[2].parts.map((p) => [p.label, p.marks])).toEqual([["a", 1], ["b", 2], ["c", 1]]);
+    expect(qs[5].stems).toHaveLength(3);
+    expect(qs[5].stems[2]).toMatch(/^A non-contrast CT brain/);
+    expect(qs[5].text).not.toMatch(/Total/);
+    expect(qs[5].parts).toHaveLength(2);
+  });
+  it("keeps unstaged papers as before", () => {
+    const qs = parseQuestions("1. First question? (2 marks)\n2. Second question?");
+    expect(qs).toHaveLength(2);
+    expect(qs[0].stems).toEqual([]);
+  });
+});

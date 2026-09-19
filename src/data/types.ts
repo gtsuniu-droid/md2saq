@@ -2,6 +2,8 @@ export interface QuestionSet {
   id: string;
   name: string;
   source?: string;
+  /** Time suggested by the paper itself, when it said so. */
+  suggestedMinutes?: number;
   createdAt: number;
   /** Set on sets imported from the shared bank, so re-imports are detected. */
   bankId?: string;
@@ -20,6 +22,8 @@ export interface Question {
   setId: string;
   /** Position within the set. */
   order: number;
+  /** Case stems shown before the question, in order. Later stems are revealed stage by stage. */
+  stems?: string[];
   text: string;
   marks?: number;
   /** Raw model answer as pasted. Marking points are derived from it. */

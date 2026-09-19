@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { db, newId } from "../data/db";
 import type { Question, QuestionSet } from "../data/types";
-import { parseQuestions, questionFullText, type ParsedQuestion } from "../lib/parser";
+import { parsePaper, questionFullText, type PaperMeta, type ParsedQuestion } from "../lib/parser";
 import { suggestPresentations } from "../lib/suggest";
 import PresentationPicker from "../components/PresentationPicker";
 import { partLabel } from "../lib/questions";
@@ -21,22 +21,32 @@ interface FileBatch {
   key: string;
   name: string;
   drafts: Draft[];
+  meta: PaperMeta;
 }
 
-function draftsFromText(text: string, preset: string): Draft[] {
-  return parseQuestions(text).map((q) => {
-    const suggested = suggestPresentations(questionFullText(q));
+function draftsFromText(text: string, preset: string): { drafts: Draft[]; meta: PaperMeta } {
+  const { questions, meta } = parsePaper(text);
+  const drafts = questions.map((q) => {
+    const suggested = suggestPresentations([...q.stems, questionFullText(q)].join("\n"));
     const presentations = preset ? [preset] : suggested.slice(0, 1);
     return { ...q, key: newId(), presentations, suggested };
   });
+  return { drafts, meta };
 }
 
-async function saveDrafts(name: string, source: string, drafts: Draft[]): Promise<QuestionSet> {
-  const set: QuestionSet = { id: newId(), name: name.trim() || `Set ${new Date().toLocaleDateString()}`, source: source.trim() || undefined, createdAt: Date.now() };
+async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}): Promise<QuestionSet> {
+  const set: QuestionSet = {
+    id: newId(),
+    name: name.trim() || meta.title || `Set ${new Date().toLocaleDateString()}`,
+    source: source.trim() || undefined,
+    suggestedMinutes: meta.minutes,
+    createdAt: Date.now(),
+  };
   const questions: Question[] = drafts.map((d, i) => ({
     id: newId(),
     setId: set.id,
     order: i,
+    stems: d.stems.length ? d.stems : undefined,
     text: d.text,
     marks: d.marks,
     modelAnswer: d.modelAnswer,
@@ -67,6 +77,7 @@ function CreateTools() {
   const [name, setName] = useState(presetPresentation ? `${presentationName(presetPresentation)} set` : "");
   const [source, setSource] = useState("");
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [meta, setMeta] = useState<PaperMeta>({});
   const [files, setFiles] = useState<FileBatch[]>([]);
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
@@ -78,7 +89,11 @@ function CreateTools() {
 
   // Re-parse when the paste changes. Manual edits to drafts are kept until the paste changes again.
   useEffect(() => {
-    const t = setTimeout(() => setDrafts(draftsFromText(raw, presetPresentation)), 250);
+    const t = setTimeout(() => {
+      const r = draftsFromText(raw, presetPresentation);
+      setDrafts(r.drafts);
+      setMeta(r.meta);
+    }, 250);
     return () => clearTimeout(t);
   }, [raw, presetPresentation]);
 
@@ -100,6 +115,26 @@ function CreateTools() {
         presentations: [...new Set([...prev.presentations, ...cur.presentations])],
       };
       return [...ds.slice(0, i - 1), merged, ...ds.slice(i + 1)];
+    });
+
+  /** Add an empty stem to this question and every later one (stages accumulate). */
+  const addStem = (key: string) =>
+    setDrafts((ds) => {
+      const i = ds.findIndex((d) => d.key === key);
+      return ds.map((d, j) => (j >= i ? { ...d, stems: [...d.stems, ""] } : d));
+    });
+  const updateStem = (key: string, si: number, text: string) =>
+    setDrafts((ds) => {
+      const i = ds.findIndex((d) => d.key === key);
+      const old = ds[i].stems[si];
+      // Keep later questions that share this stem in sync.
+      return ds.map((d, j) => (j >= i && d.stems[si] === old ? { ...d, stems: d.stems.map((x, xi) => (xi === si ? text : x)) } : d));
+    });
+  const removeStem = (key: string, si: number) =>
+    setDrafts((ds) => {
+      const i = ds.findIndex((d) => d.key === key);
+      const old = ds[i].stems[si];
+      return ds.map((d, j) => (j >= i && d.stems[si] === old ? { ...d, stems: d.stems.filter((_, xi) => xi !== si) } : d));
     });
 
   const applySetPresentations = () =>
@@ -137,7 +172,7 @@ function CreateTools() {
     if (share && !code) return;
     setSaving(true);
     setNotice(null);
-    const set = await saveDrafts(name, source, drafts);
+    const set = await saveDrafts(name, source, drafts, meta);
     let shared = true;
     if (share) shared = await shareOrReport(set.id, code!, `"${set.name}"`);
     if (shared) setNotice({ text: `Saved "${set.name}" with ${drafts.length} questions${share ? " and shared it to the bank" : ""}.`, setId: set.id });
@@ -153,7 +188,7 @@ function CreateTools() {
     for (const f of Array.from(list)) {
       const text = await readFileText(f);
       const parsed = draftsFromText(text, presetPresentation);
-      batches.push({ key: newId(), name: f.name.replace(/\.[^.]+$/, ""), drafts: parsed });
+      batches.push({ key: newId(), name: parsed.meta.title ?? f.name.replace(/\.[^.]+$/, ""), drafts: parsed.drafts, meta: parsed.meta });
     }
     setFiles((fs) => [...fs, ...batches]);
   };
@@ -175,7 +210,7 @@ function CreateTools() {
     let questions = 0;
     let sharedAll = true;
     for (const f of usable) {
-      const set = await saveDrafts(f.name, source, f.drafts);
+      const set = await saveDrafts(f.name, source, f.drafts, f.meta);
       sets++;
       questions += f.drafts.length;
       if (share && sharedAll) sharedAll = await shareOrReport(set.id, code!, `"${set.name}"`);
@@ -190,9 +225,12 @@ function CreateTools() {
 
   const editFile = (f: FileBatch) => {
     // Rebuild a pasteable text from the parsed questions so it can be reviewed in the preview.
+    let shown = 0;
     const text = f.drafts
       .map((d, i) => {
-        const head = `${i + 1}. ${d.text}${d.marks !== undefined && d.parts.length === 0 ? ` (${d.marks} marks)` : ""}`;
+        const stages = d.stems.slice(shown).map((st, k) => `Stage ${shown + k + 1}\n${st}`);
+        shown = Math.max(shown, d.stems.length);
+        const head = `${stages.length ? stages.join("\n\n") + "\n\n" : ""}Question ${i + 1}. ${d.text}${d.marks !== undefined && d.parts.length === 0 ? ` (${d.marks} marks)` : ""}`;
         const parts = d.parts.map((p) => `${partLabel(p.label)} ${p.text}${p.marks !== undefined ? ` (${p.marks} marks)` : ""}`);
         const answer = d.modelAnswer ? [`Answer:`, d.modelAnswer] : [];
         return [head, ...parts, ...answer].join("\n");
@@ -280,9 +318,9 @@ function CreateTools() {
       {drafts.length > 0 && (
         <>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <input type="text" placeholder="Set name" value={name} onChange={(e) => setName(e.target.value)} />
+            <input type="text" placeholder={meta.title ?? "Set name"} value={name} onChange={(e) => setName(e.target.value)} />
             <input type="text" placeholder="Source (optional)" value={source} onChange={(e) => setSource(e.target.value)} />
-            <span className="muted">{drafts.length} questions{totalMarks ? ` · ${totalMarks} marks` : ""}</span>
+            <span className="muted">{drafts.length} questions{totalMarks ? ` · ${totalMarks} marks` : ""}{meta.minutes ? ` · ${meta.minutes} min suggested` : ""}</span>
           </div>
           <div className="row" style={{ marginTop: "0.6rem" }}>
             <button className="primary" onClick={() => savePaste(false)} disabled={saving}>Save {drafts.length} questions</button>
@@ -312,7 +350,27 @@ function CreateTools() {
                     <button className="small danger" onClick={() => remove(d.key)}>Remove</button>
                   </span>
                 </div>
-                <textarea value={d.text} onChange={(e) => update(d.key, { text: e.target.value })} style={{ minHeight: "4rem", marginTop: "0.5rem" }} />
+                {d.stems.map((st, si) => {
+                  const inherited = i > 0 && drafts[i - 1].stems[si] === st;
+                  return (
+                    <div key={si} style={{ marginTop: "0.5rem" }}>
+                      <div className="row spread">
+                        <span className="muted">Stem {si + 1}{inherited ? " (shared with the question above)" : ""}</span>
+                        <button className="small danger" onClick={() => removeStem(d.key, si)}>Remove stem</button>
+                      </div>
+                      {inherited ? (
+                        <div className="muted pre" style={{ fontSize: "0.85rem", maxHeight: "4.5rem", overflow: "hidden" }}>{st}</div>
+                      ) : (
+                        <textarea value={st} placeholder="Case information the candidate reads before this question" onChange={(e) => updateStem(d.key, si, e.target.value)} style={{ minHeight: "4rem" }} />
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="row" style={{ marginTop: "0.5rem" }}>
+                  <button className="small" onClick={() => addStem(d.key)} title="Adds a stem here and to every later question">+ Add stem</button>
+                </div>
+                <label>Question</label>
+                <textarea value={d.text} onChange={(e) => update(d.key, { text: e.target.value })} style={{ minHeight: "4rem" }} />
                 {d.parts.map((p, pi) => (
                   <div key={pi} className="row" style={{ marginTop: "0.3rem", alignItems: "flex-start" }}>
                     <span style={{ minWidth: "2.2rem", fontWeight: 600 }}>{partLabel(p.label)}</span>
