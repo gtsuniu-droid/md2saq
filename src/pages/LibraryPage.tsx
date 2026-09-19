@@ -6,6 +6,7 @@ import { PRESENTATIONS, presentationName } from "../data/presentations";
 import { DEFAULT_SETTINGS } from "../data/types";
 import { formatDate, totalMarks, truncate } from "../lib/questions";
 import { shuffle, startSession } from "../lib/session";
+import ShareSetButton from "../components/ShareSetButton";
 
 export default function LibraryPage() {
   const nav = useNavigate();
@@ -118,6 +119,10 @@ export default function LibraryPage() {
           <option value="marked">Marked</option>
         </select>
         <input type="search" placeholder="Search text" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <button className="small" onClick={() => nav(presentation ? `/import?presentation=${presentation}` : "/import")}>
+          + Add set{presentation ? ` for ${presentationName(presentation)}` : ""}
+        </button>
+        {setId && <ShareSetButton setId={setId} className="small" />}
         {setId && <button className="small danger" onClick={deleteSet}>Delete set</button>}
       </div>
 

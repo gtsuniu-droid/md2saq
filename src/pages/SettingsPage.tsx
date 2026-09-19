@@ -62,6 +62,12 @@ export default function SettingsPage() {
           Automatically import new bank sets when the app opens
         </label>
         <div className="row">
+          <label style={{ margin: 0 }}>Bank passcode</label>
+          <input type="password" placeholder="not saved" value={settings.bankPasscode ?? ""}
+            onChange={(e) => db.settings.put({ ...settings, bankPasscode: e.target.value || undefined })} />
+          <span className="muted">needed to share sets; remembered on this device</span>
+        </div>
+        <div className="row">
           <button onClick={async () => {
             try { const n = await syncFromBank(); setMessage(n ? `Imported ${n} new set${n === 1 ? "" : "s"} from the bank.` : "Nothing new in the bank."); }
             catch { setMessage("The bank is not reachable from here."); }

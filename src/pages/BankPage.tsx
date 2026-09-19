@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { db } from "../data/db";
 import { presentationName } from "../data/presentations";
-import { fetchBankSet, listBank, uploadBankSet, type BankEntry } from "../lib/bank";
-import { exportSet, importSetPack } from "../lib/exportImport";
+import { fetchBankSet, listBank, type BankEntry } from "../lib/bank";
+import { importSetPack } from "../lib/exportImport";
+import ShareSetButton from "../components/ShareSetButton";
 import { formatDate } from "../lib/questions";
 
 export default function BankPage() {
@@ -12,19 +13,8 @@ export default function BankPage() {
   const [entries, setEntries] = useState<BankEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [uploadSet, setUploadSet] = useState("");
-  const [passcode, setPasscode] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
 
-  const local = useLiveQuery(async () => {
-    const sets = await db.sets.orderBy("createdAt").reverse().toArray();
-    const settings = await db.settings.get("settings");
-    return { sets, passcode: settings?.bankPasscode ?? "" };
-  }, []);
-
-  useEffect(() => {
-    if (local && !passcode) setPasscode(local.passcode);
-  }, [local, passcode]);
+  const local = useLiveQuery(async () => ({ sets: await db.sets.orderBy("createdAt").reverse().toArray() }), []);
 
   const refresh = async () => {
     setError(null);
@@ -44,24 +34,6 @@ export default function BankPage() {
       const pack = await fetchBankSet(entry.id);
       const setId = await importSetPack(pack, entry.id);
       nav(`/library?set=${setId}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const upload = async () => {
-    if (!uploadSet) return;
-    setBusy("upload");
-    setMessage(null);
-    try {
-      const pack = await exportSet(uploadSet);
-      await uploadBankSet(pack, passcode);
-      await db.settings.update("settings", { bankPasscode: passcode });
-      setMessage(`Uploaded "${pack.set.name}" with ${pack.questions.length} questions.`);
-      setUploadSet("");
-      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -99,16 +71,18 @@ export default function BankPage() {
       )}
 
       <h2>Share one of your sets</h2>
-      <div className="row">
-        <select value={uploadSet} onChange={(e) => setUploadSet(e.target.value)}>
-          <option value="">Choose a set</option>
-          {(local?.sets ?? []).filter((s) => !s.bankId).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <input type="password" placeholder="Upload passcode" value={passcode} onChange={(e) => setPasscode(e.target.value)} />
-        <button className="primary" onClick={upload} disabled={!uploadSet || !passcode || busy !== null}>Upload</button>
-      </div>
-      {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
-      <p className="muted">Uploads need the passcode set in the site's Netlify environment as BANK_PASSCODE. Questions only are shared, never your answers or marks.</p>
+      {(local?.sets ?? []).filter((s) => !s.bankId).length === 0 && <p className="muted">Every set in your library is already shared.</p>}
+      <table>
+        <tbody>
+          {(local?.sets ?? []).filter((s) => !s.bankId).map((s) => (
+            <tr key={s.id}>
+              <td>{s.name}{s.source && <div className="muted">{s.source}</div>}</td>
+              <td style={{ textAlign: "right" }}><ShareSetButton setId={s.id} className="small" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted">Sharing asks for the bank passcode once and remembers it. Questions only are shared, never your answers or marks.</p>
     </div>
   );
 }

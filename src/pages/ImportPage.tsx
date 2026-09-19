@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { db, newId } from "../data/db";
 import type { Question, QuestionSet } from "../data/types";
 import { parseQuestions, questionFullText, type ParsedQuestion } from "../lib/parser";
 import { suggestPresentations } from "../lib/suggest";
 import PresentationPicker from "../components/PresentationPicker";
 import { partLabel } from "../lib/questions";
+import { presentationName } from "../data/presentations";
+import { PasscodeError, forgetPasscode, savedPasscode, shareSet } from "../lib/share";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -15,12 +17,17 @@ interface Draft extends ParsedQuestion {
 
 export default function ImportPage() {
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const presetPresentation = params.get("presentation") ?? "";
   const [raw, setRaw] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(presetPresentation ? `${presentationName(presetPresentation)} set` : "");
   const [source, setSource] = useState("");
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [setPresentations, setSetPresentations] = useState<string[]>([]);
+  const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
+  const [askPasscode, setAskPasscode] = useState(false);
+  const [passcode, setPasscode] = useState("");
+  const [shareError, setShareError] = useState<string | null>(null);
 
   // Re-parse when the paste changes. Manual edits to drafts are kept until the paste changes again.
   useEffect(() => {
@@ -29,12 +36,13 @@ export default function ImportPage() {
       setDrafts(
         parsed.map((q) => {
           const suggested = suggestPresentations(questionFullText(q));
-          return { ...q, key: newId(), presentations: suggested.slice(0, 1), suggested };
+          const presentations = presetPresentation ? [presetPresentation] : suggested.slice(0, 1);
+          return { ...q, key: newId(), presentations, suggested };
         }),
       );
     }, 250);
     return () => clearTimeout(t);
-  }, [raw]);
+  }, [raw, presetPresentation]);
 
   const update = (key: string, patch: Partial<Draft>) =>
     setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -61,8 +69,16 @@ export default function ImportPage() {
 
   const totalMarks = useMemo(() => drafts.reduce((acc, d) => acc + (d.marks ?? 0), 0), [drafts]);
 
-  const save = async () => {
+  const save = async (share = false) => {
     if (drafts.length === 0) return;
+    let code = "";
+    if (share) {
+      code = passcode || (await savedPasscode());
+      if (!code) {
+        setAskPasscode(true);
+        return;
+      }
+    }
     setSaving(true);
     const set: QuestionSet = { id: newId(), name: name.trim() || `Set ${new Date().toLocaleDateString()}`, source: source.trim() || undefined, createdAt: Date.now() };
     const questions: Question[] = drafts.map((d, i) => ({
@@ -81,6 +97,24 @@ export default function ImportPage() {
       await db.sets.add(set);
       await db.questions.bulkAdd(questions);
     });
+    if (share) {
+      try {
+        await shareSet(set.id, code);
+      } catch (e) {
+        setSaving(false);
+        if (e instanceof PasscodeError) {
+          await forgetPasscode();
+          setPasscode("");
+          setAskPasscode(true);
+          setShareError("Wrong passcode. The set was saved locally; enter the passcode to share it.");
+        } else {
+          setShareError(`Saved locally, but sharing failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        // The set now exists locally, so further clicks should share, not re-save.
+        nav(`/library?set=${set.id}`, { replace: true });
+        return;
+      }
+    }
     setSaving(false);
     nav(`/library?set=${set.id}`);
   };
@@ -144,7 +178,18 @@ export default function ImportPage() {
             ))}
           </div>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <button className="primary" onClick={save} disabled={saving}>Save {drafts.length} questions</button>
+            <button className="primary" onClick={() => save(false)} disabled={saving}>Save {drafts.length} questions</button>
+            {askPasscode ? (
+              <>
+                <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && passcode) void save(true); }} />
+                <button onClick={() => save(true)} disabled={saving || !passcode}>Save and share</button>
+                <button onClick={() => setAskPasscode(false)}>Cancel</button>
+              </>
+            ) : (
+              <button onClick={() => save(true)} disabled={saving}>Save and share to bank</button>
+            )}
+            {shareError && <span style={{ color: "var(--bad)" }}>{shareError}</span>}
           </div>
         </>
       )}
