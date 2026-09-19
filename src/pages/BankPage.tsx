@@ -113,7 +113,7 @@ function BankContents() {
                 <tr key={e.id}>
                   <td>{e.name}{e.source && <div className="muted">{e.source}</div>}</td>
                   <td>{e.questionCount}</td>
-                  <td>{e.presentations.slice(0, 4).map((p) => <span key={p} className="chip static">{presentationName(p)}</span>)}{e.presentations.length > 4 ? <span className="muted">+{e.presentations.length - 4}</span> : null}</td>
+                  <td className="muted">{e.presentations.slice(0, 4).map(presentationName).join(", ")}{e.presentations.length > 4 ? ` +${e.presentations.length - 4}` : ""}</td>
                   <td>{formatDate(e.uploadedAt)}</td>
                   <td className="row" style={{ justifyContent: "flex-end" }}>
                     <button className="small" onClick={() => toggleQuestions(e.id)}>{expanded ? "Hide" : "Questions"}</button>
@@ -134,7 +134,7 @@ function BankContents() {
                               {q.parts.length > 0 && <span className="muted">, {q.parts.map((p) => partLabel(p.label)).join(" ")}</span>}
                               {totalMarks(q) !== undefined && <span className="muted">, {totalMarks(q)} marks</span>}
                               {(q.modelAnswer || q.parts.some((p) => p.modelAnswer)) && <span className="muted">, model answer</span>}
-                              {q.presentations.map((p) => <span key={p} className="chip static" style={{ marginLeft: "0.3rem" }}>{presentationName(p)}</span>)}
+                              {q.presentations.length > 0 && <span className="muted">, {q.presentations.map(presentationName).join(", ")}</span>}
                             </li>
                           ))}
                         </ol>

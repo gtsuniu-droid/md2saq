@@ -128,31 +128,29 @@ export default function BrowsePage() {
           <option value="marked">Marked</option>
         </select>
         <input type="search" placeholder="Search text" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <button className="small" onClick={() => nav(presentation ? `/create?presentation=${presentation}` : "/create")}>
+        <button className="small link" onClick={() => nav(presentation ? `/create?presentation=${presentation}` : "/create")}>
           + Add set{presentation ? ` for ${presentationName(presentation)}` : ""}
         </button>
         {setId && <ShareSetButton setId={setId} className="small" />}
         {setId && <button className="small danger" onClick={deleteSet}>Delete set</button>}
       </div>
 
-      <div className="row" style={{ margin: "0.8rem 0" }}>
-        <span className="muted">{filtered.length} shown, {selected.size} selected</span>
-        <button className="small" onClick={selectAll}>Select all shown</button>
-        <button className="small" onClick={() => selectRandom(3)}>Random 3</button>
-        <button className="small" onClick={() => selectRandom(5)}>Random 5</button>
-        <button className="small" onClick={() => setSelected(new Set())} disabled={selected.size === 0}>Clear</button>
+      <div className="row" style={{ margin: "1rem 0 0.4rem" }}>
+        <span className="muted">{filtered.length} shown{selected.size ? `, ${selected.size} selected` : ""}</span>
+        <button className="small link" onClick={selectAll}>Select all</button>
+        <button className="small link" onClick={() => selectRandom(5)}>Random 5</button>
+        {selected.size > 0 && <button className="small link" onClick={() => setSelected(new Set())}>Clear</button>}
       </div>
 
       {selected.size > 0 && (
         <div className="card row" style={{ marginBottom: "0.8rem" }}>
-          <label style={{ margin: 0 }}>Mode</label>
           <select value={mode} onChange={(e) => setMode(e.target.value as "practice" | "exam")}>
-            <option value="practice">Practice (mark each question as you go)</option>
-            <option value="exam">Exam (nothing revealed until the paper is submitted)</option>
+            <option value="practice">Practice: mark as you go</option>
+            <option value="exam">Exam: reveal at the end</option>
           </select>
-          <label style={{ margin: 0 }}>Minutes</label>
-          <input type="number" min={0} placeholder={String(suggestedMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-          <span className="muted">blank = {suggestedMinutes} min {wholeSet && singleSet?.suggestedMinutes ? "as the paper suggests" : "from marks"}, 0 = no timer</span>
+          <input type="number" min={0} placeholder={String(suggestedMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value)} title="Minutes. Blank uses the suggestion, 0 means no timer." />
+          <span className="muted">min{wholeSet && singleSet?.suggestedMinutes ? ", as the paper suggests" : ""}</span>
+          <span style={{ flex: 1 }} />
           <button className="primary" onClick={start}>Start {selected.size} question{selected.size === 1 ? "" : "s"}</button>
         </div>
       )}
@@ -180,7 +178,7 @@ export default function BrowsePage() {
                   {truncate(q.text || q.parts[0]?.text || "")}
                   <div className="muted">{data.sets.get(q.setId)?.name}, Q{q.order + 1}{q.stems?.length ? `, ${q.stems.length} stem${q.stems.length === 1 ? "" : "s"}` : ""}{q.parts.length ? `, ${q.parts.length} parts` : ""}{q.modelAnswer || q.parts.some((p) => p.modelAnswer) ? ", has model answer" : ""}</div>
                 </td>
-                <td>{q.presentations.map((p) => <span key={p} className="chip static">{presentationName(p)}</span>)}</td>
+                <td className="muted">{q.presentations.map(presentationName).join(", ")}</td>
                 <td>{totalMarks(q) ?? "—"}</td>
                 <td>{data.attemptsByQ.get(q.id) ?? 0}</td>
                 <td>{lm ? `${lm.score}/${lm.max}, ${formatDate(lm.at)}` : "—"}</td>

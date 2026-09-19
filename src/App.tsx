@@ -44,7 +44,7 @@ export default function App() {
         <NavLink to="/bank">Bank</NavLink>
         <NavLink to="/settings">Settings</NavLink>
         <span style={{ flex: 1 }} />
-        <NavLink to="/create" title={unlocked ? "Creator tools" : "Creator tools (passcode)"}>{unlocked ? "Create" : "Create 🔒"}</NavLink>
+        <NavLink to="/create" title={unlocked ? "Creator tools" : "Creator tools, passcode needed"}>Create</NavLink>
       </nav>
       <main className={full ? "page full" : "page"}>
         <Routes>

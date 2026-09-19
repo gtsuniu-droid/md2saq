@@ -82,8 +82,7 @@ export default function SettingsPage() {
         ) : (
           <>
             <p className="muted" style={{ margin: 0 }}>
-              Log in with your AMBOSS account to underline medical terms in questions and open their definitions, the way the AMBOSS Anki add-on does.
-              Your email and password go straight to AMBOSS through this site&apos;s relay and are not stored; only the token AMBOSS returns is kept on this device.
+              Underline medical terms and open their AMBOSS definitions, as the AMBOSS Anki add-on does. Your password is sent to AMBOSS and not kept; only the returned token stays on this device.
             </p>
             <div className="row">
               <input type="text" placeholder="AMBOSS email" autoComplete="username" value={ambossUser} onChange={(e) => setAmbossUser(e.target.value)} />

@@ -78,33 +78,35 @@ export default function DashboardPage() {
     <div>
       <div className="row spread">
         <div>
-          <div className="coverage">{studied} / {PRESENTATIONS.length}</div>
-          <div className="muted">presentations studied, {attemptedOnly} attempted but unmarked, {questions.length} questions in library</div>
+          <div className="coverage">{studied} of {PRESENTATIONS.length} studied</div>
+          <div className="muted">
+            {attemptedOnly > 0 ? `${attemptedOnly} attempted but unmarked, ` : ""}{questions.length} question{questions.length === 1 ? "" : "s"} in your library
+          </div>
         </div>
-        <div className="row">
-          <button className="primary" onClick={startWeakest} disabled={questions.length === 0}>Practise weakest</button>
-        </div>
+        <button onClick={startWeakest} disabled={questions.length === 0}>Practise weakest</button>
       </div>
       {questions.length === 0 && (
         <p className="muted" style={{ marginTop: "1rem" }}>
           No questions yet. Paste some on the Create page, or pull a set from the Bank.
         </p>
       )}
-      <div className="grid-dash" style={{ marginTop: "1.2rem" }}>
+      <div className="dash-list">
         {PRESENTATIONS.map((p) => {
           const r = rows.get(p.id)!;
           const state = r.marks > 0 ? "studied" : r.attempts > 0 ? "attempted" : "";
+          const stat = [
+            r.questions > 0 ? `${r.questions} q` : "",
+            r.marks > 0 ? `${r.marks} marked` : r.attempts > 0 ? `${r.attempts} attempted` : "",
+            r.meanPct !== undefined ? `${r.meanPct}%` : "",
+            r.lastStudied ? formatDate(r.lastStudied) : "",
+          ].filter(Boolean).join(", ");
           return (
             <div key={p.id} className={"dash-row" + (p.parent ? " child" : "")} onClick={() => nav(`/browse?presentation=${p.id}`)}>
               <span className={"status " + state} />
               <span className="name">{p.name}</span>
-              <span className="stat">
-                {r.questions} q{r.marks > 0 ? `, ${r.marks} marked` : r.attempts > 0 ? `, ${r.attempts} attempted` : ""}
-                {r.meanPct !== undefined ? `, ${r.meanPct}%` : ""}
-                {r.lastStudied ? `, ${formatDate(r.lastStudied)}` : ""}
-              </span>
-              <button className="small" title={`Add a question set for ${p.name}`}
-                onClick={(e) => { e.stopPropagation(); nav(`/create?presentation=${p.id}`); }}>+ set</button>
+              <span className="stat">{stat}</span>
+              <button className="small add" title={`Add a question set for ${p.name}`}
+                onClick={(e) => { e.stopPropagation(); nav(`/create?presentation=${p.id}`); }}>+</button>
             </div>
           );
         })}
