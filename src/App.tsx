@@ -8,6 +8,7 @@ import DashboardPage from "./pages/DashboardPage";
 import CreatePage from "./pages/CreatePage";
 import BrowsePage from "./pages/BrowsePage";
 import QuestionPage from "./pages/QuestionPage";
+import SetPage from "./pages/SetPage";
 import PaperPage from "./pages/PaperPage";
 import MarkPage from "./pages/MarkPage";
 import SessionReviewPage from "./pages/SessionReviewPage";
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/browse" element={<BrowsePage />} />
+          <Route path="/set/:id" element={<SetPage />} />
           <Route path="/question/:id" element={<QuestionPage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/mark/:attemptId" element={<MarkPage />} />

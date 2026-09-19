@@ -262,7 +262,7 @@ function CreateTools() {
       )}
       {notice && (
         <p style={{ color: notice.error ? "var(--bad)" : "var(--ok)" }}>
-          {notice.text}{notice.setId && <> <Link to={`/browse?set=${notice.setId}`}>View</Link></>}
+          {notice.text}{notice.setId && <> <Link to={`/set/${notice.setId}`}>Open</Link></>}
         </p>
       )}
 

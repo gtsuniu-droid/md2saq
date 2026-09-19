@@ -91,7 +91,8 @@ bank. The passcode is remembered per device and can be cleared from Settings.
 
 - **Coverage**: the 47 presentations with their state (grey = not started, amber =
   attempted, green = marked), question counts, mean score and last studied date.
-- **Browse**: filter, select, and start a practice or exam paper.
+- **Browse**: your sets. Open one to sit it as a practice or exam paper, see each
+  question's last score, and review past sittings. Papers are always sat whole.
 - **Paper**: sidebar of question parts on the left, stem in the middle, one answer box
   per part on the right, scrolling independently. Bold, italic, underline, highlight.
   Timer at the top. When it hits zero, everything locks and submits.

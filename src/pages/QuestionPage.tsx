@@ -4,8 +4,7 @@ import { db } from "../data/db";
 import { ERROR_TAGS } from "../data/types";
 import PresentationPicker from "../components/PresentationPicker";
 import AnswerHtml from "../components/AnswerHtml";
-import { answerParts, formatDate, formatDuration, partLabel, stemsOf, totalMarks } from "../lib/questions";
-import { startSession } from "../lib/session";
+import { answerParts, formatDate, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import AmbossText from "../components/AmbossText";
 
 export default function QuestionPage() {
@@ -37,19 +36,11 @@ export default function QuestionPage() {
     nav("/browse");
   };
 
-  const practise = () => {
-    startSession([q.id], "practice", (totalMarks(q) ?? 4) * 90);
-    nav("/paper");
-  };
-
   return (
     <div>
       <div className="row spread">
-        <div className="muted"><Link to={`/browse?set=${q.setId}`}>{set?.name}</Link>, Q{q.order + 1}</div>
-        <div className="row">
-          <button className="primary" onClick={practise}>Practise</button>
-          <button className="danger small" onClick={remove}>Delete</button>
-        </div>
+        <div className="muted"><Link to={`/set/${q.setId}`}>{set?.name}</Link>, question {q.order + 1}</div>
+        <button className="danger small" onClick={remove}>Delete question</button>
       </div>
       <div className="card" style={{ marginTop: "0.8rem" }}>
         {stemsOf(q).map((st, si) => (

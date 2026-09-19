@@ -78,7 +78,7 @@ function BankContents() {
     try {
       const pack = packs[entry.id] ?? (await fetchBankSet(entry.id, saved));
       const setId = await importSetPack(pack, entry.id);
-      nav(`/browse?set=${setId}`);
+      nav(`/set/${setId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

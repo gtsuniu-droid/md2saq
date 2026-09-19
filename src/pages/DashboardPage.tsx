@@ -3,9 +3,8 @@ import { useNavigate } from "react-router";
 import { db } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import { formatDate } from "../lib/questions";
-import { shuffle, startSession } from "../lib/session";
 import { DEFAULT_SETTINGS } from "../data/types";
-import { totalMarks } from "../lib/questions";
+import { loadSummaries, startSet, suggestedMinutesFor } from "../lib/sets";
 
 interface Row {
   id: string;
@@ -60,17 +59,19 @@ export default function DashboardPage() {
   const studied = [...rows.values()].filter((r) => r.marks > 0).length;
   const attemptedOnly = [...rows.values()].filter((r) => r.marks === 0 && r.attempts > 0).length;
 
-  const startWeakest = () => {
-    // Least-covered presentation that actually has unattempted questions.
+  const startWeakest = async () => {
+    // Least-covered presentation that has questions, then the set with most of them that was sat least.
     const candidates = PRESENTATIONS
       .map((p) => rows.get(p.id)!)
       .filter((r) => r.questions > 0)
       .sort((a, b) => a.marks - b.marks || a.attempts - b.attempts || (a.lastStudied ?? 0) - (b.lastStudied ?? 0));
     const target = candidates[0];
     if (!target) return;
-    const pool = shuffle(questions.filter((q) => q.presentations.includes(target.id))).slice(0, 3);
-    const totalSec = pool.reduce((acc, q) => acc + (totalMarks(q) ?? 4) * settings.minutesPerMark * 60, 0);
-    startSession(pool.map((q) => q.id), "practice", Math.round(totalSec));
+    const summaries = (await loadSummaries()).filter((s) => s.presentations.includes(target.id));
+    summaries.sort((a, b) => a.sittings.length - b.sittings.length || b.questions.filter((q) => q.presentations.includes(target.id)).length - a.questions.filter((q) => q.presentations.includes(target.id)).length);
+    const pick = summaries[0];
+    if (!pick) return;
+    startSet(pick, "practice", suggestedMinutesFor(pick, settings.minutesPerMark));
     nav("/paper");
   };
 
