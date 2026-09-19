@@ -93,9 +93,11 @@ bank. The passcode is remembered per device and can be cleared from Settings.
   attempted, green = marked), question counts, mean score and last studied date.
 - **Browse**: your sets. Open one to sit it as a practice or exam paper, see each
   question's last score, and review past sittings. Papers are always sat whole.
-- **Paper**: sidebar of question parts on the left, stem in the middle, one answer box
-  per part on the right, scrolling independently, with a draggable divider between the
-  two panels. Bold, italic, underline, highlight. Timer at the top. When it hits zero,
+- **Paper**: sidebar of question parts on the left, stem in the middle, and on the right
+  every question that shares that stem on one scrolling page, one answer box per part,
+  with a draggable divider between the two panels. Select text in the stem and press
+  Highlight, or ⌘⇧H, to mark it; the highlights persist through the sitting and show
+  while marking. Bold, italic, underline, highlight. Timer at the top. When it hits zero,
   everything locks and submits.
 - **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
   error tags, reflection, learning point.

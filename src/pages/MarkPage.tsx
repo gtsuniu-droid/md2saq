@@ -23,7 +23,9 @@ export default function MarkPage() {
       .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0));
     const previous = attemptsBefore[0];
     const previousMark = previous ? await db.marks.where("attemptId").equals(previous.id).first() : undefined;
-    return { attempt, question, existing, previous, previousMark };
+    const sessionAttempts = attempt.sessionId ? await db.attempts.where("sessionId").equals(attempt.sessionId).toArray() : [attempt];
+    const stemHighlights = sessionAttempts.flatMap((a) => a.stemHighlights ?? []);
+    return { attempt, question, existing, previous, previousMark, stemHighlights };
   }, [attemptId]);
 
   const [confidence, setConfidence] = useState<number | undefined>();
@@ -147,7 +149,9 @@ export default function MarkPage() {
           <details style={{ marginBottom: "0.5rem" }}>
             <summary className="muted" style={{ cursor: "pointer" }}>Case stems ({stemsOf(question).length})</summary>
             {stemsOf(question).map((st, si) => (
-              <div key={si} className="stem-block"><AmbossText cacheKey={question.id} texts={ambossTexts} text={st} /></div>
+              <div key={si} className="stem-block">
+                <AmbossText cacheKey={question.id} texts={ambossTexts} text={st} highlights={data.stemHighlights.filter((h) => h.stem === si)} />
+              </div>
             ))}
           </details>
         )}

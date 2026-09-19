@@ -4,6 +4,7 @@ import { getSettings } from "../data/db";
 import type { AmbossPhraseGroup } from "../data/types";
 import { AmbossAuthError, ambossPhraseGroup, ambossPhrases, destinationUrl } from "../lib/amboss";
 import { markTerms, type Segment, type Term } from "../lib/ambossMatch";
+import { splitByRanges, type Piece, type Range } from "../lib/highlights";
 
 interface Props {
   /** Cache key, normally the question id. Texts sharing a key are sent to AMBOSS together. */
@@ -15,12 +16,16 @@ interface Props {
   /** Force highlighting off, e.g. during the paper unless the setting allows it. */
   disabled?: boolean;
   className?: string;
+  /** Candidate highlights to paint over the text. */
+  highlights?: Range[];
+  /** Attribute hook so a parent can find this block, e.g. data-stem="1". */
+  dataStem?: number;
 }
 
 /** Shared per-key request within the page, so the parts of one question do not each hit the API. */
 const inflight = new Map<string, Promise<Term[]>>();
 
-export default function AmbossText({ cacheKey, texts, text, disabled = false, className = "pre" }: Props) {
+export default function AmbossText({ cacheKey, texts, text, disabled = false, className = "pre", highlights, dataStem }: Props) {
   const settings = useLiveQuery(getSettings, []);
   const [terms, setTerms] = useState<Term[]>([]);
   const [popup, setPopup] = useState<{ pgId: string; term: string; anchor: HTMLElement } | null>(null);
@@ -48,12 +53,14 @@ export default function AmbossText({ cacheKey, texts, text, disabled = false, cl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, cacheKey, textsKey]);
 
-  const segments: Segment[] = active ? markTerms(text, terms) : [{ text }];
+  const base: Segment[] = active ? markTerms(text, terms) : [{ text }];
+  const segments: Piece[] = highlights?.length ? splitByRanges(base, highlights) : base;
 
   return (
-    <span className={className} style={{ position: "relative", display: "block" }}>
-      {segments.map((s, i) =>
-        s.pgId ? (
+    <span className={className} style={{ position: "relative", display: "block" }} data-stem={dataStem}>
+      {segments.map((s, i) => {
+        const inner = s.hl ? <mark className="user-hl">{s.text}</mark> : s.text;
+        return s.pgId ? (
           <span
             key={i}
             className="amboss-marker"
@@ -61,12 +68,12 @@ export default function AmbossText({ cacheKey, texts, text, disabled = false, cl
             data-phrase-term={s.term}
             onClick={(e) => setPopup(popup?.pgId === s.pgId ? null : { pgId: s.pgId!, term: s.term!, anchor: e.currentTarget })}
           >
-            {s.text}
+            {inner}
           </span>
         ) : (
-          <span key={i}>{s.text}</span>
-        ),
-      )}
+          <span key={i}>{inner}</span>
+        );
+      })}
       {popup && (
         <AmbossPopup pgId={popup.pgId} term={popup.term} anchor={popup.anchor} access={settings?.ambossAccess} onClose={() => setPopup(null)} />
       )}

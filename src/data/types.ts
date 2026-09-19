@@ -75,6 +75,8 @@ export interface Attempt {
   /** Session id for exam mode, so a paper's attempts can be marked together. */
   sessionId?: string;
   confidence?: number;
+  /** Candidate's own highlights on the stems, as character ranges per stem index. */
+  stemHighlights?: { stem: number; start: number; end: number }[];
 }
 
 export interface PartMark {

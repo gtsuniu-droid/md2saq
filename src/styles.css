@@ -225,3 +225,12 @@ span.amboss-marker:hover { background: color-mix(in srgb, #0fcad4 18%, transpare
 .amboss-dest { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 
 .stem-block { margin-bottom: 0.9rem; padding-bottom: 0.9rem; border-bottom: 1px dashed var(--border); }
+
+.question-block { padding-bottom: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); scroll-margin-top: 1rem; }
+.question-block:last-of-type { border-bottom: 0; }
+.qhead { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.6rem; }
+
+mark.user-hl { background: var(--hl); color: inherit; padding: 0; }
+.col-head { display: flex; justify-content: space-between; align-items: center; }
+.col-head .hl-btn { color: var(--navy-fg); border-color: rgba(255,255,255,0.4); padding: 0.05rem 0.5rem; }
+.col-head .hl-btn:hover { background: rgba(255,255,255,0.12); }
