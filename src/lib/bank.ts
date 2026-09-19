@@ -1,4 +1,4 @@
-import { db, getSettings } from "../data/db";
+import { db, getSettings, patchSettings } from "../data/db";
 import { applyBankUpdate, importSetPack, type SetPack } from "./exportImport";
 
 export interface BankEntry {
@@ -19,7 +19,11 @@ export class BankPasscodeError extends Error {}
 async function check(res: Response): Promise<Response> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    if (res.status === 403) throw new BankPasscodeError(text || "Wrong passcode.");
+    if (res.status === 403) {
+      // A saved passcode the bank rejects is worse than none: forget it so the gate asks again.
+      await patchSettings({ bankPasscode: undefined }).catch(() => undefined);
+      throw new BankPasscodeError(text || "Wrong passcode.");
+    }
     throw new Error(text || `${res.status} ${res.statusText}`);
   }
   return res;

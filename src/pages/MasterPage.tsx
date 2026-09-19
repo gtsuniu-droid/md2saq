@@ -1,10 +1,10 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { db, getSettings } from "../data/db";
+import { db, getSettings, patchSettings } from "../data/db";
 import PasscodeGate from "../components/PasscodeGate";
 import { CreateTools } from "./CreatePage";
-import { deleteBankSet, listBank, syncFromBank, type BankEntry } from "../lib/bank";
+import { BankPasscodeError, deleteBankSet, listBank, syncFromBank, type BankEntry } from "../lib/bank";
 import { formatDate } from "../lib/questions";
 import { loadSummaries, setLabel } from "../lib/sets";
 import { bankErrorMessage, pushToBank } from "../lib/share";
@@ -33,11 +33,16 @@ function MasterContents() {
   const refreshBank = async () => {
     try {
       const code = (await getSettings()).bankPasscode ?? "";
-      await syncFromBank();
       setBank(await listBank(code));
+      await syncFromBank();
       setBankError(null);
-    } catch {
+    } catch (e) {
       setBank(null);
+      if (e instanceof BankPasscodeError) {
+        // The saved passcode is wrong: forget it so the gate asks again.
+        await patchSettings({ bankPasscode: undefined });
+        return;
+      }
       setBankError("The shared bank is not reachable from here, so changes stay on this device until it is.");
     }
   };

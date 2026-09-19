@@ -26,15 +26,18 @@ export default function PasscodeGate({ title, blurb, children }: Props) {
   const submit = async () => {
     setBusy(true);
     setError(null);
+    const code = passcode.trim();
     try {
-      await listBank(passcode);
-      await patchSettings({ bankPasscode: passcode });
+      await listBank(code);
+      await patchSettings({ bankPasscode: code });
     } catch (e) {
       if (e instanceof BankPasscodeError) {
-        setError("Wrong passcode.");
+        setError("The bank rejected that passcode. It must match BANK_PASSCODE in the Netlify site settings exactly.");
+      } else if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        // Local development has no bank: accept unverified so the tools stay usable.
+        await patchSettings({ bankPasscode: code });
       } else {
-        // Bank unreachable: accept unverified so local development still works.
-        await patchSettings({ bankPasscode: passcode });
+        setError(`The bank could not be reached to check the passcode: ${e instanceof Error ? e.message : String(e)}`);
       }
     } finally {
       setBusy(false);
