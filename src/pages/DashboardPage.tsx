@@ -95,7 +95,7 @@ export default function DashboardPage() {
           const r = rows.get(p.id)!;
           const state = r.marks > 0 ? "studied" : r.attempts > 0 ? "attempted" : "";
           return (
-            <button key={p.id} className={"dash-row" + (p.parent ? " child" : "")} onClick={() => nav(`/library?presentation=${p.id}`)}>
+            <div key={p.id} className={"dash-row" + (p.parent ? " child" : "")} onClick={() => nav(`/library?presentation=${p.id}`)}>
               <span className={"status " + state} />
               <span className="name">{p.name}</span>
               <span className="stat">
@@ -103,7 +103,9 @@ export default function DashboardPage() {
                 {r.meanPct !== undefined ? ` · ${r.meanPct}%` : ""}
                 {r.lastStudied ? ` · ${formatDate(r.lastStudied)}` : ""}
               </span>
-            </button>
+              <button className="small" title={`Add a question set for ${p.name}`}
+                onClick={(e) => { e.stopPropagation(); nav(`/import?presentation=${p.id}`); }}>+ set</button>
+            </div>
           );
         })}
       </div>
