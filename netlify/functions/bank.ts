@@ -90,7 +90,10 @@ function suppliedPasscode(req: Request): string | null {
 }
 
 export default async (req: Request): Promise<Response> => {
-  const store = getStore("bank");
+  // Strong consistency: the index is read, changed and written back on every
+  // upload, and the client lists it straight after pushing. Eventual reads
+  // would show fresh sets as missing and could drop entries on write.
+  const store = getStore({ name: "bank", consistency: "strong" });
   const url = new URL(req.url);
   const expected = process.env.BANK_PASSCODE;
   if (!expected) return new Response("The bank is not configured on this site (BANK_PASSCODE is unset).", { status: 503 });

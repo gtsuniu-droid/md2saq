@@ -122,7 +122,7 @@ function MasterContents() {
         <tbody>
           {summaries.map((s) => {
             const entry = bankById.get(s.set.bankId ?? "");
-            const status = !s.set.bankId ? "local only" : !bank ? "" : !entry ? "removed from bank" : s.set.dirty ? "local edits not pushed" : "in the bank";
+            const status = !s.set.bankId ? "local only" : !bank ? "" : !entry ? "not in the bank list" : s.set.dirty ? "local edits not pushed" : "in the bank";
             return (
               <tr key={s.set.id}>
                 <td>
