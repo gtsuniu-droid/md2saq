@@ -32,7 +32,7 @@ export default function QuestionPage() {
       await db.attempts.where("questionId").equals(id).delete();
       await db.questions.delete(id);
     });
-    nav("/library");
+    nav("/browse");
   };
 
   const practise = () => {
@@ -43,7 +43,7 @@ export default function QuestionPage() {
   return (
     <div>
       <div className="row spread">
-        <div className="muted"><Link to={`/library?set=${q.setId}`}>{set?.name}</Link> · Q{q.order + 1}</div>
+        <div className="muted"><Link to={`/browse?set=${q.setId}`}>{set?.name}</Link> · Q{q.order + 1}</div>
         <div className="row">
           <button className="primary" onClick={practise}>Practise</button>
           <button className="danger small" onClick={remove}>Delete</button>

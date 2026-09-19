@@ -87,7 +87,7 @@ export default function DashboardPage() {
       </div>
       {questions.length === 0 && (
         <p className="muted" style={{ marginTop: "1rem" }}>
-          No questions yet. Paste some on the Import page, or pull a set from the Bank.
+          No questions yet. Paste some on the Create page, or pull a set from the Bank.
         </p>
       )}
       <div className="grid-dash" style={{ marginTop: "1.2rem" }}>
@@ -95,7 +95,7 @@ export default function DashboardPage() {
           const r = rows.get(p.id)!;
           const state = r.marks > 0 ? "studied" : r.attempts > 0 ? "attempted" : "";
           return (
-            <div key={p.id} className={"dash-row" + (p.parent ? " child" : "")} onClick={() => nav(`/library?presentation=${p.id}`)}>
+            <div key={p.id} className={"dash-row" + (p.parent ? " child" : "")} onClick={() => nav(`/browse?presentation=${p.id}`)}>
               <span className={"status " + state} />
               <span className="name">{p.name}</span>
               <span className="stat">
@@ -104,7 +104,7 @@ export default function DashboardPage() {
                 {r.lastStudied ? ` · ${formatDate(r.lastStudied)}` : ""}
               </span>
               <button className="small" title={`Add a question set for ${p.name}`}
-                onClick={(e) => { e.stopPropagation(); nav(`/import?presentation=${p.id}`); }}>+ set</button>
+                onClick={(e) => { e.stopPropagation(); nav(`/create?presentation=${p.id}`); }}>+ set</button>
             </div>
           );
         })}

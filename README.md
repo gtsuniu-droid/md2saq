@@ -41,13 +41,13 @@ Sub-parts as `(a)`, `a.`, `1)` under a stem. Marks as `(4 marks)`, `[4]` or `4 m
 A model answer follows a line starting with `Answer:`, `Model answer:` or `A:`. One
 marking point per line, or a semicolon-separated list. If the model answer is sectioned
 with the same labels as the parts, each part gets its own marking points. The preview on
-the Import page lets you fix any mis-split before saving.
+the Create page lets you fix any mis-split before saving.
 
 ## Layout
 
 - **Coverage**: the 47 presentations with their state (grey = not started, amber =
   attempted, green = marked), question counts, mean score and last studied date.
-- **Library**: filter, select, and start a practice or exam paper.
+- **Browse**: filter, select, and start a practice or exam paper.
 - **Paper**: sidebar of question parts on the left, stem in the middle, one answer box
   per part on the right, scrolling independently. Bold, italic, underline, highlight.
   Timer at the top. When it hits zero, everything locks and submits.
@@ -58,7 +58,7 @@ the Import page lets you fix any mis-split before saving.
 
 ## Pushing questions from your own generator
 
-The bank accepts plain text, parsed with the same rules as the Import page, so any script
+The bank accepts plain text, parsed with the same rules as the Create page, so any script
 or tool that can make an HTTP request can add questions. With `BANK_PASSCODE` set on the
 site:
 

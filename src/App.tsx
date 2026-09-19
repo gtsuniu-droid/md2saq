@@ -5,8 +5,8 @@ import { loadSession } from "./lib/session";
 import { syncFromBank } from "./lib/bank";
 import { DEFAULT_SETTINGS } from "./data/types";
 import DashboardPage from "./pages/DashboardPage";
-import ImportPage from "./pages/ImportPage";
-import LibraryPage from "./pages/LibraryPage";
+import CreatePage from "./pages/CreatePage";
+import BrowsePage from "./pages/BrowsePage";
 import QuestionPage from "./pages/QuestionPage";
 import PaperPage from "./pages/PaperPage";
 import MarkPage from "./pages/MarkPage";
@@ -39,16 +39,16 @@ export default function App() {
       <nav className="nav">
         <NavLink to="/" className="brand">SAQ</NavLink>
         <NavLink to="/" end>Coverage</NavLink>
-        <NavLink to="/library">Library</NavLink>
-        <NavLink to="/import">Import</NavLink>
+        <NavLink to="/create">Create</NavLink>
+        <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/bank">Bank</NavLink>
         <NavLink to="/settings">Settings</NavLink>
       </nav>
       <main className={full ? "page full" : "page"}>
         <Routes>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/import" element={<ImportPage />} />
-          <Route path="/library" element={<LibraryPage />} />
+          <Route path="/create" element={<CreatePage />} />
+          <Route path="/browse" element={<BrowsePage />} />
           <Route path="/question/:id" element={<QuestionPage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/mark/:attemptId" element={<MarkPage />} />

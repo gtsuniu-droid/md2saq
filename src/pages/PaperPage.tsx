@@ -21,7 +21,7 @@ export default function PaperPage() {
   // Create attempts for the session's questions if they do not exist yet.
   useEffect(() => {
     if (!session) {
-      nav("/library", { replace: true });
+      nav("/browse", { replace: true });
       return;
     }
     (async () => {

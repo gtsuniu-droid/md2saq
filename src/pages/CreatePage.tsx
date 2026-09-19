@@ -15,7 +15,7 @@ interface Draft extends ParsedQuestion {
   suggested: string[];
 }
 
-export default function ImportPage() {
+export default function CreatePage() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const presetPresentation = params.get("presentation") ?? "";
@@ -111,17 +111,17 @@ export default function ImportPage() {
           setShareError(`Saved locally, but sharing failed: ${e instanceof Error ? e.message : String(e)}`);
         }
         // The set now exists locally, so further clicks should share, not re-save.
-        nav(`/library?set=${set.id}`, { replace: true });
+        nav(`/browse?set=${set.id}`, { replace: true });
         return;
       }
     }
     setSaving(false);
-    nav(`/library?set=${set.id}`);
+    nav(`/browse?set=${set.id}`);
   };
 
   return (
     <div>
-      <h1>Import questions</h1>
+      <h1>Create</h1>
       <p className="muted">
         Paste questions in any of these shapes: numbered (1. / Q1 / Question 1), blank-line separated, sub-parts as (a) or 1),
         marks as (4 marks) or [4], and model answers after a line starting with "Answer:" or "Model answer:".

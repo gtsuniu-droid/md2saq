@@ -8,7 +8,7 @@ import { formatDate, totalMarks, truncate } from "../lib/questions";
 import { shuffle, startSession } from "../lib/session";
 import ShareSetButton from "../components/ShareSetButton";
 
-export default function LibraryPage() {
+export default function BrowsePage() {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const presentation = params.get("presentation") ?? "";
@@ -101,7 +101,7 @@ export default function LibraryPage() {
 
   return (
     <div>
-      <h1>Library</h1>
+      <h1>Browse</h1>
       <div className="row">
         <select value={presentation} onChange={(e) => setParam("presentation", e.target.value)}>
           <option value="">All presentations</option>
@@ -119,7 +119,7 @@ export default function LibraryPage() {
           <option value="marked">Marked</option>
         </select>
         <input type="search" placeholder="Search text" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <button className="small" onClick={() => nav(presentation ? `/import?presentation=${presentation}` : "/import")}>
+        <button className="small" onClick={() => nav(presentation ? `/create?presentation=${presentation}` : "/create")}>
           + Add set{presentation ? ` for ${presentationName(presentation)}` : ""}
         </button>
         {setId && <ShareSetButton setId={setId} className="small" />}

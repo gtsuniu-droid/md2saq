@@ -33,7 +33,7 @@ export default function BankPage() {
     try {
       const pack = await fetchBankSet(entry.id);
       const setId = await importSetPack(pack, entry.id);
-      nav(`/library?set=${setId}`);
+      nav(`/browse?set=${setId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
