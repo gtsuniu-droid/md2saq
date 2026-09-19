@@ -100,7 +100,7 @@ export default function BrowsePage() {
                 <td>
                   {s.set.name}
                   <div className="muted">
-                    {[(s.set.tags ?? []).slice(0, 4).join(", ") || s.presentations.slice(0, 3).map(presentationName).join(", "), s.set.suggestedMinutes ? `${s.set.suggestedMinutes} min` : "", s.set.bankId ? "in the bank" : ""]
+                    {[s.set.source ?? "", (s.set.tags ?? []).slice(0, 4).join(", ") || s.presentations.slice(0, 3).map(presentationName).join(", "), s.set.suggestedMinutes ? `${s.set.suggestedMinutes} min` : "", s.set.bankId ? "in the bank" : ""]
                       .filter(Boolean)
                       .join(", ")}
                   </div>

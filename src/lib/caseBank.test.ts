@@ -36,7 +36,7 @@ describe("case bank", () => {
     expect(c2.questions[0].text).toContain("Mark allocation");
     expect(c2.questions[1].text).toMatch(/^Symptoms have been continuous/);
     expect(c2.questions[1].parts.map((p) => [p.label, p.marks])).toEqual([["a", 2], ["b", 2], ["c", 1]]);
-    expect(caseSetName(bank.collection, c2)).toBe("Dizziness SAQ Bank 02: Dizziness after a recent respiratory illness");
+    expect(caseSetName(c2)).toBe("Case 02");
   });
 
   it("attaches model answers per question and per part, and case-level notes", () => {
@@ -57,6 +57,13 @@ describe("case bank", () => {
     const bank = parseCaseBank(files);
     expect(bank.cases[0].conditions).toEqual(["Vestibular neuritis", "Labyrinthitis", "Posterior circulation stroke", "Drug-induced vestibular symptoms"]);
     expect(bank.cases[1].conditions).toContain("Cerebellar haemorrhage");
+  });
+
+  it("keeps one copy of a case that appears in both the combined and the per-case files", () => {
+    const combined = { name: "all_questions.txt", text: "DIZZINESS SAQ BANK — CASES 02–16\n\n" + files[0].text + "\n==========\n" + files[1].text };
+    const bank = parseCaseBank([combined, ...files]);
+    expect(bank.cases.map((c) => c.number)).toEqual([2, 3]);
+    expect(bank.cases[0].questions[1].parts[0].modelAnswer).toContain("Left vestibular neuritis");
   });
 
   it("works from the combined files too", () => {

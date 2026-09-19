@@ -241,8 +241,12 @@ export function parseCaseBank(files: CaseFile[]): ParsedCaseBank {
   for (const c of all) if (c.kind === "answers") answers.set(c.number, parseAnswerChunk(c));
 
   const cases: ParsedCase[] = [];
+  const seen = new Set<number>();
   for (const c of all) {
     if (c.kind !== "questions") continue;
+    // A dropped folder usually holds each case twice: in the combined file and in its own file.
+    if (seen.has(c.number)) continue;
+    seen.add(c.number);
     const parsed = parseQuestionChunk(c);
     const ans = answers.get(c.number);
     if (ans) {
@@ -270,7 +274,7 @@ export function parseCaseBank(files: CaseFile[]): ParsedCaseBank {
   return { collection: bankTitle(files), cases };
 }
 
-export function caseSetName(collection: string | undefined, c: ParsedCase): string {
-  const num = String(c.number).padStart(2, "0");
-  return collection ? `${collection} ${num}: ${c.title}` : `Case ${num}: ${c.title}`;
+/** Sets are named by case number; the case title travels separately. */
+export function caseSetName(c: ParsedCase): string {
+  return `Case ${String(c.number).padStart(2, "0")}`;
 }

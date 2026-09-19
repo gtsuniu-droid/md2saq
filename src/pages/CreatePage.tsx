@@ -228,7 +228,7 @@ function CreateTools() {
         ...cs,
         ...bank.cases.map((c) => ({
           key: newId(),
-          name: caseSetName(bank.collection, c),
+          name: caseSetName(c),
           collection: bank.collection,
           c,
           drafts: c.questions.map((q) => {
@@ -265,7 +265,7 @@ function CreateTools() {
     let questions = 0;
     let sharedAll = true;
     for (const b of cases) {
-      const set = await saveDrafts(b.name, source, b.drafts, { minutes: b.c.minutes }, {
+      const set = await saveDrafts(b.name, source || b.c.title, b.drafts, { minutes: b.c.minutes }, {
         collection: b.collection,
         tags: b.c.conditions.length ? b.c.conditions : undefined,
         instructions: b.c.instructions,
@@ -366,11 +366,12 @@ function CreateTools() {
         {cases.length > 0 && (
           <>
             <table style={{ marginTop: "0.6rem" }}>
-              <thead><tr><th>Case</th><th>Questions</th><th>Marks</th><th>Answers</th><th>Conditions</th><th></th></tr></thead>
+              <thead><tr><th>Set</th><th>Case</th><th>Questions</th><th>Marks</th><th>Answers</th><th>Conditions</th><th></th></tr></thead>
               <tbody>
                 {cases.map((b) => (
                   <tr key={b.key}>
-                    <td><input type="text" value={b.name} style={{ width: "100%" }} onChange={(e) => setCases((cs) => cs.map((x) => (x.key === b.key ? { ...x, name: e.target.value } : x)))} /></td>
+                    <td><input type="text" value={b.name} style={{ width: "6rem" }} onChange={(e) => setCases((cs) => cs.map((x) => (x.key === b.key ? { ...x, name: e.target.value } : x)))} /></td>
+                    <td>{b.c.title}</td>
                     <td>{b.drafts.length}</td>
                     <td>{(b.c.marks ?? b.drafts.reduce((a, d) => a + (d.marks ?? 0), 0)) || "—"}</td>
                     <td className="muted">{b.c.hasAnswers ? "yes" : "no"}</td>

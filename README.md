@@ -56,8 +56,9 @@ Three ways, fastest first:
 
 1. **Drop a generated case bank.** On Create, drop the output folder of the generator,
    or its files: `all_questions.txt`, `all_explained_answers.txt` and
-   `contents_and_coverage.txt`, or the per-case files. Every `CASE NN: TITLE` becomes a
-   set named "<Bank> NN: Title", with its stem, questions, parts and marks, the matching
+   `contents_and_coverage.txt`, or the per-case files. A case that appears in both the
+   combined file and its own file is taken once. Every `CASE NN: TITLE` becomes a set
+   named "Case NN", with the title kept alongside, its stem, questions, parts and marks, the matching
    explained answers attached per question and per part, the coverage file's conditions
    as tags, and the paper's instructions, marking principles and debrief kept with it.
    One click saves them all or saves and shares them all.
