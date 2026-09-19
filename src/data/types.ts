@@ -90,9 +90,19 @@ export interface PartAnswer {
   flagged?: boolean;
 }
 
+/** Where a question sits in its set, so a synced record can find it on a device whose question ids differ. */
+export interface QuestionRef {
+  setId: string;
+  bankId?: string;
+  order: number;
+}
+
 export interface Attempt {
   id: string;
   questionId: string;
+  qref?: QuestionRef;
+  /** Last local modification, stamped by the database layer; drives cloud sync. */
+  _m?: number;
   answers: PartAnswer[];
   startedAt: number;
   submittedAt?: number;
@@ -118,6 +128,8 @@ export interface Mark {
   id: string;
   attemptId: string;
   questionId: string;
+  qref?: QuestionRef;
+  _m?: number;
   score: number;
   maxScore: number;
   parts: PartMark[];
@@ -130,6 +142,7 @@ export interface Mark {
 
 export interface Settings {
   id: "settings";
+  _m?: number;
   minutesPerMark: number;
   lastExportAt?: number;
   bankPasscode?: string;
@@ -144,6 +157,21 @@ export interface Settings {
   ambossHighlights: boolean;
   /** Also underline while sitting a paper (default off: no AMBOSS in the exam). */
   ambossOnPaper: boolean;
+  /** Signed-in cloud account, for display. */
+  cloudUser?: { uid: string; email?: string; name?: string; photo?: string };
+}
+
+/** A local deletion waiting to reach the cloud. */
+export interface SyncDelete {
+  id: string;
+  table: "attempts" | "marks";
+  at: number;
+}
+
+/** Sync cursors and other per-device bookkeeping that must never sync. */
+export interface Meta {
+  id: string;
+  value: number | string;
 }
 
 /** Cached phrase-finder result for one question. */

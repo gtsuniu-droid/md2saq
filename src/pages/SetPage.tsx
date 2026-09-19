@@ -5,6 +5,9 @@ import { db, getSettings } from "../data/db";
 import { presentationName } from "../data/presentations";
 import { formatDate, formatDuration, partLabel, totalMarks, truncate } from "../lib/questions";
 import { loadSummaries, setLabel, startSet, suggestedMinutesFor } from "../lib/sets";
+import { fullLabel } from "../lib/tree";
+import { isAdmin } from "../lib/admin";
+import { recordDeletes } from "../lib/sync";
 
 export default function SetPage() {
   const { id = "" } = useParams();
@@ -23,7 +26,7 @@ export default function SetPage() {
     for (const m of [...marks].sort((a, b) => a.markedAt - b.markedAt)) lastByQuestion.set(m.questionId, { score: m.score, max: m.maxScore });
     const doneByQuestion = new Map<string, number>();
     for (const a of attempts) if (a.submittedAt) doneByQuestion.set(a.questionId, (doneByQuestion.get(a.questionId) ?? 0) + 1);
-    return { summary, settings, lastByQuestion, doneByQuestion, unlocked: !!settings.bankPasscode };
+    return { summary, settings, lastByQuestion, doneByQuestion, unlocked: !!settings.bankPasscode && isAdmin(settings) };
   }, [id]);
 
   if (data === undefined) return null;
@@ -41,19 +44,23 @@ export default function SetPage() {
   const remove = async () => {
     if (!confirm(`Delete ${setLabel(set)} with its ${questions.length} questions and every attempt?`)) return;
     const qids = questions.map((q) => q.id);
+    const goneAttempts = (await db.attempts.where("questionId").anyOf(qids).primaryKeys()) as string[];
+    const goneMarks = (await db.marks.where("questionId").anyOf(qids).primaryKeys()) as string[];
     await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
       await db.marks.where("questionId").anyOf(qids).delete();
       await db.attempts.where("questionId").anyOf(qids).delete();
       await db.questions.bulkDelete(qids);
       await db.sets.delete(set.id);
     });
+    await recordDeletes("attempts", goneAttempts);
+    await recordDeletes("marks", goneMarks);
     nav("/browse");
   };
 
   return (
     <div>
       <div className="muted"><Link to="/browse">Browse</Link>{set.collection ? <>, <Link to={`/browse?collection=${encodeURIComponent(set.collection)}`}>{set.collection}</Link></> : null}</div>
-      <h1 style={{ marginTop: "0.3rem" }}>{setLabel(set)}</h1>
+      <h1 style={{ marginTop: "0.3rem" }}>{fullLabel(summary)}</h1>
       {flash && <p style={{ color: flash.startsWith("Saved and") ? "var(--ok)" : "var(--warn)" }}>{flash}</p>}
       <p className="muted" style={{ marginTop: "-0.8rem" }}>
         {[

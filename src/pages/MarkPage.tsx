@@ -8,6 +8,7 @@ import { hitTerms, markingPoints } from "../lib/marking";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
+import { questionRef } from "../lib/sync";
 
 export default function MarkPage() {
   const { attemptId = "" } = useParams();
@@ -96,6 +97,7 @@ export default function MarkPage() {
       id: existing?.id ?? newId(),
       attemptId: attempt.id,
       questionId: question.id,
+      qref: existing?.qref ?? (await questionRef(question)),
       score: total,
       maxScore: max,
       parts,

@@ -10,8 +10,13 @@ import { presentationName } from "../data/presentations";
 import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
 import { readFileText } from "../lib/exportImport";
 import PasscodeGate from "../components/PasscodeGate";
+import { isAdmin } from "../lib/admin";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getSettings } from "../data/db";
 import { isCaseBank, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
-import { nextSetNumber } from "../lib/sets";
+import { loadSummaries, nextSetNumber } from "../lib/sets";
+import { knownTags, suggestConditionTags } from "../lib/tags";
+import TagEditor from "../components/TagEditor";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -32,6 +37,7 @@ interface CaseBatch {
   collection?: string;
   c: ParsedCase;
   drafts: Draft[];
+  tags: string[];
 }
 
 /** Read every text file from a drop, descending into folders. */
@@ -100,8 +106,11 @@ async function saveDrafts(name: string, source: string, drafts: Draft[], meta: P
 }
 
 export default function CreatePage() {
+  const settings = useLiveQuery(getSettings, []);
+  if (!settings) return null;
+  if (!isAdmin(settings)) return <p className="muted">Adding questions is limited to the site's admin account.</p>;
   return (
-    <PasscodeGate title="Create" blurb="Creator tools are locked behind the bank passcode. Enter it once on this device.">
+    <PasscodeGate title="Create" blurb="Adding questions needs the admin passcode. Enter it once on this device.">
       <CreateTools />
     </PasscodeGate>
   );
@@ -118,8 +127,14 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const presetPresentation = params.get("presentation") ?? "";
   const [raw, setRaw] = useState("");
   const [name, setName] = useState("");
-  const [tagsInput, setTagsInput] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const known = useLiveQuery(async () => knownTags((await loadSummaries()).flatMap((s) => s.set.tags ?? [])), []) ?? [];
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const pasteSuggestions = useMemo(() => {
+    const fromAnswers = suggestConditionTags(drafts);
+    const top = drafts.flatMap((d) => d.presentations)[0];
+    return top ? [presentationName(top), ...fromAnswers] : fromAnswers;
+  }, [drafts]);
   const [meta, setMeta] = useState<PaperMeta>({});
   const [files, setFiles] = useState<FileBatch[]>([]);
   const [cases, setCases] = useState<CaseBatch[]>([]);
@@ -191,15 +206,12 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
       await pushToBank(setId);
       return true;
     } catch (e) {
-      setNotice({ text: `${label} saved on this device, but the bank was not updated: ${bankErrorMessage(e)}`, error: true });
+      setNotice({ text: `${label} saved on this device but not published: ${bankErrorMessage(e)}`, error: true });
       return false;
     }
   };
 
-  const typedTags = (): string[] | undefined => {
-    const tags = tagsInput.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
-    return tags.length ? tags : undefined;
-  };
+  const typedTags = (): string[] | undefined => (tags.length ? tags : undefined);
 
   const savePaste = async () => {
     if (drafts.length === 0) return;
@@ -210,6 +222,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
     if (ok) setNotice({ text: `Saved Set ${set.number} with ${drafts.length} questions.`, setId: set.id });
     setRaw("");
     setDrafts([]);
+    setTags([]);
     if (!presetPresentation) setName("");
     setSaving(false);
     onSaved?.();
@@ -228,6 +241,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
           name: `Case ${String(c.number).padStart(2, "0")}`,
           collection: bank.collection,
           c,
+          tags: c.conditions.length ? c.conditions : suggestConditionTags(c.questions),
           drafts: c.questions.map((q) => {
             // The bank and case titles say what the case is about; weight them above the stem's incidental symptoms.
             const heading = [bank.collection ?? "", c.title].join(" ");
@@ -262,7 +276,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
     for (const b of cases) {
       const set = await saveDrafts("", `${b.name}: ${b.c.title}`, b.drafts, { minutes: b.c.minutes }, {
         collection: b.collection,
-        tags: b.c.conditions.length ? b.c.conditions : typedTags(),
+        tags: b.tags.length ? b.tags : undefined,
         instructions: b.c.instructions,
         markingNotes: b.c.markingNotes,
         debrief: b.c.debrief,
@@ -347,7 +361,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
         {cases.length > 0 && (
           <>
             <table style={{ marginTop: "0.6rem" }}>
-              <thead><tr><th>Set</th><th>Case</th><th>Questions</th><th>Marks</th><th>Answers</th><th>Conditions</th><th></th></tr></thead>
+              <thead><tr><th>Set</th><th>Case</th><th>Questions</th><th>Marks</th><th>Answers</th><th>Tags</th><th></th></tr></thead>
               <tbody>
                 {cases.map((b) => (
                   <tr key={b.key}>
@@ -356,7 +370,10 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                     <td>{b.drafts.length}</td>
                     <td>{(b.c.marks ?? b.drafts.reduce((a, d) => a + (d.marks ?? 0), 0)) || "—"}</td>
                     <td className="muted">{b.c.hasAnswers ? "yes" : "no"}</td>
-                    <td className="muted">{b.c.conditions.join(", ")}</td>
+                    <td style={{ minWidth: "16rem" }}>
+                      <TagEditor value={b.tags} known={known} compact
+                        onChange={(t) => setCases((cs) => cs.map((x) => (x.key === b.key ? { ...x, tags: t } : x)))} />
+                    </td>
                     <td><button className="small danger" onClick={() => setCases((cs) => cs.filter((x) => x.key !== b.key))}>Remove</button></td>
                   </tr>
                 ))}
@@ -386,7 +403,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
               </tbody>
             </table>
             <div className="row" style={{ marginTop: "0.6rem" }}>
-              <input type="text" placeholder="Conditions for these sets, comma separated" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} style={{ flex: 1 }} />
+              <div style={{ flex: 1 }}><TagEditor value={tags} onChange={setTags} known={known} suggestions={suggestConditionTags(files.flatMap((f) => f.drafts))} compact /></div>
               <button className="primary" onClick={saveFiles} disabled={saving || fileQuestionCount === 0}>Save {files.filter((f) => f.drafts.length).length} sets ({fileQuestionCount} questions)</button>
             </div>
           </>
@@ -403,8 +420,12 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
         <>
           <div className="row" style={{ marginTop: "1rem" }}>
             <input type="text" placeholder={meta.title ?? "Title (optional)"} value={name} onChange={(e) => setName(e.target.value)} />
-            <input type="text" placeholder="Conditions, comma separated" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} title="Tags for this set" />
+
             <span className="muted">{drafts.length} questions{totalMarks ? `, ${totalMarks} marks` : ""}{meta.minutes ? `, ${meta.minutes} min suggested` : ""}</span>
+          </div>
+          <div style={{ marginTop: "0.6rem" }}>
+            <label>Tags</label>
+            <TagEditor value={tags} onChange={setTags} suggestions={pasteSuggestions} known={known} />
           </div>
           <div className="row" style={{ marginTop: "0.6rem" }}>
             <button className="primary" onClick={savePaste} disabled={saving}>Save {drafts.length} questions</button>

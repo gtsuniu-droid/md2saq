@@ -52,10 +52,13 @@ export async function exportSet(setId: string): Promise<SetPack> {
 /** Import a shared set with fresh ids so it never collides with local data. */
 export async function importSetPack(pack: SetPack, bankId?: string, bankUpdatedAt?: number, number?: number): Promise<string> {
   if (pack.format !== "saq-practice-set") throw new Error("Not a question set file.");
-  const setId = newId();
+  // Keep the pack's ids so every device that imports this set agrees on question ids
+  // (synced attempts refer to them). Fall back to fresh ids only on a collision.
+  const clash = !!(await db.sets.get(pack.set.id)) || (await db.questions.where("id").anyOf(pack.questions.map((q) => q.id)).count()) > 0;
+  const setId = clash ? newId() : pack.set.id;
   const num = number ?? pack.set.number ?? (await nextSetNumber());
   const set: QuestionSet = { ...pack.set, id: setId, number: num, createdAt: Date.now(), updatedAt: undefined, bankId, bankUpdatedAt };
-  const questions: Question[] = pack.questions.map((q) => ({ ...q, id: newId(), setId, createdAt: Date.now() }));
+  const questions: Question[] = pack.questions.map((q) => ({ ...q, id: clash ? newId() : q.id, setId, createdAt: Date.now() }));
   await db.transaction("rw", db.sets, db.questions, async () => {
     await db.sets.add(set);
     await db.questions.bulkAdd(questions);

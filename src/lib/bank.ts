@@ -1,8 +1,9 @@
-import { db, getSettings, patchSettings } from "../data/db";
+import { db, patchSettings } from "../data/db";
 import { applyBankUpdate, importSetPack, type SetPack } from "./exportImport";
 
 export interface BankEntry {
   id: string;
+  setId?: string;
   number?: number;
   name: string;
   source?: string;
@@ -31,15 +32,22 @@ async function check(res: Response): Promise<Response> {
 
 const auth = (passcode: string) => ({ "x-passcode": passcode });
 
-export async function listBank(passcode: string): Promise<BankEntry[]> {
-  const res = await check(await fetch("/api/bank", { headers: auth(passcode) }));
+/** Everyone can read the bank; no passcode needed. */
+export async function listBank(): Promise<BankEntry[]> {
+  const res = await check(await fetch("/api/bank"));
   const body = (await res.json()) as { sets: BankEntry[] };
   return body.sets;
 }
 
-export async function fetchBankSet(id: string, passcode: string): Promise<SetPack> {
-  const res = await check(await fetch(`/api/bank?id=${encodeURIComponent(id)}`, { headers: auth(passcode) }));
+export async function fetchBankSet(id: string): Promise<SetPack> {
+  const res = await check(await fetch(`/api/bank?id=${encodeURIComponent(id)}`));
   return (await res.json()) as SetPack;
+}
+
+/** True when the passcode unlocks editing. Throws BankPasscodeError when it does not. */
+export async function verifyPasscode(passcode: string): Promise<boolean> {
+  await check(await fetch("/api/bank?verify=1", { headers: auth(passcode) }));
+  return true;
 }
 
 export async function uploadBankSet(pack: SetPack, passcode: string): Promise<BankEntry> {
@@ -70,27 +78,34 @@ export async function deleteBankSet(id: string, passcode: string): Promise<void>
 
 /**
  * Import every bank set not yet in the library, and refresh local copies of
- * sets that were edited in the bank since they were imported. Returns the
- * number of sets touched, or null when no passcode is saved.
+ * sets that were edited in the bank since they were imported. Open to
+ * everyone. Returns the number of sets touched.
  */
 export async function syncFromBank(): Promise<number | null> {
-  const passcode = (await getSettings()).bankPasscode;
-  if (!passcode) return null;
-  const entries = await listBank(passcode);
+  const entries = await listBank();
   const local = await db.sets.toArray();
   const byBankId = new Map(local.filter((s) => s.bankId).map((s) => [s.bankId!, s]));
   let n = 0;
   for (const e of entries) {
-    const mine = byBankId.get(e.id);
+    let mine = byBankId.get(e.id);
+    if (!mine && e.setId) {
+      // The same set, already on this device under its own id (created here or imported before linking existed).
+      const sameId = local.find((s) => s.id === e.setId);
+      if (sameId) {
+        await db.sets.update(sameId.id, { bankId: e.id, number: e.number ?? sameId.number });
+        mine = { ...sameId, bankId: e.id };
+        byBankId.set(e.id, mine);
+      }
+    }
     if (!mine) {
-      const pack = await fetchBankSet(e.id, passcode);
+      const pack = await fetchBankSet(e.id);
       await importSetPack(pack, e.id, e.updatedAt ?? e.uploadedAt, e.number);
       n++;
     } else {
       if (e.number !== undefined && mine.number !== e.number) await db.sets.update(mine.id, { number: e.number });
       // Never overwrite edits that have not reached the bank yet.
       if (!mine.dirty && e.updatedAt && e.updatedAt > (mine.bankUpdatedAt ?? 0)) {
-        const pack = await fetchBankSet(e.id, passcode);
+        const pack = await fetchBankSet(e.id);
         await applyBankUpdate(mine.id, pack, e.updatedAt);
         n++;
       }

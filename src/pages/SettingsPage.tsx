@@ -9,6 +9,9 @@ import MasterPage from "./MasterPage";
 import { useEffect } from "react";
 import { useLocation } from "react-router";
 import { AmbossAuthError, ambossCheck, ambossLogin, ambossLogout } from "../lib/amboss";
+import { cloudConfigured, signInWithGoogle, signOutCloud } from "../lib/firebase";
+import { isAdmin } from "../lib/admin";
+import { recordDeletes, resetCursors, syncNow } from "../lib/sync";
 
 export default function SettingsPage() {
   const settings = useLiveQuery(async () => await getSettings(), []);
@@ -18,10 +21,12 @@ export default function SettingsPage() {
   const [ambossPass, setAmbossPass] = useState("");
   const [ambossBusy, setAmbossBusy] = useState(false);
   const [ambossMsg, setAmbossMsg] = useState<string | null>(null);
+  const [cloudMsg, setCloudMsg] = useState<string | null>(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   const { hash } = useLocation();
   useEffect(() => {
-    if (hash === "#master") setTimeout(() => document.getElementById("master")?.scrollIntoView({ block: "start" }), 300);
+    if (hash === "#admin" || hash === "#master") setTimeout(() => document.getElementById("admin")?.scrollIntoView({ block: "start" }), 300);
   }, [hash]);
 
   if (!settings) return null;
@@ -49,9 +54,16 @@ export default function SettingsPage() {
   };
   const wipe = async () => {
     if (!confirm("Delete every question, attempt and mark on this device? Export first if you want to keep them.")) return;
+    const goneAttempts = (await db.attempts.toCollection().primaryKeys()) as string[];
+    const goneMarks = (await db.marks.toCollection().primaryKeys()) as string[];
     await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
       await Promise.all([db.sets.clear(), db.questions.clear(), db.attempts.clear(), db.marks.clear()]);
     });
+    if (settings.cloudUser && confirm("Also delete your synced answers and marks in the cloud? Cancel keeps them for your other devices.")) {
+      await recordDeletes("attempts", goneAttempts);
+      await recordDeletes("marks", goneMarks);
+      await syncNow().catch(() => undefined);
+    }
     setMessage("Deleted.");
   };
 
@@ -65,6 +77,64 @@ export default function SettingsPage() {
             onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
           <span className="muted">used to suggest timer lengths</span>
         </div>
+      </div>
+
+      <h2>Account</h2>
+      <div className="card stack">
+        {!cloudConfigured() ? (
+          <p className="muted" style={{ margin: 0 }}>
+            Cloud sync is not set up on this site. With it, your answers, marks and settings follow you between devices after a Google sign-in.
+            The README has the ten-minute setup.
+          </p>
+        ) : settings.cloudUser ? (
+          <div className="row spread">
+            <span className="row">
+              {settings.cloudUser.photo && <img src={settings.cloudUser.photo} alt="" referrerPolicy="no-referrer" style={{ width: 28, height: 28, borderRadius: "50%" }} />}
+              <span>Signed in as {settings.cloudUser.email ?? settings.cloudUser.name ?? "Google account"}</span>
+            </span>
+            <span className="row">
+              <button className="small" disabled={cloudBusy} onClick={async () => {
+                setCloudBusy(true);
+                try {
+                  const r = await syncNow();
+                  if (!r) setCloudMsg("Not signed in.");
+                  else if (r.pushed === 0 && r.pulled === 0 && r.unresolved === 0) setCloudMsg("Up to date.");
+                  else setCloudMsg(`Synced${r.pushed ? `, ${r.pushed} sent` : ""}${r.pulled ? `, ${r.pulled} received` : ""}${r.unresolved ? `, ${r.unresolved} waiting for their question set` : ""}.`);
+                } catch (e) {
+                  setCloudMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+                } finally {
+                  setCloudBusy(false);
+                }
+              }}>Sync now</button>
+              <button className="small" disabled={cloudBusy} onClick={async () => {
+                await signOutCloud();
+                await patchSettings({ cloudUser: undefined });
+                setCloudMsg("Signed out. Your data stays on this device.");
+              }}>Sign out</button>
+            </span>
+          </div>
+        ) : (
+          <div className="row">
+            <button className="primary" disabled={cloudBusy} onClick={async () => {
+              setCloudBusy(true);
+              setCloudMsg(null);
+              try {
+                const u = await signInWithGoogle();
+                await patchSettings({ cloudUser: u });
+                await resetCursors();
+                const r = await syncNow(u);
+                const moved = r && (r.pushed || r.pulled) ? ` ${[r.pushed ? `${r.pushed} sent` : "", r.pulled ? `${r.pulled} received` : ""].filter(Boolean).join(", ")}.` : "";
+                setCloudMsg(`Signed in as ${u.email ?? u.name ?? "Google account"}.${moved}`);
+              } catch (e) {
+                setCloudMsg(`Sign-in failed: ${e instanceof Error ? e.message : String(e)}`);
+              } finally {
+                setCloudBusy(false);
+              }
+            }}>Sign in with Google</button>
+            <span className="muted">Your answers, marks and settings then follow you between devices.</span>
+          </div>
+        )}
+        {cloudMsg && <p style={{ margin: 0 }}>{cloudMsg}</p>}
       </div>
 
       <h2>AMBOSS</h2>
@@ -114,28 +184,28 @@ export default function SettingsPage() {
         {ambossMsg && <p style={{ margin: 0 }}>{ambossMsg}</p>}
       </div>
 
-      <h2>Shared bank</h2>
+      <h2>Question library</h2>
       <div className="card stack">
         <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
           <input type="checkbox" checked={settings.autoImportBank !== false}
             onChange={(e) => patchSettings({ autoImportBank: e.target.checked })} />
-          Automatically import new bank sets when the app opens
+          Keep my library in step with the published sets when the app opens
         </label>
-        <div className="row">
-          <label style={{ margin: 0 }}>Bank passcode</label>
+        {isAdmin(settings) && <div className="row">
+          <label style={{ margin: 0 }}>Admin passcode</label>
           <input type="password" placeholder="not saved" value={settings.bankPasscode ?? ""}
             onChange={(e) => patchSettings({ bankPasscode: e.target.value || undefined })} />
-          <span className="muted">unlocks Master; remembered on this device</span>
+          <span className="muted">unlocks Admin; remembered on this device</span>
           {settings.bankPasscode && <button className="small" onClick={() => patchSettings({ bankPasscode: undefined })}>Lock</button>}
-        </div>
+        </div>}
         <div className="row">
           <button onClick={async () => {
             try {
               const n = await syncFromBank();
-              setMessage(n === null ? "Enter the bank passcode first." : n ? `Imported ${n} new set${n === 1 ? "" : "s"} from the bank.` : "Nothing new in the bank.");
+              setMessage(n ? `Imported ${n} new or updated set${n === 1 ? "" : "s"}.` : "Library is up to date.");
             }
-            catch { setMessage("The bank is not reachable from here."); }
-          }}>Check the bank now</button>
+            catch { setMessage("The server is not reachable from here."); }
+          }}>Check for new sets</button>
         </div>
       </div>
 
@@ -156,9 +226,11 @@ export default function SettingsPage() {
       <h2>Danger</h2>
       <button className="danger" onClick={wipe}>Delete all data on this device</button>
 
-      <div id="master" style={{ marginTop: "3rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
-        <MasterPage />
-      </div>
+      {isAdmin(settings) && (
+        <div id="admin" style={{ marginTop: "3rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
+          <MasterPage />
+        </div>
+      )}
     </div>
   );
 }

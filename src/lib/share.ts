@@ -45,12 +45,13 @@ export async function pushToBank(setId: string): Promise<void> {
   }
   const entry = await uploadBankSet(pack, passcode);
   await db.sets.update(setId, { bankId: entry.id, bankUpdatedAt: entry.updatedAt ?? entry.uploadedAt, number: entry.number ?? local?.number, dirty: false });
+  if (local && entry.number !== undefined && entry.number !== local.number) await db.sets.update(setId, { number: entry.number });
 }
 
 /** A short, human line for a failed bank push. */
 export function bankErrorMessage(e: unknown): string {
-  if (e instanceof BankPasscodeError) return "the bank rejected the passcode.";
+  if (e instanceof BankPasscodeError) return "the server rejected the admin passcode.";
   const msg = e instanceof Error ? e.message : String(e);
-  if (/blobs|environment|fetch|network|500|502|503|504/i.test(msg)) return "the bank is not reachable from here right now.";
+  if (/blobs|environment|fetch|network|500|502|503|504/i.test(msg)) return "the server is not reachable from here right now.";
   return msg;
 }

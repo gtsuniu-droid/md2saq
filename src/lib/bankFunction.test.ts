@@ -17,13 +17,15 @@ const get = (query = "", passcode = "secret") =>
   handler(new Request(`http://x/api/bank${query}`, { headers: { "x-passcode": passcode } }));
 
 describe("bank function", () => {
-  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; });
+  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
 
-  it("rejects a wrong passcode for uploads and for browsing", async () => {
+  it("lets anyone read but only the passcode write", async () => {
     const res = await post({ format: "saq-practice-text", name: "x", text: "1. Q?" }, "nope");
     expect(res.status).toBe(403);
-    expect((await get("", "nope")).status).toBe(403);
-    expect((await handler(new Request("http://x/api/bank"))).status).toBe(403);
+    expect((await get("", "nope")).status).toBe(200);
+    expect((await handler(new Request("http://x/api/bank"))).status).toBe(200);
+    expect((await get("?verify=1", "nope")).status).toBe(403);
+    expect((await get("?verify=1")).status).toBe(204);
   });
 
   it("parses plain text into a set and lists it", async () => {
@@ -63,7 +65,7 @@ describe("bank function", () => {
 });
 
 describe("bank editing", () => {
-  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; });
+  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
 
   it("updates a set in place and deletes it", async () => {
     const created = await (await post({ format: "saq-practice-text", name: "v1", text: "1. First?" })).json() as { id: string; uploadedAt: number };
@@ -84,5 +86,20 @@ describe("bank editing", () => {
     expect(del.status).toBe(200);
     expect((await (await get()).json() as { sets: unknown[] }).sets).toHaveLength(0);
     expect((await get(`?id=${created.id}`)).status).toBe(404);
+  });
+});
+
+describe("publishing the same set twice", () => {
+  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
+
+  it("updates the existing entry instead of duplicating", async () => {
+    const pack = { format: "saq-practice-set", version: 1, set: { id: "set-abc", name: "A", createdAt: 1 }, questions: [{ id: "q1", setId: "set-abc", order: 0, text: "Q?", parts: [], presentations: [], tags: [], createdAt: 1 }] };
+    const first = await (await post(pack)).json() as { id: string; number?: number };
+    const second = await (await post({ ...pack, set: { ...pack.set, name: "A renamed" } })).json() as { id: string; number?: number; name: string };
+    expect(second.id).toBe(first.id);
+    expect(second.number).toBe(first.number);
+    expect(second.name).toBe("A renamed");
+    const list = await (await get()).json() as { sets: unknown[] };
+    expect(list.sets).toHaveLength(1);
   });
 });

@@ -19,6 +19,10 @@ export interface SetSummary {
   questions: Question[];
   marks: number;
   sittings: Sitting[];
+  /** Questions with at least one submitted attempt. */
+  attemptedQuestions: number;
+  /** Questions whose latest attempt is marked. */
+  markedQuestions: number;
   /** Presentations across the set's questions, most frequent first. */
   presentations: string[];
 }
@@ -56,6 +60,8 @@ export function sittingsFor(questions: Question[], attempts: Attempt[], marks: M
 }
 
 export function summarise(sets: QuestionSet[], questions: Question[], attempts: Attempt[], marks: Mark[]): SetSummary[] {
+  const attemptedQ = new Set(attempts.filter((a) => a.submittedAt !== undefined).map((a) => a.questionId));
+  const markedQ = new Set(marks.map((m) => m.questionId));
   const byId = new Map<string, Question[]>();
   for (const q of questions) {
     const list = byId.get(q.setId) ?? [];
@@ -72,6 +78,8 @@ export function summarise(sets: QuestionSet[], questions: Question[], attempts: 
         questions: qs,
         marks: qs.reduce((acc, q) => acc + (totalMarks(q) ?? 0), 0),
         sittings: sittingsFor(qs, attempts, marks),
+        attemptedQuestions: qs.filter((q) => attemptedQ.has(q.id)).length,
+        markedQuestions: qs.filter((q) => markedQ.has(q.id)).length,
         presentations: [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([p]) => p),
       };
     })

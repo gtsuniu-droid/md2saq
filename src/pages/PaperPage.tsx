@@ -9,6 +9,7 @@ import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
 import { selectionOffsets, toggleRange, type Range } from "../lib/highlights";
 import { getSettings } from "../data/db";
+import { questionRef } from "../lib/sync";
 
 export default function PaperPage() {
   const nav = useNavigate();
@@ -62,6 +63,11 @@ export default function PaperPage() {
     (async () => {
       // Idempotent: reuse any attempt already created for this session and question
       // (StrictMode runs this effect twice in development).
+      const refs = new Map<string, Awaited<ReturnType<typeof questionRef>>>();
+      for (const qid of session.questionIds) {
+        const q = await db.questions.get(qid);
+        if (q) refs.set(qid, await questionRef(q));
+      }
       const ids = await db.transaction("rw", db.attempts, async () => {
         const existing = await db.attempts.where("sessionId").equals(session.id).toArray();
         const result = [...session.attemptIds];
@@ -75,6 +81,7 @@ export default function PaperPage() {
           const a: Attempt = {
             id: newId(),
             questionId: session.questionIds[i],
+            qref: refs.get(session.questionIds[i]),
             answers: [],
             startedAt: Date.now(),
             elapsedSec: 0,

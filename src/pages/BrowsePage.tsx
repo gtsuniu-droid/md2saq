@@ -1,124 +1,130 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
-import { PRESENTATIONS, presentationName } from "../data/presentations";
-import { formatDate } from "../lib/questions";
-import { loadSummaries, setLabel } from "../lib/sets";
+import { useNavigate } from "react-router";
+import { getSettings } from "../data/db";
+import { loadSummaries, setLabel, suggestedMinutesFor, type SetSummary } from "../lib/sets";
+import { startSession } from "../lib/session";
+import { buildTree, filterTree, setsInBranch, type TreeNode } from "../lib/tree";
+import { isAdmin } from "../lib/admin";
 
+/** A tick once everything is marked; otherwise a slim bar, teal for marked and amber for answered but unmarked. Untouched shows nothing. */
+function Progress({ total, attempted, marked }: { total: number; attempted: number; marked: number }) {
+  if (total === 0 || attempted === 0) return <span className="bar empty" />;
+  if (marked === total) return <span className="done-tick" title={`All ${total} marked`}>✓</span>;
+  const m = (100 * marked) / total;
+  const a = (100 * Math.max(0, attempted - marked)) / total;
+  return (
+    <span className="bar" title={`${marked} of ${total} marked${attempted > marked ? `, ${attempted - marked} answered but unmarked` : ""}`}>
+      <span className="fill marked" style={{ width: `${m}%` }} />
+      <span className="fill attempted" style={{ width: `${a}%` }} />
+    </span>
+  );
+}
+
+const EXPANDED_KEY = "saq-browse-expanded";
+
+function loadExpanded(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Anki-style deck list: presentations and :: tags as branches, sets as leaves. */
 export default function BrowsePage() {
   const nav = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const presentation = params.get("presentation") ?? "";
-  const status = params.get("status") ?? "";
-  const tag = params.get("tag") ?? "";
-  const collection = params.get("collection") ?? "";
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
+  const data = useLiveQuery(async () => ({ summaries: await loadSummaries(), settings: await getSettings() }), []);
 
-  const setParam = (k: string, v: string) => {
-    const next = new URLSearchParams(params);
-    if (v) next.set(k, v);
-    else next.delete(k);
-    setParams(next);
+  const tree = useMemo(() => (data ? filterTree(buildTree(data.summaries), search) : []), [data, search]);
+  const searching = search.trim().length > 0;
+
+  if (!data) return null;
+
+  const toggle = (path: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+
+  const practiseBranch = (node: TreeNode, mode: "practice" | "exam") => {
+    const sets = setsInBranch(node);
+    const ids = sets.flatMap((s) => s.questions.map((q) => q.id));
+    if (ids.length === 0) return;
+    const minutes = sets.reduce((acc, s) => acc + suggestedMinutesFor(s, data.settings.minutesPerMark), 0);
+    startSession(ids, mode, Math.round(minutes * 60));
+    nav("/paper");
   };
 
-  const summaries = useLiveQuery(loadSummaries, []);
+  const renderSet = (s: SetSummary, depth: number) => {
+    const plainTags = (s.set.tags ?? []).filter((t) => !t.includes("::"));
+    return (
+      <div key={s.set.id} className="deck-row set" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }} onClick={() => nav(`/set/${s.set.id}`)}>
+        <span className="caret" />
+        <span className="name">
+          {setLabel(s.set)}
+          {(plainTags.length > 0 || s.set.source) && <span className="muted"> — {plainTags.length ? plainTags.join(", ") : s.set.source}</span>}
+        </span>
+        <Progress total={s.questions.length} attempted={s.attemptedQuestions} marked={s.markedQuestions} />
+        <span className="actions" />
+      </div>
+    );
+  };
 
-  const filtered = useMemo(() => {
-    if (!summaries) return [];
-    const q = search.trim().toLowerCase();
-    return summaries.filter((s) => {
-      if (presentation && !s.presentations.includes(presentation)) return false;
-      if (tag && !(s.set.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())) return false;
-      if (collection && (s.set.collection ?? "") !== collection) return false;
-      const sat = s.sittings.length > 0;
-      const marked = s.sittings.some((x) => x.marked > 0);
-      if (status === "new" && sat) return false;
-      if (status === "sat" && !sat) return false;
-      if (status === "unmarked" && (!sat || marked)) return false;
-      if (q) {
-        const hay = [setLabel(s.set), s.set.name, s.set.source ?? "", s.set.collection ?? "", ...(s.set.tags ?? []), ...s.questions.map((x) => x.text), ...s.questions.flatMap((x) => x.stems ?? [])].join(" ").toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [summaries, presentation, status, search, tag, collection]);
-
-  if (!summaries) return null;
-  const allTags = [...new Set(summaries.flatMap((s) => s.set.tags ?? []))].sort((a, b) => a.localeCompare(b));
-  const collections = [...new Set(summaries.map((s) => s.set.collection).filter((c): c is string => !!c))].sort();
+  const renderNode = (node: TreeNode, depth: number) => {
+    const open = searching || expanded.has(node.path);
+    return (
+      <div key={node.path}>
+        <div className="deck-row branch" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }} onClick={() => toggle(node.path)}>
+          <span className="caret">{open ? "▾" : "▸"}</span>
+          <span className="name">{node.emoji && <span className="emoji">{node.emoji}</span>}{node.label}</span>
+          <Progress total={node.questions} attempted={node.attempted} marked={node.marked} />
+          <span className="actions" onClick={(e) => e.stopPropagation()}>
+            <button className="small link" onClick={() => practiseBranch(node, "practice")} disabled={node.questions === 0}>Practice</button>
+            <button className="small link" onClick={() => practiseBranch(node, "exam")} disabled={node.questions === 0}>Exam</button>
+          </span>
+        </div>
+        {open && (
+          <div>
+            {node.children.map((c) => renderNode(c, depth + 1))}
+            {node.sets.map((s) => renderSet(s, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
-      <h1>Browse</h1>
-      <div className="row">
-        <select value={presentation} onChange={(e) => setParam("presentation", e.target.value)}>
-          <option value="">All presentations</option>
-          {PRESENTATIONS.map((p) => (
-            <option key={p.id} value={p.id}>{p.parent ? "  ↳ " : ""}{p.emoji ? `${p.emoji} ` : ""}{p.name}</option>
-          ))}
-        </select>
-        {allTags.length > 0 && (
-          <select value={tag} onChange={(e) => setParam("tag", e.target.value)}>
-            <option value="">All conditions</option>
-            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        )}
-        {collections.length > 0 && (
-          <select value={collection} onChange={(e) => setParam("collection", e.target.value)}>
-            <option value="">All collections</option>
-            {collections.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        )}
-        <select value={status} onChange={(e) => setParam("status", e.target.value)}>
-          <option value="">Any status</option>
-          <option value="new">Not sat yet</option>
-          <option value="sat">Sat</option>
-          <option value="unmarked">Sat, unmarked</option>
-        </select>
-        <input type="search" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <span style={{ flex: 1 }} />
-        <button className="small link" onClick={() => nav("/settings#master")}>
-          + New set
-        </button>
+      <div className="row spread">
+        <h1 style={{ margin: 0 }}>Browse</h1>
+        <span className="row">
+          <input type="search" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <button className="small link" onClick={() => setExpanded(new Set(collectPaths(tree)))}>Expand all</button>
+          <button className="small link" onClick={() => setExpanded(new Set())}>Collapse</button>
+          {isAdmin(data.settings) && <button className="small link" onClick={() => nav("/settings#admin")}>+ New set</button>}
+        </span>
       </div>
-
-      <table style={{ marginTop: "1rem" }}>
-        <thead>
-          <tr>
-            <th>Set</th>
-            <th>Questions</th>
-            <th>Marks</th>
-            <th>Sat</th>
-            <th>Last score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((s) => {
-            const last = s.sittings[0];
-            return (
-              <tr key={s.set.id} className="clickable" onClick={() => nav(`/set/${s.set.id}`)}>
-                <td>
-                  {setLabel(s.set)}
-                  <div className="muted">
-                    {(s.set.tags ?? []).length
-                      ? (s.set.tags ?? []).join(", ")
-                      : s.presentations.slice(0, 3).map(presentationName).join(", ")}
-                  </div>
-                </td>
-                <td>{s.questions.length}</td>
-                <td>{s.marks || "—"}</td>
-                <td>{s.sittings.length || "—"}</td>
-                <td>{last ? (last.maxScore > 0 ? `${last.score}/${last.maxScore}, ${formatDate(last.submittedAt)}` : `unmarked, ${formatDate(last.submittedAt)}`) : "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {filtered.length === 0 && (
+      <p className="muted" style={{ marginBottom: "0.8rem" }}>
+        Sets sit under their presentation{isAdmin(data.settings) ? '. Tag a set "Presentation::Topic" in Admin to nest it, Anki style; several tags put it in several places.' : "."}
+      </p>
+      <div className="deck-list">
+        {tree.map((n) => renderNode(n, 0))}
+      </div>
+      {tree.length === 0 && (
         <p className="muted" style={{ marginTop: "1rem" }}>
-          {summaries.length === 0 ? "No sets yet. Paste a paper on the Create page, or pull one from the Bank." : "Nothing matches."}
+          {data.summaries.length === 0 ? "No sets yet. Add some in Admin, at the bottom of Settings." : "Nothing matches."}
         </p>
       )}
     </div>
   );
+}
+
+function collectPaths(nodes: TreeNode[]): string[] {
+  return nodes.flatMap((n) => [n.path, ...collectPaths(n.children)]);
 }

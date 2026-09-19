@@ -1,11 +1,15 @@
 import { getStore } from "@netlify/blobs";
 import type { Config } from "@netlify/functions";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { parsePaper, questionFullText } from "../../src/lib/parser";
 import { suggestPresentations } from "../../src/lib/suggest";
 import { PRESENTATION_BY_ID } from "../../src/data/presentations";
 
 interface BankEntry {
   id: string;
+  /** The set's own id inside the pack, so the same set published again from any device updates this entry. */
+  setId?: string;
   /** Running number across the bank, assigned when the set is first shared. */
   number?: number;
   name: string;
@@ -32,7 +36,7 @@ interface TextUpload {
 
 interface SetPackUpload {
   format: "saq-practice-set";
-  set: { name?: string; source?: string; collection?: string; tags?: string[]; number?: number };
+  set: { id?: string; name?: string; source?: string; collection?: string; tags?: string[]; number?: number };
   questions: { presentations?: string[] }[];
   key?: string;
 }
@@ -72,6 +76,7 @@ function entryFrom(id: string, pack: Pack, previous?: BankEntry): BankEntry {
   const presentations = [...new Set(pack.questions.flatMap((q) => q.presentations ?? []))];
   return {
     id,
+    setId: typeof set.id === "string" ? set.id : previous?.setId,
     number: previous?.number,
     name: String(set.name ?? "Untitled set").slice(0, 200),
     source: set.source ? String(set.source).slice(0, 200) : undefined,
@@ -85,19 +90,69 @@ function entryFrom(id: string, pack: Pack, previous?: BankEntry): BankEntry {
   };
 }
 
+interface Store {
+  get(key: string, opts: { type: "json" }): Promise<unknown>;
+  setJSON(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+/**
+ * On Netlify: the blob store, read with strong consistency because the index is
+ * read, changed and written back on every upload and listed straight after.
+ * Anywhere else (vite dev): a JSON file under .netlify/, so publishing can be
+ * tried locally. BANK_PASSCODE defaults to "dev" there.
+ */
+function openStore(): Store {
+  const onNetlify = !!(process.env.NETLIFY || process.env.NETLIFY_BLOBS_CONTEXT || process.env.NETLIFY_DEV);
+  if (onNetlify) return getStore({ name: "bank", consistency: "strong" }) as unknown as Store;
+  const file = join(process.cwd(), ".netlify", "dev-bank.json");
+  const load = (): Record<string, unknown> => {
+    try {
+      return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  };
+  const save = (data: Record<string, unknown>) => {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(data));
+  };
+  return {
+    async get(key) {
+      return load()[key] ?? null;
+    },
+    async setJSON(key, value) {
+      const data = load();
+      data[key] = value;
+      save(data);
+    },
+    async delete(key) {
+      const data = load();
+      delete data[key];
+      save(data);
+    },
+  };
+}
+
 function suppliedPasscode(req: Request): string | null {
   return req.headers.get("x-passcode") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
 }
 
 export default async (req: Request): Promise<Response> => {
-  // Strong consistency: the index is read, changed and written back on every
-  // upload, and the client lists it straight after pushing. Eventual reads
-  // would show fresh sets as missing and could drop entries on write.
-  const store = getStore({ name: "bank", consistency: "strong" });
+  const store = openStore();
   const url = new URL(req.url);
-  const expected = process.env.BANK_PASSCODE;
-  if (!expected) return new Response("The bank is not configured on this site (BANK_PASSCODE is unset).", { status: 503 });
-  if (suppliedPasscode(req) !== expected) return new Response("Wrong passcode.", { status: 403 });
+  const onNetlify = !!(process.env.NETLIFY || process.env.NETLIFY_BLOBS_CONTEXT || process.env.NETLIFY_DEV);
+  const expected = process.env.BANK_PASSCODE ?? (onNetlify ? undefined : "dev");
+  const authorised = !!expected && suppliedPasscode(req) === expected;
+  // Reading the bank is open to everyone; changing it needs the passcode.
+  if (url.searchParams.has("verify")) {
+    if (!expected) return new Response("The bank is not configured on this site (BANK_PASSCODE is unset).", { status: 503 });
+    return authorised ? new Response(null, { status: 204 }) : new Response("Wrong passcode.", { status: 403 });
+  }
+  if (req.method !== "GET") {
+    if (!expected) return new Response("The bank is not configured on this site (BANK_PASSCODE is unset).", { status: 503 });
+    if (!authorised) return new Response("Wrong passcode.", { status: 403 });
+  }
 
   const loadIndex = async (): Promise<BankEntry[]> => {
     const index = ((await store.get("index", { type: "json" })) as BankEntry[] | null) ?? [];
@@ -148,6 +203,16 @@ export default async (req: Request): Promise<Response> => {
     if (r.key) {
       const existing = index.find((e) => e.key === r.key);
       if (existing) return json({ ...existing, duplicate: true });
+    }
+    const packSetId = (r.pack.set as { id?: string }).id;
+    const same = packSetId ? index.find((e) => e.setId === packSetId) : undefined;
+    if (same) {
+      // Already published, perhaps from another device: update in place rather than duplicate.
+      const entry = entryFrom(same.id, r.pack, same);
+      (r.pack.set as { number?: number }).number = same.number;
+      await store.setJSON(`sets/${same.id}`, r.pack);
+      await store.setJSON("index", index.map((e) => (e.id === same.id ? entry : e)));
+      return json(entry);
     }
     const id = crypto.randomUUID();
     const number = index.reduce((m, e) => Math.max(m, e.number ?? 0), 0) + 1;

@@ -1,7 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState, type ReactNode } from "react";
 import { getSettings, patchSettings } from "../data/db";
-import { BankPasscodeError, listBank } from "../lib/bank";
+import { BankPasscodeError, verifyPasscode } from "../lib/bank";
 
 interface Props {
   title: string;
@@ -28,16 +28,16 @@ export default function PasscodeGate({ title, blurb, children }: Props) {
     setError(null);
     const code = passcode.trim();
     try {
-      await listBank(code);
+      await verifyPasscode(code);
       await patchSettings({ bankPasscode: code });
     } catch (e) {
       if (e instanceof BankPasscodeError) {
-        setError("The bank rejected that passcode. It must match BANK_PASSCODE in the Netlify site settings exactly.");
+        setError("That passcode was rejected. It must match BANK_PASSCODE in the Netlify site settings exactly.");
       } else if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
         // Local development has no bank: accept unverified so the tools stay usable.
         await patchSettings({ bankPasscode: code });
       } else {
-        setError(`The bank could not be reached to check the passcode: ${e instanceof Error ? e.message : String(e)}`);
+        setError(`The server could not be reached to check the passcode: ${e instanceof Error ? e.message : String(e)}`);
       }
     } finally {
       setBusy(false);
@@ -49,7 +49,7 @@ export default function PasscodeGate({ title, blurb, children }: Props) {
       <h1>{title}</h1>
       <p className="muted">{blurb}</p>
       <div className="row">
-        <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
+        <input type="password" placeholder="Admin passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && passcode) void submit(); }} />
         <button className="primary" disabled={!passcode || busy} onClick={submit}>Unlock</button>
       </div>

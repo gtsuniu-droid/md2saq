@@ -6,8 +6,13 @@ import type { Question, QuestionImage, QuestionSet, SubPart } from "../data/type
 import PresentationPicker from "../components/PresentationPicker";
 import { compressImage, dataUrlBytes } from "../lib/images";
 import { partLabel } from "../lib/questions";
-import { setLabel } from "../lib/sets";
+import { loadSummaries, setLabel } from "../lib/sets";
+import { knownTags, suggestConditionTags } from "../lib/tags";
+import TagEditor from "../components/TagEditor";
+import { presentationName } from "../data/presentations";
+import { isAdmin } from "../lib/admin";
 import { bankErrorMessage, pushToBank } from "../lib/share";
+import { recordDeletes } from "../lib/sync";
 
 interface DraftQuestion extends Question {
   key: string;
@@ -21,12 +26,13 @@ export default function SetEditPage() {
     if (!set) return null;
     const questions = await db.questions.where("setId").equals(id).sortBy("order");
     const settings = await getSettings();
-    return { set, questions, canPush: !!settings.bankPasscode };
+    return { set, questions, canPush: !!settings.bankPasscode, admin: isAdmin(settings) };
   }, [id]);
 
   const [set, setSet] = useState<QuestionSet | null>(null);
   const [questions, setQuestions] = useState<DraftQuestion[]>([]);
-  const [tagsText, setTagsText] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const known = useLiveQuery(async () => knownTags((await loadSummaries()).flatMap((s) => s.set.tags ?? [])), []) ?? [];
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [seeded, setSeeded] = useState(false);
@@ -38,12 +44,14 @@ export default function SetEditPage() {
     if (!data || seeded) return;
     setSet(data.set);
     setQuestions(data.questions.map((q) => ({ ...q, key: q.id })));
-    setTagsText((data.set.tags ?? []).join(", "));
+    setTags(data.set.tags ?? []);
     setSeeded(true);
   }, [data, seeded]);
 
-  if (data === undefined || !set) return null;
+  if (data === undefined) return null;
   if (data === null) return <p>Set not found.</p>;
+  if (!data.admin) return <p className="muted">Editing sets is limited to the site's admin account.</p>;
+  if (!set) return null;
 
   const patchSet = (p: Partial<QuestionSet>) => setSet((s) => (s ? { ...s, ...p } : s));
   const patchQ = (key: string, p: Partial<Question>) => setQuestions((qs) => qs.map((q) => (q.key === key ? { ...q, ...p } : q)));
@@ -109,7 +117,6 @@ export default function SetEditPage() {
     setQuestions((qs) => qs.map((q) => (q.key === key ? { ...q, images: (q.images ?? []).filter((im) => im.id !== imgId) } : q)));
 
   const saveLocal = async (): Promise<QuestionSet> => {
-    const tags = tagsText.split(/[,;\n]/).map((t) => t.trim()).filter(Boolean);
     const nextSet: QuestionSet = { ...set, tags: tags.length ? tags : undefined, updatedAt: Date.now(), dirty: true };
     const nextQuestions: Question[] = questions.map((q, i) => {
       const { key: _k, ...rest } = q;
@@ -118,16 +125,20 @@ export default function SetEditPage() {
       return { ...rest, order: i, stems: stems?.length ? stems : undefined, images: q.images?.length ? q.images : undefined };
     });
     const keep = new Set(nextQuestions.map((q) => q.id));
+    const gone = data.questions.filter((q) => !keep.has(q.id)).map((q) => q.id);
+    const goneAttempts = gone.length ? ((await db.attempts.where("questionId").anyOf(gone).primaryKeys()) as string[]) : [];
+    const goneMarks = gone.length ? ((await db.marks.where("questionId").anyOf(gone).primaryKeys()) as string[]) : [];
     await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
       await db.sets.put(nextSet);
       await db.questions.bulkPut(nextQuestions);
-      const gone = data.questions.filter((q) => !keep.has(q.id)).map((q) => q.id);
       if (gone.length) {
         await db.marks.where("questionId").anyOf(gone).delete();
         await db.attempts.where("questionId").anyOf(gone).delete();
         await db.questions.bulkDelete(gone);
       }
     });
+    await recordDeletes("attempts", goneAttempts);
+    await recordDeletes("marks", goneMarks);
     return nextSet;
   };
 
@@ -140,9 +151,9 @@ export default function SetEditPage() {
       if (data.canPush) {
         try {
           await pushToBank(saved.id);
-          note = "Saved and pushed to the bank.";
+          note = "Saved and published.";
         } catch (e) {
-          note = `Saved on this device. The bank was not updated: ${bankErrorMessage(e)}`;
+          note = `Saved on this device but not published: ${bankErrorMessage(e)}`;
         }
       }
       nav(`/set/${set.id}`, { state: { message: note } });
@@ -161,8 +172,9 @@ export default function SetEditPage() {
       <div className="card stack">
         <div className="row">
           <div style={{ flex: 1 }}>
-            <label>Conditions and other tags, comma separated</label>
-            <input type="text" style={{ width: "100%" }} value={tagsText} placeholder="Vestibular neuritis, Posterior circulation stroke" onChange={(e) => setTagsText(e.target.value)} />
+            <label>Tags. Type or click a suggestion; Presentation::Topic nests the set in Browse</label>
+            <TagEditor value={tags} onChange={setTags} known={known}
+              suggestions={[...new Set([...questions.flatMap((q) => q.presentations).map(presentationName), ...suggestConditionTags(questions)])]} />
           </div>
           <div>
             <label>Suggested minutes</label>
@@ -265,11 +277,11 @@ export default function SetEditPage() {
       </div>
       <div className="row" style={{ marginTop: "0.8rem" }}>
         <button className="small link" onClick={addQ}>+ Add question</button>
-        {totalImageBytes > 0 && <span className="muted">{(totalImageBytes / 1e6).toFixed(1)} MB of pictures{totalImageBytes > 5e6 ? ", too much for the bank" : ""}</span>}
+        {totalImageBytes > 0 && <span className="muted">{(totalImageBytes / 1e6).toFixed(1)} MB of pictures{totalImageBytes > 5e6 ? ", too much to publish" : ""}</span>}
       </div>
 
       <div className="row" style={{ marginTop: "1.5rem" }}>
-        <button className="primary" onClick={save} disabled={busy}>{data.canPush ? "Save and update bank" : "Save"}</button>
+        <button className="primary" onClick={save} disabled={busy}>{data.canPush ? "Save and publish" : "Save"}</button>
         <Link to={`/set/${set.id}`}>Discard changes</Link>
         {message && <span style={{ color: "var(--bad)" }}>{message}</span>}
       </div>

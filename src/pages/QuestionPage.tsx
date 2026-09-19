@@ -7,6 +7,7 @@ import AnswerHtml from "../components/AnswerHtml";
 import { answerParts, formatDate, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { setLabel } from "../lib/sets";
 import AmbossText from "../components/AmbossText";
+import { recordDeletes } from "../lib/sync";
 
 export default function QuestionPage() {
   const { id = "" } = useParams();
@@ -29,11 +30,15 @@ export default function QuestionPage() {
 
   const remove = async () => {
     if (!confirm("Delete this question and its attempts?")) return;
+    const goneAttempts = (await db.attempts.where("questionId").equals(id).primaryKeys()) as string[];
+    const goneMarks = (await db.marks.where("questionId").equals(id).primaryKeys()) as string[];
     await db.transaction("rw", db.questions, db.attempts, db.marks, async () => {
       await db.marks.where("questionId").equals(id).delete();
       await db.attempts.where("questionId").equals(id).delete();
       await db.questions.delete(id);
     });
+    await recordDeletes("attempts", goneAttempts);
+    await recordDeletes("marks", goneMarks);
     nav("/browse");
   };
 
