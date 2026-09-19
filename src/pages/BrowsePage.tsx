@@ -136,7 +136,7 @@ export default function BrowsePage() {
       </div>
 
       <div className="row" style={{ margin: "0.8rem 0" }}>
-        <span className="muted">{filtered.length} shown · {selected.size} selected</span>
+        <span className="muted">{filtered.length} shown, {selected.size} selected</span>
         <button className="small" onClick={selectAll}>Select all shown</button>
         <button className="small" onClick={() => selectRandom(3)}>Random 3</button>
         <button className="small" onClick={() => selectRandom(5)}>Random 5</button>
@@ -178,12 +178,12 @@ export default function BrowsePage() {
                 </td>
                 <td>
                   {truncate(q.text || q.parts[0]?.text || "")}
-                  <div className="muted">{data.sets.get(q.setId)?.name} · Q{q.order + 1}{q.stems?.length ? ` · ${q.stems.length} stem${q.stems.length === 1 ? "" : "s"}` : ""}{q.parts.length ? ` · ${q.parts.length} parts` : ""}{q.modelAnswer || q.parts.some((p) => p.modelAnswer) ? " · has model answer" : ""}</div>
+                  <div className="muted">{data.sets.get(q.setId)?.name}, Q{q.order + 1}{q.stems?.length ? `, ${q.stems.length} stem${q.stems.length === 1 ? "" : "s"}` : ""}{q.parts.length ? `, ${q.parts.length} parts` : ""}{q.modelAnswer || q.parts.some((p) => p.modelAnswer) ? ", has model answer" : ""}</div>
                 </td>
                 <td>{q.presentations.map((p) => <span key={p} className="chip static">{presentationName(p)}</span>)}</td>
                 <td>{totalMarks(q) ?? "—"}</td>
                 <td>{data.attemptsByQ.get(q.id) ?? 0}</td>
-                <td>{lm ? `${lm.score}/${lm.max} · ${formatDate(lm.at)}` : "—"}</td>
+                <td>{lm ? `${lm.score}/${lm.max}, ${formatDate(lm.at)}` : "—"}</td>
               </tr>
             );
           })}

@@ -139,7 +139,7 @@ export default function MarkPage() {
       <div className="row spread">
         <h1 style={{ margin: 0 }}>Mark</h1>
         <span className="muted">
-          {formatDuration(attempt.elapsedSec)} · {attempt.mode}{confidence !== undefined ? ` · confidence ${confidence}/5` : ""} · <Link to={`/question/${question.id}`}>question</Link>
+          {formatDuration(attempt.elapsedSec)}, {attempt.mode}{confidence !== undefined ? `, confidence ${confidence}/5` : ""}, <Link to={`/question/${question.id}`}>question</Link>
         </span>
       </div>
       <div className="card" style={{ margin: "0.8rem 0" }}>

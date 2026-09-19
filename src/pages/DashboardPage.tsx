@@ -79,7 +79,7 @@ export default function DashboardPage() {
       <div className="row spread">
         <div>
           <div className="coverage">{studied} / {PRESENTATIONS.length}</div>
-          <div className="muted">presentations studied · {attemptedOnly} attempted but unmarked · {questions.length} questions in library</div>
+          <div className="muted">presentations studied, {attemptedOnly} attempted but unmarked, {questions.length} questions in library</div>
         </div>
         <div className="row">
           <button className="primary" onClick={startWeakest} disabled={questions.length === 0}>Practise weakest</button>
@@ -99,9 +99,9 @@ export default function DashboardPage() {
               <span className={"status " + state} />
               <span className="name">{p.name}</span>
               <span className="stat">
-                {r.questions} q{r.marks > 0 ? ` · ${r.marks} marked` : r.attempts > 0 ? ` · ${r.attempts} attempted` : ""}
-                {r.meanPct !== undefined ? ` · ${r.meanPct}%` : ""}
-                {r.lastStudied ? ` · ${formatDate(r.lastStudied)}` : ""}
+                {r.questions} q{r.marks > 0 ? `, ${r.marks} marked` : r.attempts > 0 ? `, ${r.attempts} attempted` : ""}
+                {r.meanPct !== undefined ? `, ${r.meanPct}%` : ""}
+                {r.lastStudied ? `, ${formatDate(r.lastStudied)}` : ""}
               </span>
               <button className="small" title={`Add a question set for ${p.name}`}
                 onClick={(e) => { e.stopPropagation(); nav(`/create?presentation=${p.id}`); }}>+ set</button>

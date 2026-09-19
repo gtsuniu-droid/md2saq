@@ -97,7 +97,7 @@ function BankContents() {
     <div>
       <div className="row spread">
         <h1 style={{ margin: 0 }}>Shared bank</h1>
-        <span className="muted">{entries ? `${entries.length} sets · ${totalQuestions} questions` : ""}</span>
+        <span className="muted">{entries ? `${entries.length} sets, ${totalQuestions} questions` : ""}</span>
       </div>
       <p className="muted">New sets are imported into your library automatically when the app opens. Your answers stay on your device.</p>
       {error && <p style={{ color: "var(--bad)" }}>{error}</p>}
@@ -131,9 +131,9 @@ function BankContents() {
                           {pack.questions.map((q) => (
                             <li key={q.id} style={{ margin: "0.3rem 0" }}>
                               {truncate(q.text || q.parts[0]?.text || "", 220)}
-                              {q.parts.length > 0 && <span className="muted"> · {q.parts.map((p) => partLabel(p.label)).join(" ")}</span>}
-                              {totalMarks(q) !== undefined && <span className="muted"> · {totalMarks(q)} marks</span>}
-                              {(q.modelAnswer || q.parts.some((p) => p.modelAnswer)) && <span className="muted"> · model answer</span>}
+                              {q.parts.length > 0 && <span className="muted">, {q.parts.map((p) => partLabel(p.label)).join(" ")}</span>}
+                              {totalMarks(q) !== undefined && <span className="muted">, {totalMarks(q)} marks</span>}
+                              {(q.modelAnswer || q.parts.some((p) => p.modelAnswer)) && <span className="muted">, model answer</span>}
                               {q.presentations.map((p) => <span key={p} className="chip static" style={{ marginLeft: "0.3rem" }}>{presentationName(p)}</span>)}
                             </li>
                           ))}

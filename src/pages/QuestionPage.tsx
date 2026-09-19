@@ -45,7 +45,7 @@ export default function QuestionPage() {
   return (
     <div>
       <div className="row spread">
-        <div className="muted"><Link to={`/browse?set=${q.setId}`}>{set?.name}</Link> · Q{q.order + 1}</div>
+        <div className="muted"><Link to={`/browse?set=${q.setId}`}>{set?.name}</Link>, Q{q.order + 1}</div>
         <div className="row">
           <button className="primary" onClick={practise}>Practise</button>
           <button className="danger small" onClick={remove}>Delete</button>
@@ -92,15 +92,15 @@ export default function QuestionPage() {
             <div key={a.id} className="card">
               <div className="row spread">
                 <strong>Attempt {i + 1}</strong>
-                <span className="muted">{formatDate(a.submittedAt!)} · {formatDuration(a.elapsedSec)} · {a.mode}</span>
+                <span className="muted">{formatDate(a.submittedAt!)}, {formatDuration(a.elapsedSec)}, {a.mode}</span>
               </div>
               <div>
                 {m ? (
-                  <span>{m.score}/{m.maxScore}{m.errorTags.length ? " · " + m.errorTags.map((t) => ERROR_TAGS.find((e) => e.id === t)?.label).join(", ") : ""}</span>
+                  <span>{m.score}/{m.maxScore}{m.errorTags.length ? ", " + m.errorTags.map((t) => ERROR_TAGS.find((e) => e.id === t)?.label).join(", ") : ""}</span>
                 ) : (
                   <Link to={`/mark/${a.id}`}>Mark this attempt</Link>
                 )}
-                {m && <> · <Link to={`/mark/${a.id}`}>edit mark</Link></>}
+                {m && <>, <Link to={`/mark/${a.id}`}>edit mark</Link></>}
               </div>
               {answerParts(q).map((p) => {
                 const ans = a.answers.find((x) => x.label === p.label);

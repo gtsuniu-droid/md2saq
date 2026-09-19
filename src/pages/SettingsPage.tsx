@@ -64,7 +64,7 @@ export default function SettingsPage() {
         {settings.ambossToken ? (
           <>
             <div className="row spread">
-              <span>Logged in{settings.ambossUser?.firstName ? ` as ${settings.ambossUser.firstName}` : ""}{settings.ambossAccess ? ` · ${settings.ambossAccess.replace("_", " ")}` : ""}</span>
+              <span>Logged in{settings.ambossUser?.firstName ? ` as ${settings.ambossUser.firstName}` : ""}{settings.ambossAccess ? `, ${settings.ambossAccess.replace("_", " ")}` : ""}</span>
               <span className="row">
                 <button className="small" onClick={async () => { setAmbossMsg((await ambossCheck()) ? "AMBOSS session is valid." : "AMBOSS rejected the session; log in again."); }}>Check</button>
                 <button className="small" onClick={async () => { await ambossLogout(); setAmbossMsg("Logged out of AMBOSS."); }}>Log out</button>

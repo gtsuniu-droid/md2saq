@@ -129,7 +129,7 @@ function AmbossPopup({ pgId, term, anchor, access, onClose }: PopupProps) {
         <>
           <div className="amboss-popup-head">
             <strong>{group.title}</strong>
-            {group.synonyms.length > 0 && <div className="muted">{group.synonyms.join(" · ")}</div>}
+            {group.synonyms.length > 0 && <div className="muted">{group.synonyms.join(", ")}</div>}
             {group.translation && <div className="muted">{group.translation}</div>}
           </div>
           {group.abstract ? (

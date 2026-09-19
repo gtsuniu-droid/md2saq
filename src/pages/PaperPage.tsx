@@ -197,7 +197,7 @@ export default function PaperPage() {
   return (
     <>
       <div className="paper-top">
-        <span className="muted">{session.mode === "exam" ? "Exam" : "Practice"} · question {index + 1} of {data.questions.length}</span>
+        <span className="muted">{session.mode === "exam" ? "Exam" : "Practice"}, question {index + 1} of {data.questions.length}</span>
         {remaining !== null && (
           <span className={"timer" + (remaining <= 60 ? " low" : "")}>{formatDuration(remaining)}</span>
         )}

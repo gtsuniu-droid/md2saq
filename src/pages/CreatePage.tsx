@@ -320,7 +320,7 @@ function CreateTools() {
           <div className="row" style={{ marginTop: "1rem" }}>
             <input type="text" placeholder={meta.title ?? "Set name"} value={name} onChange={(e) => setName(e.target.value)} />
             <input type="text" placeholder="Source (optional)" value={source} onChange={(e) => setSource(e.target.value)} />
-            <span className="muted">{drafts.length} questions{totalMarks ? ` · ${totalMarks} marks` : ""}{meta.minutes ? ` · ${meta.minutes} min suggested` : ""}</span>
+            <span className="muted">{drafts.length} questions{totalMarks ? `, ${totalMarks} marks` : ""}{meta.minutes ? `, ${meta.minutes} min suggested` : ""}</span>
           </div>
           <div className="row" style={{ marginTop: "0.6rem" }}>
             <button className="primary" onClick={() => savePaste(false)} disabled={saving}>Save {drafts.length} questions</button>
