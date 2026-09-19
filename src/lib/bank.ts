@@ -1,4 +1,4 @@
-import { db } from "../data/db";
+import { db, getSettings } from "../data/db";
 import { importSetPack, type SetPack } from "./exportImport";
 
 export interface BankEntry {
@@ -47,7 +47,7 @@ export async function uploadBankSet(pack: SetPack, passcode: string): Promise<Ba
 
 /** Import every bank set that is not yet in the library. Returns the number imported, or null when no passcode is saved. */
 export async function syncFromBank(): Promise<number | null> {
-  const passcode = (await db.settings.get("settings"))?.bankPasscode;
+  const passcode = (await getSettings()).bankPasscode;
   if (!passcode) return null;
   const entries = await listBank(passcode);
   const have = new Set((await db.sets.toArray()).map((s) => s.bankId).filter(Boolean));

@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Attempt, Mark, Question, QuestionSet, Settings } from "./types";
+import { DEFAULT_SETTINGS, type Attempt, type Mark, type Question, type QuestionSet, type Settings } from "./types";
 
 export class SaqDatabase extends Dexie {
   sets!: EntityTable<QuestionSet, "id">;
@@ -24,4 +24,14 @@ export const db = new SaqDatabase();
 
 export function newId(): string {
   return crypto.randomUUID();
+}
+
+/** Read settings, falling back to defaults when the row does not exist yet. */
+export async function getSettings(): Promise<Settings> {
+  return { ...DEFAULT_SETTINGS, ...((await db.settings.get("settings")) ?? {}) };
+}
+
+/** Merge a patch into settings, creating the row if needed. */
+export async function patchSettings(patch: Partial<Settings>): Promise<void> {
+  await db.settings.put({ ...(await getSettings()), ...patch });
 }

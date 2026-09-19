@@ -1,23 +1,31 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { db } from "../data/db";
+import { db, getSettings, patchSettings } from "../data/db";
 import { presentationName } from "../data/presentations";
 import { BankPasscodeError, fetchBankSet, listBank, type BankEntry } from "../lib/bank";
 import { importSetPack, type SetPack } from "../lib/exportImport";
 import { formatDate, partLabel, totalMarks, truncate } from "../lib/questions";
 import ShareSetButton from "../components/ShareSetButton";
+import PasscodeGate from "../components/PasscodeGate";
 
 export default function BankPage() {
+  return (
+    <PasscodeGate title="Shared bank" blurb="Enter the bank passcode to browse every shared question set, import them, and share your own.">
+      <BankContents />
+    </PasscodeGate>
+  );
+}
+
+function BankContents() {
   const nav = useNavigate();
-  const settings = useLiveQuery(() => db.settings.get("settings"), []);
+  const settings = useLiveQuery(getSettings, []);
   const local = useLiveQuery(() => db.sets.orderBy("createdAt").reverse().toArray(), []);
   const saved = settings?.bankPasscode ?? "";
 
   const [entries, setEntries] = useState<BankEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [passcode, setPasscode] = useState("");
   const [packs, setPacks] = useState<Record<string, SetPack | undefined>>({});
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -27,12 +35,11 @@ export default function BankPage() {
     try {
       const list = await listBank(code);
       setEntries(list);
-      if (code !== saved) await db.settings.update("settings", { bankPasscode: code });
+      if (code !== saved) await patchSettings({ bankPasscode: code });
     } catch (e) {
       setEntries(null);
       if (e instanceof BankPasscodeError) {
-        await db.settings.update("settings", { bankPasscode: undefined });
-        setError("Wrong passcode.");
+        await patchSettings({ bankPasscode: undefined });
       } else {
         setError("The shared bank is not reachable. It only works on the deployed Netlify site.");
       }
@@ -83,21 +90,6 @@ export default function BankPage() {
   const unshared = (local ?? []).filter((s) => !s.bankId);
 
   if (settings === undefined) return null;
-
-  if (!saved) {
-    return (
-      <div>
-        <h1>Shared bank</h1>
-        <p className="muted">Enter the bank passcode to browse every shared question set, import them, and share your own.</p>
-        <div className="row">
-          <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && passcode) void load(passcode); }} />
-          <button className="primary" disabled={!passcode || busy !== null} onClick={() => load(passcode)}>Open bank</button>
-        </div>
-        {error && <p style={{ color: "var(--bad)" }}>{error}</p>}
-      </div>
-    );
-  }
 
   const totalQuestions = (entries ?? []).reduce((a, e) => a + e.questionCount, 0);
 

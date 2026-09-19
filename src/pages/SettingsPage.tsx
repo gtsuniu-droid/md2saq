@@ -1,13 +1,13 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
-import { db } from "../data/db";
+import { db, patchSettings, getSettings } from "../data/db";
 import { DEFAULT_SETTINGS } from "../data/types";
 import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileText, type ExportFile } from "../lib/exportImport";
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
 
 export default function SettingsPage() {
-  const settings = useLiveQuery(async () => (await db.settings.get("settings")) ?? DEFAULT_SETTINGS, []);
+  const settings = useLiveQuery(async () => await getSettings(), []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -49,7 +49,7 @@ export default function SettingsPage() {
         <div className="row">
           <label style={{ margin: 0 }}>Minutes per mark</label>
           <input type="number" step={0.25} min={0.25} value={settings.minutesPerMark}
-            onChange={(e) => db.settings.put({ ...settings, minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
+            onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
           <span className="muted">used to suggest timer lengths</span>
         </div>
       </div>
@@ -58,14 +58,15 @@ export default function SettingsPage() {
       <div className="card stack">
         <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
           <input type="checkbox" checked={settings.autoImportBank !== false}
-            onChange={(e) => db.settings.put({ ...settings, autoImportBank: e.target.checked })} />
+            onChange={(e) => patchSettings({ autoImportBank: e.target.checked })} />
           Automatically import new bank sets when the app opens
         </label>
         <div className="row">
           <label style={{ margin: 0 }}>Bank passcode</label>
           <input type="password" placeholder="not saved" value={settings.bankPasscode ?? ""}
-            onChange={(e) => db.settings.put({ ...settings, bankPasscode: e.target.value || undefined })} />
-          <span className="muted">needed to share sets; remembered on this device</span>
+            onChange={(e) => patchSettings({ bankPasscode: e.target.value || undefined })} />
+          <span className="muted">unlocks Create and the Bank; remembered on this device</span>
+          {settings.bankPasscode && <button className="small" onClick={() => patchSettings({ bankPasscode: undefined })}>Lock</button>}
         </div>
         <div className="row">
           <button onClick={async () => {

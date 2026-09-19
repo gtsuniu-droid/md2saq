@@ -9,6 +9,7 @@ import { partLabel } from "../lib/questions";
 import { presentationName } from "../data/presentations";
 import { PasscodeError, forgetPasscode, savedPasscode, shareSet } from "../lib/share";
 import { readFileText } from "../lib/exportImport";
+import PasscodeGate from "../components/PasscodeGate";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -52,6 +53,14 @@ async function saveDrafts(name: string, source: string, drafts: Draft[]): Promis
 }
 
 export default function CreatePage() {
+  return (
+    <PasscodeGate title="Create" blurb="Creator tools are locked behind the bank passcode. Enter it once on this device.">
+      <CreateTools />
+    </PasscodeGate>
+  );
+}
+
+function CreateTools() {
   const [params] = useSearchParams();
   const presetPresentation = params.get("presentation") ?? "";
   const [raw, setRaw] = useState("");

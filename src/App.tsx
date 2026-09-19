@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router";
-import { db } from "./data/db";
+import { db, getSettings } from "./data/db";
 import { loadSession } from "./lib/session";
 import { syncFromBank } from "./lib/bank";
-import { DEFAULT_SETTINGS } from "./data/types";
+import { useLiveQuery } from "dexie-react-hooks";
 import DashboardPage from "./pages/DashboardPage";
 import CreatePage from "./pages/CreatePage";
 import BrowsePage from "./pages/BrowsePage";
@@ -16,6 +16,7 @@ import SettingsPage from "./pages/SettingsPage";
 
 export default function App() {
   const { pathname } = useLocation();
+  const unlocked = useLiveQuery(async () => !!(await getSettings()).bankPasscode, []) ?? false;
 
   // Drop unsubmitted attempts left behind by abandoned papers.
   useEffect(() => {
@@ -23,7 +24,7 @@ export default function App() {
     void db.attempts.filter((a) => a.submittedAt === undefined && a.sessionId !== current).delete();
     // Pull new sets from the shared bank. Silently does nothing when the bank is unreachable.
     void (async () => {
-      const settings = (await db.settings.get("settings")) ?? DEFAULT_SETTINGS;
+      const settings = await getSettings();
       if (settings.autoImportBank === false) return;
       try {
         await syncFromBank();
@@ -39,10 +40,11 @@ export default function App() {
       <nav className="nav">
         <NavLink to="/" className="brand">SAQ</NavLink>
         <NavLink to="/" end>Coverage</NavLink>
-        <NavLink to="/create">Create</NavLink>
         <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/bank">Bank</NavLink>
         <NavLink to="/settings">Settings</NavLink>
+        <span style={{ flex: 1 }} />
+        <NavLink to="/create" title={unlocked ? "Creator tools" : "Creator tools (passcode)"}>{unlocked ? "Create" : "Create 🔒"}</NavLink>
       </nav>
       <main className={full ? "page full" : "page"}>
         <Routes>

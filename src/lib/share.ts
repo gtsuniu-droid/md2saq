@@ -1,4 +1,4 @@
-import { db } from "../data/db";
+import { db, patchSettings, getSettings } from "../data/db";
 import { BankPasscodeError, uploadBankSet } from "./bank";
 import { exportSet } from "./exportImport";
 
@@ -12,14 +12,14 @@ export async function shareSet(setId: string, passcode: string): Promise<{ name:
   const pack = await exportSet(setId);
   const entry = await uploadBankSet(pack, passcode);
   await db.sets.update(setId, { bankId: entry.id });
-  await db.settings.update("settings", { bankPasscode: passcode });
+  await patchSettings({ bankPasscode: passcode });
   return { name: pack.set.name, questions: pack.questions.length };
 }
 
 export async function savedPasscode(): Promise<string> {
-  return (await db.settings.get("settings"))?.bankPasscode ?? "";
+  return (await getSettings()).bankPasscode ?? "";
 }
 
 export async function forgetPasscode(): Promise<void> {
-  await db.settings.update("settings", { bankPasscode: undefined });
+  await patchSettings({ bankPasscode: undefined });
 }

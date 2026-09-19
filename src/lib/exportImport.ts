@@ -1,4 +1,4 @@
-import { db, newId } from "../data/db";
+import { db, newId, patchSettings } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 
 export interface ExportFile {
@@ -26,7 +26,7 @@ export async function exportAll(): Promise<ExportFile> {
     db.attempts.toArray(),
     db.marks.toArray(),
   ]);
-  await db.settings.update("settings", { lastExportAt: Date.now() });
+  await patchSettings({ lastExportAt: Date.now() });
   return { format: "saq-practice", version: 1, exportedAt: Date.now(), sets, questions, attempts, marks };
 }
 

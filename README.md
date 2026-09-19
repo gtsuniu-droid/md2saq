@@ -53,6 +53,12 @@ marking point per line, or a semicolon-separated list. If the model answer is se
 with the same labels as the parts, each part gets its own marking points. The preview on
 the Create page lets you fix any mis-split before saving.
 
+## Creator area
+
+Create and the Bank are locked behind the bank passcode. Anyone can practise and browse
+their own library; only people with the passcode can add questions or see the shared
+bank. The passcode is remembered per device and can be cleared from Settings.
+
 ## Layout
 
 - **Coverage**: the 47 presentations with their state (grey = not started, amber =
