@@ -67,8 +67,8 @@ A question can carry any number of stems: the case information the candidate rea
 before answering. Papers written as "Stage 1 … Question 1 … Stage 2 … Question 3" parse
 into exactly that, with each question holding the stems that precede it. On Create you
 can also add a stem to any question by hand; it applies to that question and every
-later one. In a paper, later stages stay locked until the earlier stage's questions are
-submitted, so "answer each stage before reading the next" is enforced. A "Suggested
+later one. In a paper every question is reachable at any time; later stems simply
+appear with their question. A "Suggested
 time" line in the paper is remembered and offered as the timer when you sit the whole
 set.
 
@@ -94,8 +94,9 @@ bank. The passcode is remembered per device and can be cleared from Settings.
 - **Browse**: your sets. Open one to sit it as a practice or exam paper, see each
   question's last score, and review past sittings. Papers are always sat whole.
 - **Paper**: sidebar of question parts on the left, stem in the middle, one answer box
-  per part on the right, scrolling independently. Bold, italic, underline, highlight.
-  Timer at the top. When it hits zero, everything locks and submits.
+  per part on the right, scrolling independently, with a draggable divider between the
+  two panels. Bold, italic, underline, highlight. Timer at the top. When it hits zero,
+  everything locks and submits.
 - **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
   error tags, reflection, learning point.
 - **Bank**: every shared question set, browsable question by question behind the

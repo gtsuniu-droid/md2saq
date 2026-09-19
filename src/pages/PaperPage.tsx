@@ -1,10 +1,10 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { db, newId } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
-import { answerParts, formatDuration, lockedIndices, partLabel, stemsOf } from "../lib/questions";
+import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
 import { getSettings } from "../data/db";
@@ -19,6 +19,35 @@ export default function PaperPage() {
   const answersRef = useRef<Map<string, PartAnswer[]>>(new Map());
   const flushTimers = useRef<Map<string, number>>(new Map());
   const submittingRef = useRef(false);
+  const [stemPct, setStemPct] = useState<number>(() => {
+    try {
+      const v = Number(localStorage.getItem("saq-stem-pct"));
+      return v >= 20 && v <= 80 ? v : 50;
+    } catch {
+      return 50;
+    }
+  });
+  const splitRef = useRef<HTMLDivElement>(null);
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const box = splitRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const move = (ev: PointerEvent) => {
+      const pct = Math.min(80, Math.max(20, ((ev.clientX - box.left) / box.width) * 100));
+      setStemPct(pct);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setStemPct((v) => {
+        try { localStorage.setItem("saq-stem-pct", String(Math.round(v))); } catch { /* ignore */ }
+        return v;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   // Create attempts for the session's questions if they do not exist yet.
   useEffect(() => {
@@ -159,7 +188,7 @@ export default function PaperPage() {
   };
 
   const goTo = async (i: number, label = "") => {
-    if (!session || locked[i]) return;
+    if (!session) return;
     if (attempt) await flushAttempt(attempt.id);
     const next = { ...session, index: i };
     saveSession(next);
@@ -175,11 +204,6 @@ export default function PaperPage() {
     nav(`/mark/${attempt.id}`);
   };
 
-  const locked = useMemo(
-    () => (data ? lockedIndices(data.questions, data.attempts.map((a) => !!a.submittedAt)) : []),
-    [data],
-  );
-
   const sidebar = useMemo(() => {
     if (!data) return [];
     return data.questions.flatMap((q, i) =>
@@ -190,6 +214,10 @@ export default function PaperPage() {
   if (!session || !data || !question || !attempt) return null;
   const editorLocked = !!attempt.submittedAt || expired;
   const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((x) => x.text)];
+  // Where the question's own text goes: with stems it is a question and belongs above the
+  // answer boxes; without stems but with parts it is the case stem; alone, it is the question.
+  const stems = stemsOf(question);
+  const textOnRight = stems.length > 0 || question.parts.length === 0;
   const parts = answerParts(question);
   const cached = answersRef.current.get(attempt.id) ?? attempt.answers;
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
@@ -216,31 +244,38 @@ export default function PaperPage() {
             const a = data.attempts[row.i];
             const flagged = (answersRef.current.get(a.id) ?? a.answers).find((x) => x.label === row.label)?.flagged;
             const current = row.i === index && (row.label === activePart || parts.length === 1);
-            const isLocked = locked[row.i];
             return (
               <button
                 key={`${row.i}-${row.label}`}
                 className={(current ? "current " : "") + (a.submittedAt ? "done" : "")}
                 onClick={() => goTo(row.i, row.label)}
-                disabled={isLocked}
-                title={isLocked ? "Answer the earlier stage first" : undefined}
               >
-                {row.text}{isLocked ? <span className="flag">🔒</span> : flagged ? <span className="flag">⚑</span> : null}
+                {row.text}{flagged ? <span className="flag">⚑</span> : null}
               </button>
             );
           })}
         </div>
-        <div className="paper-stem">
-          <div className="qnum">Question {index + 1}</div>
-          {stemsOf(question).map((st, si) => (
+        <div className="paper-split" ref={splitRef}>
+        <div className="paper-stem" style={{ flexBasis: `${stemPct}%` }}>
+          <div className="col-head">{index + 1}</div>
+          {stems.map((st, si) => (
             <div key={si} className="stem-block">
-              {stemsOf(question).length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
+              {stems.length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
               <AmbossText cacheKey={question.id} texts={ambossTexts} text={st} disabled={!ambossOnPaper} />
             </div>
           ))}
-          <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} disabled={!ambossOnPaper} />
+          {!textOnRight && <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} disabled={!ambossOnPaper} />}
+          {stems.length === 0 && textOnRight && <div className="muted">No case stem for this question.</div>}
         </div>
+        <div className="paper-handle" onPointerDown={startDrag} title="Drag to resize" />
         <div className="paper-answers">
+          <div className="col-head">Answer</div>
+          {textOnRight && (
+            <div className="part-head" style={{ marginBottom: "1rem" }}>
+              <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} className="text" disabled={!ambossOnPaper} />
+              {question.parts.length === 0 && question.marks !== undefined && <span className="marks">({question.marks} mark{question.marks === 1 ? "" : "s"})</span>}
+            </div>
+          )}
           {parts.map((p) => {
             const ans = cached.find((x) => x.label === p.label);
             return (
@@ -262,11 +297,10 @@ export default function PaperPage() {
           })}
           {index < data.questions.length - 1 && (
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button onClick={() => goTo(index + 1)} disabled={locked[index + 1]} title={locked[index + 1] ? "Submit this stage first" : undefined}>
-                Next question →{locked[index + 1] ? " 🔒" : ""}
-              </button>
+              <button onClick={() => goTo(index + 1)}>Next question →</button>
             </div>
           )}
+        </div>
         </div>
       </div>
     </>

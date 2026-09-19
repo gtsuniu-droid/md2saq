@@ -41,19 +41,3 @@ export function formatDate(ts: number): string {
 export function stemsOf(q: Question): string[] {
   return q.stems ?? [];
 }
-
-/**
- * Stage locking for staged cases: a question is locked while any earlier question
- * in the session that has fewer stems is still unsubmitted ("answer each stage
- * before reading the next").
- */
-export function lockedIndices(questions: Question[], submitted: boolean[]): boolean[] {
-  return questions.map((q, i) => {
-    const n = stemsOf(q).length;
-    if (n === 0) return false;
-    for (let j = 0; j < i; j++) {
-      if (!submitted[j] && stemsOf(questions[j]).length < n) return true;
-    }
-    return false;
-  });
-}
