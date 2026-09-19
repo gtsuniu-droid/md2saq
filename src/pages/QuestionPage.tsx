@@ -5,6 +5,7 @@ import { ERROR_TAGS } from "../data/types";
 import PresentationPicker from "../components/PresentationPicker";
 import AnswerHtml from "../components/AnswerHtml";
 import { answerParts, formatDate, formatDuration, partLabel, stemsOf } from "../lib/questions";
+import { setLabel } from "../lib/sets";
 import AmbossText from "../components/AmbossText";
 
 export default function QuestionPage() {
@@ -39,7 +40,7 @@ export default function QuestionPage() {
   return (
     <div>
       <div className="row spread">
-        <div className="muted"><Link to={`/set/${q.setId}`}>{set?.name}</Link>, question {q.order + 1}</div>
+        <div className="muted"><Link to={`/set/${q.setId}`}>{set ? setLabel(set) : "Set"}</Link>, question {q.order + 1}</div>
         <button className="danger small" onClick={remove}>Delete question</button>
       </div>
       <div className="card" style={{ marginTop: "0.8rem" }}>
@@ -48,6 +49,9 @@ export default function QuestionPage() {
             {stemsOf(q).length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
             <AmbossText cacheKey={q.id} texts={qTexts} text={st} />
           </div>
+        ))}
+        {(q.images ?? []).map((im) => (
+          <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
         ))}
         <AmbossText cacheKey={q.id} texts={qTexts} text={q.text} />
         {q.parts.map((p) => (

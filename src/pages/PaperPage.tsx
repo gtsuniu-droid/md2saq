@@ -295,9 +295,13 @@ export default function PaperPage() {
         )}
         <span style={{ flex: 1 }} />
         {session.mode === "practice" ? (
-          <button className="primary" onClick={submitCurrent} disabled={!!attempt.submittedAt || expired}>
-            {attempt.submittedAt ? `Question ${index + 1} submitted` : `Submit question ${index + 1}`}
-          </button>
+          unsubmitted === 0 ? (
+            <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish</button>
+          ) : (
+            <button className="primary" onClick={submitCurrent} disabled={!!attempt.submittedAt || expired}>
+              {attempt.submittedAt ? `Question ${index + 1} submitted` : `Submit question ${index + 1}`}
+            </button>
+          )
         ) : (
           <button className="primary" onClick={submitAll} disabled={expired}>Submit paper ({unsubmitted} left)</button>
         )}
@@ -334,6 +338,9 @@ export default function PaperPage() {
             </div>
           ))}
           {legacyStem && <AmbossText cacheKey={question.id} texts={stemTexts} text={legacyStem} disabled={!ambossOnPaper} highlights={groupHighlights(0)} dataStem={0} />}
+          {groupIndices.flatMap((i) => (data.questions[i].images ?? []).filter((im) => im.place === "stem")).map((im) => (
+            <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
+          ))}
           {stems.length === 0 && !legacyStem && <div className="muted">No case stem.</div>}
         </div>
         <div className="paper-handle" onPointerDown={startDrag} title="Drag to resize" />
@@ -360,6 +367,9 @@ export default function PaperPage() {
                     {q.parts.length === 0 && q.marks !== undefined && <span className="marks">({q.marks} mark{q.marks === 1 ? "" : "s"})</span>}
                   </div>
                 )}
+                {(q.images ?? []).filter((im) => im.place === "question").map((im) => (
+                  <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
+                ))}
                 {parts.map((p) => {
                   const ans = cachedAnswers.find((x) => x.label === p.label);
                   return (

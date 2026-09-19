@@ -3,6 +3,7 @@ import { applyBankUpdate, importSetPack, type SetPack } from "./exportImport";
 
 export interface BankEntry {
   id: string;
+  number?: number;
   name: string;
   source?: string;
   collection?: string;
@@ -79,12 +80,16 @@ export async function syncFromBank(): Promise<number | null> {
     const mine = byBankId.get(e.id);
     if (!mine) {
       const pack = await fetchBankSet(e.id, passcode);
-      await importSetPack(pack, e.id, e.updatedAt ?? e.uploadedAt);
+      await importSetPack(pack, e.id, e.updatedAt ?? e.uploadedAt, e.number);
       n++;
-    } else if (e.updatedAt && e.updatedAt > (mine.bankUpdatedAt ?? 0) && e.updatedAt > (mine.updatedAt ?? 0)) {
-      const pack = await fetchBankSet(e.id, passcode);
-      await applyBankUpdate(mine.id, pack, e.updatedAt);
-      n++;
+    } else {
+      if (e.number !== undefined && mine.number !== e.number) await db.sets.update(mine.id, { number: e.number });
+      // Never overwrite edits that have not reached the bank yet.
+      if (!mine.dirty && e.updatedAt && e.updatedAt > (mine.bankUpdatedAt ?? 0)) {
+        const pack = await fetchBankSet(e.id, passcode);
+        await applyBankUpdate(mine.id, pack, e.updatedAt);
+        n++;
+      }
     }
   }
   return n;

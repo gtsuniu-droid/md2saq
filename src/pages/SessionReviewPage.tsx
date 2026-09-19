@@ -29,7 +29,7 @@ export default function SessionReviewPage() {
 
   return (
     <div>
-      <h1>Paper submitted</h1>
+      <h1>{unmarked.length === 0 ? "Session complete" : "Paper submitted"}</h1>
       <p className="muted">{ordered.length} questions, {formatDuration(ordered.reduce((acc, r) => acc + r.a.elapsedSec, 0))}, {unmarked.length} left to mark{max > 0 ? `, ${total}/${max} so far` : ""}</p>
       <table>
         <thead><tr><th>#</th><th>Question</th><th>Time</th><th>Mark</th></tr></thead>
@@ -46,7 +46,7 @@ export default function SessionReviewPage() {
       </table>
       <div className="row" style={{ marginTop: "1rem" }}>
         {unmarked.length > 0 && <button className="primary" onClick={() => nav(`/mark/${unmarked[0].a.id}`)}>Mark next</button>}
-        <button onClick={finish}>Finish</button>
+        <button className={unmarked.length === 0 ? "primary" : ""} onClick={finish}>Done</button>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { db, newId, patchSettings } from "../data/db";
+import { nextSetNumber } from "./sets";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 
 export interface ExportFile {
@@ -49,10 +50,11 @@ export async function exportSet(setId: string): Promise<SetPack> {
 }
 
 /** Import a shared set with fresh ids so it never collides with local data. */
-export async function importSetPack(pack: SetPack, bankId?: string, bankUpdatedAt?: number): Promise<string> {
+export async function importSetPack(pack: SetPack, bankId?: string, bankUpdatedAt?: number, number?: number): Promise<string> {
   if (pack.format !== "saq-practice-set") throw new Error("Not a question set file.");
   const setId = newId();
-  const set: QuestionSet = { ...pack.set, id: setId, createdAt: Date.now(), updatedAt: undefined, bankId, bankUpdatedAt };
+  const num = number ?? pack.set.number ?? (await nextSetNumber());
+  const set: QuestionSet = { ...pack.set, id: setId, number: num, createdAt: Date.now(), updatedAt: undefined, bankId, bankUpdatedAt };
   const questions: Question[] = pack.questions.map((q) => ({ ...q, id: newId(), setId, createdAt: Date.now() }));
   await db.transaction("rw", db.sets, db.questions, async () => {
     await db.sets.add(set);

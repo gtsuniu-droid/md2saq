@@ -6,13 +6,66 @@ export interface Presentation {
   synonyms: string[];
   /** Parent presentation id for sub-presentations. */
   parent?: string;
+  /** Trial: a small picture for lists. */
+  emoji?: string;
 }
+
+const EMOJI: Record<string, string> = {
+  "abdominal-pain": "🫃",
+  "abnormal-speech": "🗣️",
+  "altered-bowel-habit": "🚽",
+  "altered-sleep": "😴",
+  "altered-urinary-volume": "💧",
+  "cognitive-impairment": "🧩",
+  "chest-pain": "🫀",
+  "confusion": "😵‍💫",
+  "constipation": "🧱",
+  "cough": "😮‍💨",
+  "diarrhoea": "🌊",
+  "dizziness": "🌀",
+  "dysphagia": "🥄",
+  "dyspnoea": "🫁",
+  "falls": "🤸",
+  "fertility-visit": "🤰",
+  "fever": "🌡️",
+  "haematemesis": "🩸",
+  "haematuria": "🩸",
+  "haemoptysis": "🩸",
+  "headache": "🤕",
+  "hearing-loss": "👂",
+  "high-blood-pressure": "📈",
+  "jaundice": "💛",
+  "joint-pain": "🦴",
+  "joint-swelling": "🦵",
+  "lack-of-energy": "🔋",
+  "loss-of-consciousness": "😵",
+  "low-blood-pressure": "📉",
+  "muscle-weakness": "💪",
+  "musculoskeletal-pain": "🩻",
+  "back-pain": "🧍",
+  "palpitations": "💓",
+  "polydipsia": "🥤",
+  "rectal-bleeding": "🩸",
+  "sensory-disturbance": "🫳",
+  "sore-throat": "🗣️",
+  "swelling": "🎈",
+  "trauma": "🚑",
+  "tremor": "🫨",
+  "urinary-symptoms": "🚻",
+  "vision-loss": "👁️",
+  "vomiting": "🤢",
+  "weight-gain": "⚖️",
+  "weight-loss": "📏",
+  "wheeze-stridor": "🌬️",
+  "wounds": "🩹",
+};
 
 const p = (id: string, name: string, synonyms: string[] = [], parent?: string): Presentation => ({
   id,
   name,
   synonyms: synonyms.map((s) => s.toLowerCase()),
   parent,
+  emoji: EMOJI[id],
 });
 
 export const PRESENTATIONS: Presentation[] = [

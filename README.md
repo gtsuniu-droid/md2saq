@@ -57,8 +57,8 @@ Three ways, fastest first:
 1. **Drop a generated case bank.** On Create, drop the output folder of the generator,
    or its files: `all_questions.txt`, `all_explained_answers.txt` and
    `contents_and_coverage.txt`, or the per-case files. A case that appears in both the
-   combined file and its own file is taken once. Every `CASE NN: TITLE` becomes a set
-   named "Case NN", with the title kept alongside, its stem, questions, parts and marks, the matching
+   combined file and its own file is taken once. Every `CASE NN: TITLE` becomes a
+   numbered set with the case title kept as detail, its stem, questions, parts and marks, the matching
    explained answers attached per question and per part, the coverage file's conditions
    as tags, and the paper's instructions, marking principles and debrief kept with it.
    One click saves them all or saves and shares them all.
@@ -88,29 +88,39 @@ marking point per line, or a semicolon-separated list. If the model answer is se
 with the same labels as the parts, each part gets its own marking points. The preview on
 the Create page lets you fix any mis-split before saving.
 
-## Tags and collections
+## Numbers and tags
 
-A set carries a collection (the bank it came from) and free tags, normally the
-conditions it covers. Browse filters by either, and a set page links each tag. Both are
-editable on the set's Edit page, along with every question, part and model answer.
+Sets are known by number: Set 1, Set 2, and so on. The bank assigns the number when a
+set is first shared, so every device agrees; a set that has not reached the bank yet
+carries a provisional number. What a set is about is carried by its tags, normally the
+conditions it covers, and by its presentations. Browse filters by tag, presentation and
+collection, and a set page links each tag. Title and collection are kept as detail for
+searching and can be edited on the set's Edit page, along with every question, part and
+model answer.
 
-## Editing the bank
+## Master
 
-With the passcode, Edit on a set page or on the Bank page opens the editor; "Save and
-update bank" pushes the new version. Everyone else's copy refreshes the next time their
-app opens, matched by question position so their attempts and marks stay attached.
-Remove on the Bank page deletes the shared copy; local copies are kept.
+Master, at the bottom of Settings behind the passcode, is the one place the bank is built: drop a folder or paste
+a paper to add sets, Edit any set, Delete a set everywhere. Whatever is saved there is
+pushed to the shared bank straight away when the site can reach it, and everyone's
+library follows on their next open, matched by question position so attempts and marks
+stay attached. If the bank was unreachable, "Push local changes" catches up later.
+
+The editor reorders questions by dragging their handle and attaches pictures to a stem
+or a question; pictures are resized on the way in and travel with the set.
 
 ## Creator area
 
-Create and the Bank are locked behind the bank passcode. Anyone can practise and browse
-their own library; only people with the passcode can add questions or see the shared
-bank. The passcode is remembered per device and can be cleared from Settings.
+Master is locked behind the bank passcode. Anyone can practise and browse their own
+library; only people with the passcode can change the bank. The passcode is remembered
+per device and can be cleared from Settings.
 
 ## Layout
 
-- **Coverage**: the 47 presentations with their state (grey = not started, amber =
-  attempted, green = marked), question counts, mean score and last studied date.
+- **Home**: an activity heatmap with answered, score, daily average and time per
+  question for the week, year or overall; and a session builder that picks
+  presentations, shows progress per presentation, and starts a practice or exam of
+  as many random questions as you like, cases kept together.
 - **Browse**: your sets. Open one to sit it as a practice or exam paper, see each
   question's last score, and review past sittings. Papers are always sat whole.
 - **Paper**: sidebar of question parts on the left, stem in the middle, and on the right
@@ -121,9 +131,9 @@ bank. The passcode is remembered per device and can be cleared from Settings.
   everything locks and submits.
 - **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
   error tags, reflection, learning point.
-- **Bank**: every shared question set, browsable question by question behind the
-  passcode. Import into your library, or share one of yours.
-- **Settings**: minutes per mark, JSON backup and restore, Anki export of learning points.
+- **Settings**: minutes per mark, AMBOSS login, bank passcode, JSON backup and restore,
+  Anki export, and at the bottom the Master section: the bank's control room, behind the
+  passcode.
 
 ## Pushing questions from your own generator
 

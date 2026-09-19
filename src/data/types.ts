@@ -1,5 +1,7 @@
 export interface QuestionSet {
   id: string;
+  /** Running number, assigned by the bank when shared so every device agrees; provisional before that. */
+  number?: number;
   name: string;
   source?: string;
   /** Bank or paper the set belongs to, e.g. "Dizziness SAQ Bank". */
@@ -20,6 +22,17 @@ export interface QuestionSet {
   bankId?: string;
   /** The bank entry's updatedAt at the time of the last import, to detect newer versions. */
   bankUpdatedAt?: number;
+  /** True when this device has edits not yet pushed to the bank. */
+  dirty?: boolean;
+}
+
+export interface QuestionImage {
+  id: string;
+  /** Resized picture as a data URL. */
+  dataUrl: string;
+  caption?: string;
+  /** Shown with the stem (left column) or with the question (right column). */
+  place: "stem" | "question";
 }
 
 export interface SubPart {
@@ -35,8 +48,9 @@ export interface Question {
   setId: string;
   /** Position within the set. */
   order: number;
-  /** Case stems shown before the question, in order. Later stems are revealed stage by stage. */
+  /** Case stems shown before the question, in order. */
   stems?: string[];
+  images?: QuestionImage[];
   text: string;
   marks?: number;
   /** Raw model answer as pasted. Marking points are derived from it. */

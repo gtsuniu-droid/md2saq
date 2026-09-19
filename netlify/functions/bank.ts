@@ -6,6 +6,8 @@ import { PRESENTATION_BY_ID } from "../../src/data/presentations";
 
 interface BankEntry {
   id: string;
+  /** Running number across the bank, assigned when the set is first shared. */
+  number?: number;
   name: string;
   source?: string;
   collection?: string;
@@ -30,7 +32,7 @@ interface TextUpload {
 
 interface SetPackUpload {
   format: "saq-practice-set";
-  set: { name?: string; source?: string; collection?: string; tags?: string[] };
+  set: { name?: string; source?: string; collection?: string; tags?: string[]; number?: number };
   questions: { presentations?: string[] }[];
   key?: string;
 }
@@ -70,6 +72,7 @@ function entryFrom(id: string, pack: Pack, previous?: BankEntry): BankEntry {
   const presentations = [...new Set(pack.questions.flatMap((q) => q.presentations ?? []))];
   return {
     id,
+    number: previous?.number,
     name: String(set.name ?? "Untitled set").slice(0, 200),
     source: set.source ? String(set.source).slice(0, 200) : undefined,
     collection: set.collection ? String(set.collection).slice(0, 200) : undefined,
@@ -93,7 +96,16 @@ export default async (req: Request): Promise<Response> => {
   if (!expected) return new Response("The bank is not configured on this site (BANK_PASSCODE is unset).", { status: 503 });
   if (suppliedPasscode(req) !== expected) return new Response("Wrong passcode.", { status: 403 });
 
-  const loadIndex = async (): Promise<BankEntry[]> => ((await store.get("index", { type: "json" })) as BankEntry[] | null) ?? [];
+  const loadIndex = async (): Promise<BankEntry[]> => {
+    const index = ((await store.get("index", { type: "json" })) as BankEntry[] | null) ?? [];
+    // Entries from before numbering get numbers in upload order, once.
+    if (index.some((e) => e.number === undefined)) {
+      let next = index.reduce((m, e) => Math.max(m, e.number ?? 0), 0);
+      for (const e of [...index].sort((a, b) => a.uploadedAt - b.uploadedAt)) if (e.number === undefined) e.number = ++next;
+      await store.setJSON("index", index);
+    }
+    return index;
+  };
 
   const readPack = async (): Promise<{ pack: Pack; key?: string } | Response> => {
     let body: TextUpload | SetPackUpload;
@@ -112,7 +124,7 @@ export default async (req: Request): Promise<Response> => {
     } else {
       return new Response("Unknown format. Send saq-practice-text or saq-practice-set.", { status: 400 });
     }
-    if (JSON.stringify(pack).length > 2_000_000) return new Response("Set too large.", { status: 413 });
+    if (JSON.stringify(pack).length > 5_500_000) return new Response("Set too large: keep pictures under 5 MB per set.", { status: 413 });
     return { pack, key: typeof body.key === "string" ? body.key.slice(0, 200) : undefined };
   };
 
@@ -135,7 +147,9 @@ export default async (req: Request): Promise<Response> => {
       if (existing) return json({ ...existing, duplicate: true });
     }
     const id = crypto.randomUUID();
-    const entry = { ...entryFrom(id, r.pack), key: r.key };
+    const number = index.reduce((m, e) => Math.max(m, e.number ?? 0), 0) + 1;
+    const entry = { ...entryFrom(id, r.pack), number, key: r.key };
+    (r.pack.set as { number?: number }).number = number;
     await store.setJSON(`sets/${id}`, r.pack);
     await store.setJSON("index", [...index, entry]);
     return json(entry, 201);
@@ -150,6 +164,7 @@ export default async (req: Request): Promise<Response> => {
     const r = await readPack();
     if (r instanceof Response) return r;
     const entry = entryFrom(id, r.pack, previous);
+    (r.pack.set as { number?: number }).number = previous.number;
     await store.setJSON(`sets/${id}`, r.pack);
     await store.setJSON("index", index.map((e) => (e.id === id ? entry : e)));
     return json(entry);

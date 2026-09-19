@@ -1,15 +1,16 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { db, getSettings } from "../data/db";
 import { presentationName } from "../data/presentations";
-import ShareSetButton from "../components/ShareSetButton";
 import { formatDate, formatDuration, partLabel, totalMarks, truncate } from "../lib/questions";
-import { loadSummaries, startSet, suggestedMinutesFor } from "../lib/sets";
+import { loadSummaries, setLabel, startSet, suggestedMinutesFor } from "../lib/sets";
 
 export default function SetPage() {
   const { id = "" } = useParams();
   const nav = useNavigate();
+  const location = useLocation();
+  const flash = (location.state as { message?: string } | null)?.message;
   const [minutes, setMinutes] = useState("");
   const data = useLiveQuery(async () => {
     const summaries = await loadSummaries();
@@ -38,7 +39,7 @@ export default function SetPage() {
   };
 
   const remove = async () => {
-    if (!confirm(`Delete "${set.name}" with its ${questions.length} questions and every attempt?`)) return;
+    if (!confirm(`Delete ${setLabel(set)} with its ${questions.length} questions and every attempt?`)) return;
     const qids = questions.map((q) => q.id);
     await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
       await db.marks.where("questionId").anyOf(qids).delete();
@@ -52,12 +53,14 @@ export default function SetPage() {
   return (
     <div>
       <div className="muted"><Link to="/browse">Browse</Link>{set.collection ? <>, <Link to={`/browse?collection=${encodeURIComponent(set.collection)}`}>{set.collection}</Link></> : null}</div>
-      <h1 style={{ marginTop: "0.3rem" }}>{set.name}</h1>
+      <h1 style={{ marginTop: "0.3rem" }}>{setLabel(set)}</h1>
+      {flash && <p style={{ color: flash.startsWith("Saved and") ? "var(--ok)" : "var(--warn)" }}>{flash}</p>}
       <p className="muted" style={{ marginTop: "-0.8rem" }}>
         {[
           `${questions.length} question${questions.length === 1 ? "" : "s"}`,
           summary.marks ? `${summary.marks} marks` : "",
           summary.presentations.map(presentationName).join(", "),
+          set.number !== undefined && set.name && set.name !== setLabel(set) ? set.name : "",
           set.source ?? "",
         ].filter(Boolean).join(", ")}
       </p>
@@ -79,7 +82,6 @@ export default function SetPage() {
         <input type="number" min={0} placeholder={String(suggested)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
         <span className="muted">min{set.suggestedMinutes ? ", as the paper suggests" : ""}. 0 for no timer.</span>
         <span style={{ flex: 1 }} />
-        {unlocked && <ShareSetButton setId={set.id} className="small" />}
         {unlocked && <Link to={`/set/${set.id}/edit`}><button className="small">Edit</button></Link>}
         <button className="small danger" onClick={remove}>Delete</button>
       </div>

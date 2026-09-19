@@ -117,7 +117,8 @@ export default function MarkPage() {
         nav("/paper");
         return;
       }
-      saveSession(null);
+      nav(`/session/${inSession.id}`);
+      return;
     }
     nav(`/question/${question.id}`);
   };
@@ -156,6 +157,9 @@ export default function MarkPage() {
             ))}
           </details>
         )}
+        {(question.images ?? []).map((im) => (
+          <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
+        ))}
         <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} />
       </div>
       {data.set?.markingNotes && (
@@ -255,7 +259,9 @@ export default function MarkPage() {
         </div>
         <div className="row">
           <button className="primary" onClick={save}>
-            {inSession?.mode === "practice" && inSession.attemptIds.indexOf(attempt.id) < inSession.questionIds.length - 1 ? "Save and next question" : "Save mark"}
+            {inSession?.mode === "practice"
+              ? inSession.attemptIds.indexOf(attempt.id) < inSession.questionIds.length - 1 ? "Save and next question" : "Save and finish"
+              : "Save mark"}
           </button>
         </div>
       </div>

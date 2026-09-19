@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { PRESENTATIONS, presentationName } from "../data/presentations";
 import { formatDate } from "../lib/questions";
-import { loadSummaries } from "../lib/sets";
+import { loadSummaries, setLabel } from "../lib/sets";
 
 export default function BrowsePage() {
   const nav = useNavigate();
@@ -36,7 +36,7 @@ export default function BrowsePage() {
       if (status === "sat" && !sat) return false;
       if (status === "unmarked" && (!sat || marked)) return false;
       if (q) {
-        const hay = [s.set.name, s.set.source ?? "", s.set.collection ?? "", ...(s.set.tags ?? []), ...s.questions.map((x) => x.text), ...s.questions.flatMap((x) => x.stems ?? [])].join(" ").toLowerCase();
+        const hay = [setLabel(s.set), s.set.name, s.set.source ?? "", s.set.collection ?? "", ...(s.set.tags ?? []), ...s.questions.map((x) => x.text), ...s.questions.flatMap((x) => x.stems ?? [])].join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -54,7 +54,7 @@ export default function BrowsePage() {
         <select value={presentation} onChange={(e) => setParam("presentation", e.target.value)}>
           <option value="">All presentations</option>
           {PRESENTATIONS.map((p) => (
-            <option key={p.id} value={p.id}>{p.parent ? "  ↳ " : ""}{p.name}</option>
+            <option key={p.id} value={p.id}>{p.parent ? "  ↳ " : ""}{p.emoji ? `${p.emoji} ` : ""}{p.name}</option>
           ))}
         </select>
         {allTags.length > 0 && (
@@ -77,8 +77,8 @@ export default function BrowsePage() {
         </select>
         <input type="search" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span style={{ flex: 1 }} />
-        <button className="small link" onClick={() => nav(presentation ? `/create?presentation=${presentation}` : "/create")}>
-          + New set{presentation ? ` for ${presentationName(presentation)}` : ""}
+        <button className="small link" onClick={() => nav("/settings#master")}>
+          + New set
         </button>
       </div>
 
@@ -98,11 +98,11 @@ export default function BrowsePage() {
             return (
               <tr key={s.set.id} className="clickable" onClick={() => nav(`/set/${s.set.id}`)}>
                 <td>
-                  {s.set.name}
+                  {setLabel(s.set)}
                   <div className="muted">
-                    {[s.set.source ?? "", (s.set.tags ?? []).slice(0, 4).join(", ") || s.presentations.slice(0, 3).map(presentationName).join(", "), s.set.suggestedMinutes ? `${s.set.suggestedMinutes} min` : "", s.set.bankId ? "in the bank" : ""]
-                      .filter(Boolean)
-                      .join(", ")}
+                    {(s.set.tags ?? []).length
+                      ? (s.set.tags ?? []).join(", ")
+                      : s.presentations.slice(0, 3).map(presentationName).join(", ")}
                   </div>
                 </td>
                 <td>{s.questions.length}</td>

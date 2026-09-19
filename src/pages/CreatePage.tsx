@@ -7,10 +7,11 @@ import { suggestPresentations } from "../lib/suggest";
 import PresentationPicker from "../components/PresentationPicker";
 import { partLabel } from "../lib/questions";
 import { presentationName } from "../data/presentations";
-import { PasscodeError, forgetPasscode, savedPasscode, shareSet } from "../lib/share";
+import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
 import { readFileText } from "../lib/exportImport";
 import PasscodeGate from "../components/PasscodeGate";
-import { caseSetName, isCaseBank, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
+import { isCaseBank, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
+import { nextSetNumber } from "../lib/sets";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -68,9 +69,11 @@ function draftsFromText(text: string, preset: string): { drafts: Draft[]; meta: 
 }
 
 async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}, extra: Partial<QuestionSet> = {}): Promise<QuestionSet> {
+  const number = await nextSetNumber();
   const set: QuestionSet = {
     id: newId(),
-    name: name.trim() || meta.title || `Set ${new Date().toLocaleDateString()}`,
+    number,
+    name: name.trim() || meta.title || `Set ${number}`,
     source: source.trim() || undefined,
     suggestedMinutes: meta.minutes,
     createdAt: Date.now(),
@@ -104,20 +107,24 @@ export default function CreatePage() {
   );
 }
 
-function CreateTools() {
+interface CreateToolsProps {
+  /** Rendered inside the Master page: no heading. */
+  embedded?: boolean;
+  onSaved?: () => void;
+}
+
+export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const [params] = useSearchParams();
   const presetPresentation = params.get("presentation") ?? "";
   const [raw, setRaw] = useState("");
-  const [name, setName] = useState(presetPresentation ? `${presentationName(presetPresentation)} set` : "");
-  const [source, setSource] = useState("");
+  const [name, setName] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [meta, setMeta] = useState<PaperMeta>({});
   const [files, setFiles] = useState<FileBatch[]>([]);
   const [cases, setCases] = useState<CaseBatch[]>([]);
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
-  const [askPasscode, setAskPasscode] = useState<null | "paste" | "files">(null);
-  const [passcode, setPasscode] = useState("");
   const [notice, setNotice] = useState<{ text: string; setId?: string; error?: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -177,45 +184,35 @@ function CreateTools() {
 
   const totalMarks = useMemo(() => drafts.reduce((acc, d) => acc + (d.marks ?? 0), 0), [drafts]);
 
-  /** Resolve a passcode for sharing, or open the prompt and return null. */
-  const passcodeFor = async (which: "paste" | "files"): Promise<string | null> => {
-    const code = passcode || (await savedPasscode());
-    if (code) return code;
-    setAskPasscode(which);
-    return null;
-  };
-
-  const shareOrReport = async (setId: string, code: string, label: string): Promise<boolean> => {
+  /** Push a saved set to the bank when a passcode is on this device; report but do not block otherwise. */
+  const pushOrReport = async (setId: string, label: string): Promise<boolean> => {
+    if (!(await savedPasscode())) return true;
     try {
-      await shareSet(setId, code);
+      await pushToBank(setId);
       return true;
     } catch (e) {
-      if (e instanceof PasscodeError) {
-        await forgetPasscode();
-        setPasscode("");
-        setNotice({ text: `${label} saved locally, but the passcode was wrong. Share it from Browse once you have the right one.`, error: true });
-      } else {
-        setNotice({ text: `${label} saved locally, but sharing failed: ${e instanceof Error ? e.message : String(e)}`, error: true });
-      }
+      setNotice({ text: `${label} saved on this device, but the bank was not updated: ${bankErrorMessage(e)}`, error: true });
       return false;
     }
   };
 
-  const savePaste = async (share: boolean) => {
+  const typedTags = (): string[] | undefined => {
+    const tags = tagsInput.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
+    return tags.length ? tags : undefined;
+  };
+
+  const savePaste = async () => {
     if (drafts.length === 0) return;
-    const code = share ? await passcodeFor("paste") : "";
-    if (share && !code) return;
     setSaving(true);
     setNotice(null);
-    const set = await saveDrafts(name, source, drafts, meta);
-    let shared = true;
-    if (share) shared = await shareOrReport(set.id, code!, `"${set.name}"`);
-    if (shared) setNotice({ text: `Saved "${set.name}" with ${drafts.length} questions${share ? " and shared it to the bank" : ""}.`, setId: set.id });
+    const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags() });
+    const ok = await pushOrReport(set.id, `Set ${set.number}`);
+    if (ok) setNotice({ text: `Saved Set ${set.number} with ${drafts.length} questions.`, setId: set.id });
     setRaw("");
     setDrafts([]);
     if (!presetPresentation) setName("");
-    setAskPasscode(null);
     setSaving(false);
+    onSaved?.();
   };
 
   const addFiles = async (list: FileList | File[]) => {
@@ -228,7 +225,7 @@ function CreateTools() {
         ...cs,
         ...bank.cases.map((c) => ({
           key: newId(),
-          name: caseSetName(c),
+          name: `Case ${String(c.number).padStart(2, "0")}`,
           collection: bank.collection,
           c,
           drafts: c.questions.map((q) => {
@@ -256,53 +253,47 @@ function CreateTools() {
     await addFiles(await filesFromDrop(e.dataTransfer));
   };
 
-  const saveCases = async (share: boolean) => {
+  const saveCases = async () => {
     if (cases.length === 0) return;
-    const code = share ? await passcodeFor("files") : "";
-    if (share && !code) return;
     setSaving(true);
     setNotice(null);
     let questions = 0;
-    let sharedAll = true;
+    let ok = true;
     for (const b of cases) {
-      const set = await saveDrafts(b.name, source || b.c.title, b.drafts, { minutes: b.c.minutes }, {
+      const set = await saveDrafts("", `${b.name}: ${b.c.title}`, b.drafts, { minutes: b.c.minutes }, {
         collection: b.collection,
-        tags: b.c.conditions.length ? b.c.conditions : undefined,
+        tags: b.c.conditions.length ? b.c.conditions : typedTags(),
         instructions: b.c.instructions,
         markingNotes: b.c.markingNotes,
         debrief: b.c.debrief,
       });
       questions += b.drafts.length;
-      if (share && sharedAll) sharedAll = await shareOrReport(set.id, code!, `"${set.name}"`);
+      if (ok) ok = await pushOrReport(set.id, `Set ${set.number}`);
     }
-    if (!share || sharedAll) setNotice({ text: `Saved ${cases.length} case${cases.length === 1 ? "" : "s"} with ${questions} questions${share ? " and shared them to the bank" : ""}.` });
+    if (ok) setNotice({ text: `Saved ${cases.length} case${cases.length === 1 ? "" : "s"} with ${questions} questions.` });
     setCases([]);
-    setAskPasscode(null);
     setSaving(false);
+    onSaved?.();
   };
 
-  const saveFiles = async (share: boolean) => {
+  const saveFiles = async () => {
     const usable = files.filter((f) => f.drafts.length > 0);
     if (usable.length === 0) return;
-    const code = share ? await passcodeFor("files") : "";
-    if (share && !code) return;
     setSaving(true);
     setNotice(null);
     let sets = 0;
     let questions = 0;
-    let sharedAll = true;
+    let ok = true;
     for (const f of usable) {
-      const set = await saveDrafts(f.name, source, f.drafts, f.meta);
+      const set = await saveDrafts(f.name, "", f.drafts, f.meta, { tags: typedTags() });
       sets++;
       questions += f.drafts.length;
-      if (share && sharedAll) sharedAll = await shareOrReport(set.id, code!, `"${set.name}"`);
+      if (ok) ok = await pushOrReport(set.id, `Set ${set.number}`);
     }
-    if (!share || sharedAll) {
-      setNotice({ text: `Saved ${sets} set${sets === 1 ? "" : "s"} with ${questions} questions${share ? " and shared them to the bank" : ""}.` });
-    }
+    if (ok) setNotice({ text: `Saved ${sets} set${sets === 1 ? "" : "s"} with ${questions} questions.` });
     setFiles([]);
-    setAskPasscode(null);
     setSaving(false);
+    onSaved?.();
   };
 
   const editFile = (f: FileBatch) => {
@@ -324,21 +315,11 @@ function CreateTools() {
     window.scrollTo({ top: 0 });
   };
 
-  const passcodePrompt = (which: "paste" | "files") =>
-    askPasscode === which ? (
-      <>
-        <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && passcode) void (which === "paste" ? savePaste(true) : saveFiles(true)); }} />
-        <button onClick={() => (which === "paste" ? savePaste(true) : saveFiles(true))} disabled={saving || !passcode}>Save and share</button>
-        <button onClick={() => setAskPasscode(null)}>Cancel</button>
-      </>
-    ) : null;
-
   const fileQuestionCount = files.reduce((a, f) => a + f.drafts.length, 0);
 
   return (
     <div>
-      <h1>Create</h1>
+      {!embedded && <h1>Create</h1>}
       {presetPresentation && (
         <p className="muted">Every question you add here is tagged <strong>{presentationName(presetPresentation)}</strong>. <Link to="/create">Clear</Link></p>
       )}
@@ -357,7 +338,7 @@ function CreateTools() {
       >
         <div className="row spread">
           <span>
-            <strong>Drop files or a folder here.</strong> A generated case bank (questions, explained answers, coverage) becomes one set per case, named and tagged automatically. Other .txt or .md files become one set each.
+            <strong>Drop files or a folder here.</strong> A generated case bank becomes one numbered set per case, tagged from its coverage file. Other .txt or .md files become one set each.
           </span>
           <button className="small" onClick={() => fileRef.current?.click()}>Choose files</button>
           <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,text/plain,text/markdown" style={{ display: "none" }}
@@ -382,17 +363,7 @@ function CreateTools() {
               </tbody>
             </table>
             <div className="row" style={{ marginTop: "0.6rem" }}>
-              <button className="primary" onClick={() => saveCases(false)} disabled={saving}>Save {cases.length} cases</button>
-              {askPasscode === "files" ? (
-                <>
-                  <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && passcode) void saveCases(true); }} />
-                  <button onClick={() => saveCases(true)} disabled={saving || !passcode}>Save and share</button>
-                  <button onClick={() => setAskPasscode(null)}>Cancel</button>
-                </>
-              ) : (
-                <button onClick={() => saveCases(true)} disabled={saving}>Save and share all</button>
-              )}
+              <button className="primary" onClick={saveCases} disabled={saving}>Save {cases.length} case{cases.length === 1 ? "" : "s"}</button>
             </div>
           </>
         )}
@@ -415,10 +386,8 @@ function CreateTools() {
               </tbody>
             </table>
             <div className="row" style={{ marginTop: "0.6rem" }}>
-              <button className="primary" onClick={() => saveFiles(false)} disabled={saving || fileQuestionCount === 0}>Save {files.filter((f) => f.drafts.length).length} sets ({fileQuestionCount} questions)</button>
-              {askPasscode === "files" ? passcodePrompt("files") : (
-                <button onClick={() => saveFiles(true)} disabled={saving || fileQuestionCount === 0}>Save and share all</button>
-              )}
+              <input type="text" placeholder="Conditions for these sets, comma separated" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} style={{ flex: 1 }} />
+              <button className="primary" onClick={saveFiles} disabled={saving || fileQuestionCount === 0}>Save {files.filter((f) => f.drafts.length).length} sets ({fileQuestionCount} questions)</button>
             </div>
           </>
         )}
@@ -433,15 +402,12 @@ function CreateTools() {
       {drafts.length > 0 && (
         <>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <input type="text" placeholder={meta.title ?? "Set name"} value={name} onChange={(e) => setName(e.target.value)} />
-            <input type="text" placeholder="Source (optional)" value={source} onChange={(e) => setSource(e.target.value)} />
+            <input type="text" placeholder={meta.title ?? "Title (optional)"} value={name} onChange={(e) => setName(e.target.value)} />
+            <input type="text" placeholder="Conditions, comma separated" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} title="Tags for this set" />
             <span className="muted">{drafts.length} questions{totalMarks ? `, ${totalMarks} marks` : ""}{meta.minutes ? `, ${meta.minutes} min suggested` : ""}</span>
           </div>
           <div className="row" style={{ marginTop: "0.6rem" }}>
-            <button className="primary" onClick={() => savePaste(false)} disabled={saving}>Save {drafts.length} questions</button>
-            {askPasscode === "paste" ? passcodePrompt("paste") : (
-              <button onClick={() => savePaste(true)} disabled={saving}>Save and share to bank</button>
-            )}
+            <button className="primary" onClick={savePaste} disabled={saving}>Save {drafts.length} questions</button>
           </div>
           <div className="card" style={{ marginTop: "0.8rem" }}>
             <div className="row spread">
@@ -506,8 +472,7 @@ function CreateTools() {
             ))}
           </div>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <button className="primary" onClick={() => savePaste(false)} disabled={saving}>Save {drafts.length} questions</button>
-            {askPasscode !== "paste" && <button onClick={() => savePaste(true)} disabled={saving}>Save and share to bank</button>}
+            <button className="primary" onClick={savePaste} disabled={saving}>Save {drafts.length} questions</button>
           </div>
         </>
       )}

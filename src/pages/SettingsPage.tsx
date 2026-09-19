@@ -5,6 +5,9 @@ import { DEFAULT_SETTINGS } from "../data/types";
 import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileText, type ExportFile } from "../lib/exportImport";
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
+import MasterPage from "./MasterPage";
+import { useEffect } from "react";
+import { useLocation } from "react-router";
 import { AmbossAuthError, ambossCheck, ambossLogin, ambossLogout } from "../lib/amboss";
 
 export default function SettingsPage() {
@@ -15,6 +18,11 @@ export default function SettingsPage() {
   const [ambossPass, setAmbossPass] = useState("");
   const [ambossBusy, setAmbossBusy] = useState(false);
   const [ambossMsg, setAmbossMsg] = useState<string | null>(null);
+
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === "#master") setTimeout(() => document.getElementById("master")?.scrollIntoView({ block: "start" }), 300);
+  }, [hash]);
 
   if (!settings) return null;
   const stamp = new Date().toISOString().slice(0, 10);
@@ -117,7 +125,7 @@ export default function SettingsPage() {
           <label style={{ margin: 0 }}>Bank passcode</label>
           <input type="password" placeholder="not saved" value={settings.bankPasscode ?? ""}
             onChange={(e) => patchSettings({ bankPasscode: e.target.value || undefined })} />
-          <span className="muted">unlocks Create and the Bank; remembered on this device</span>
+          <span className="muted">unlocks Master; remembered on this device</span>
           {settings.bankPasscode && <button className="small" onClick={() => patchSettings({ bankPasscode: undefined })}>Lock</button>}
         </div>
         <div className="row">
@@ -147,6 +155,10 @@ export default function SettingsPage() {
 
       <h2>Danger</h2>
       <button className="danger" onClick={wipe}>Delete all data on this device</button>
+
+      <div id="master" style={{ marginTop: "3rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
+        <MasterPage />
+      </div>
     </div>
   );
 }

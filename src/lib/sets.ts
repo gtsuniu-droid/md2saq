@@ -102,3 +102,34 @@ export function startSet(summary: SetSummary, mode: "practice" | "exam", minutes
     minutes && minutes > 0 ? Math.round(minutes * 60) : undefined,
   );
 }
+
+/** How a set is referred to everywhere: its number, or its name until it has one. */
+export function setLabel(set: QuestionSet): string {
+  return set.number !== undefined ? `Set ${set.number}` : set.name || "Set";
+}
+
+/** Next provisional number on this device: one above the highest known. */
+export async function nextSetNumber(): Promise<number> {
+  const sets = await db.sets.toArray();
+  return sets.reduce((m, s) => Math.max(m, s.number ?? 0), 0) + 1;
+}
+
+/**
+ * Give numbers to sets that predate numbering, oldest first, and move any
+ * local-only set whose provisional number now clashes with a bank number.
+ */
+export async function numberUnnumberedSets(): Promise<void> {
+  const sets = await db.sets.toArray();
+  let n = sets.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
+  const missing = sets.filter((s) => s.number === undefined).sort((a, b) => a.createdAt - b.createdAt);
+  for (const s of missing) {
+    s.number = ++n;
+    await db.sets.update(s.id, { number: s.number });
+  }
+  const taken = new Set(sets.filter((s) => s.bankId && s.number !== undefined).map((s) => s.number));
+  for (const s of sets) {
+    if (s.bankId || s.number === undefined || !taken.has(s.number)) continue;
+    s.number = ++n;
+    await db.sets.update(s.id, { number: s.number });
+  }
+}
