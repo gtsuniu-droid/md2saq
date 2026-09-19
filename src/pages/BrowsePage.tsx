@@ -10,6 +10,8 @@ export default function BrowsePage() {
   const [params, setParams] = useSearchParams();
   const presentation = params.get("presentation") ?? "";
   const status = params.get("status") ?? "";
+  const tag = params.get("tag") ?? "";
+  const collection = params.get("collection") ?? "";
   const [search, setSearch] = useState("");
 
   const setParam = (k: string, v: string) => {
@@ -26,20 +28,24 @@ export default function BrowsePage() {
     const q = search.trim().toLowerCase();
     return summaries.filter((s) => {
       if (presentation && !s.presentations.includes(presentation)) return false;
+      if (tag && !(s.set.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())) return false;
+      if (collection && (s.set.collection ?? "") !== collection) return false;
       const sat = s.sittings.length > 0;
       const marked = s.sittings.some((x) => x.marked > 0);
       if (status === "new" && sat) return false;
       if (status === "sat" && !sat) return false;
       if (status === "unmarked" && (!sat || marked)) return false;
       if (q) {
-        const hay = [s.set.name, s.set.source ?? "", ...s.questions.map((x) => x.text), ...s.questions.flatMap((x) => x.stems ?? [])].join(" ").toLowerCase();
+        const hay = [s.set.name, s.set.source ?? "", s.set.collection ?? "", ...(s.set.tags ?? []), ...s.questions.map((x) => x.text), ...s.questions.flatMap((x) => x.stems ?? [])].join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [summaries, presentation, status, search]);
+  }, [summaries, presentation, status, search, tag, collection]);
 
   if (!summaries) return null;
+  const allTags = [...new Set(summaries.flatMap((s) => s.set.tags ?? []))].sort((a, b) => a.localeCompare(b));
+  const collections = [...new Set(summaries.map((s) => s.set.collection).filter((c): c is string => !!c))].sort();
 
   return (
     <div>
@@ -51,6 +57,18 @@ export default function BrowsePage() {
             <option key={p.id} value={p.id}>{p.parent ? "  ↳ " : ""}{p.name}</option>
           ))}
         </select>
+        {allTags.length > 0 && (
+          <select value={tag} onChange={(e) => setParam("tag", e.target.value)}>
+            <option value="">All conditions</option>
+            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+        {collections.length > 0 && (
+          <select value={collection} onChange={(e) => setParam("collection", e.target.value)}>
+            <option value="">All collections</option>
+            {collections.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         <select value={status} onChange={(e) => setParam("status", e.target.value)}>
           <option value="">Any status</option>
           <option value="new">Not sat yet</option>
@@ -82,7 +100,7 @@ export default function BrowsePage() {
                 <td>
                   {s.set.name}
                   <div className="muted">
-                    {[s.presentations.slice(0, 3).map(presentationName).join(", "), s.set.suggestedMinutes ? `${s.set.suggestedMinutes} min` : "", s.set.bankId ? "from the bank" : ""]
+                    {[(s.set.tags ?? []).slice(0, 4).join(", ") || s.presentations.slice(0, 3).map(presentationName).join(", "), s.set.suggestedMinutes ? `${s.set.suggestedMinutes} min` : "", s.set.bankId ? "in the bank" : ""]
                       .filter(Boolean)
                       .join(", ")}
                   </div>

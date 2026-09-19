@@ -17,6 +17,7 @@ export default function MarkPage() {
     if (!attempt) return null;
     const question = await db.questions.get(attempt.questionId);
     if (!question) return null;
+    const set = await db.sets.get(question.setId);
     const existing = await db.marks.where("attemptId").equals(attemptId).first();
     const attemptsBefore = (await db.attempts.where("questionId").equals(question.id).toArray())
       .filter((a) => a.submittedAt !== undefined && a.id !== attemptId)
@@ -25,7 +26,7 @@ export default function MarkPage() {
     const previousMark = previous ? await db.marks.where("attemptId").equals(previous.id).first() : undefined;
     const sessionAttempts = attempt.sessionId ? await db.attempts.where("sessionId").equals(attempt.sessionId).toArray() : [attempt];
     const stemHighlights = sessionAttempts.flatMap((a) => a.stemHighlights ?? []);
-    return { attempt, question, existing, previous, previousMark, stemHighlights };
+    return { attempt, question, existing, previous, previousMark, stemHighlights, set };
   }, [attemptId]);
 
   const [confidence, setConfidence] = useState<number | undefined>();
@@ -157,6 +158,12 @@ export default function MarkPage() {
         )}
         <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} />
       </div>
+      {data.set?.markingNotes && (
+        <details className="muted" style={{ marginBottom: "0.8rem" }}>
+          <summary style={{ cursor: "pointer" }}>Marking notes for this paper</summary>
+          <div className="pre" style={{ marginTop: "0.3rem" }}>{data.set.markingNotes}</div>
+        </details>
+      )}
       {wholeModel && (
         <div className="card" style={{ marginBottom: "0.8rem" }}>
           <strong>Model answer</strong>
@@ -215,6 +222,12 @@ export default function MarkPage() {
         );
       })}
 
+      {data.set?.debrief && (
+        <details className="muted" style={{ marginBottom: "0.8rem" }}>
+          <summary style={{ cursor: "pointer" }}>Debrief: common errors, clinical thinking, references</summary>
+          <div className="pre" style={{ marginTop: "0.3rem" }}>{data.set.debrief}</div>
+        </details>
+      )}
       <div className="card stack">
         <div className="row spread">
           <strong>Total {total} / {max}</strong>

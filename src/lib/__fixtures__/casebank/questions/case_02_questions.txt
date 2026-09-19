@@ -1,0 +1,55 @@
+CASE 02: DIZZINESS AFTER A RECENT RESPIRATORY ILLNESS
+MD2 short-answer questions | Total: 25 marks | Suggested time: 31 minutes
+
+INSTRUCTIONS
+- Answer the numbered questions in order, using only the information available at that point.
+- Use concise, patient-specific answers. Where requested, link each feature, investigation or action to its clinical purpose.
+- Specialist diagnostic criteria, numerical risk-score recall and drug doses are not required unless provided in the question.
+- Assessment and resuscitation occur concurrently when a patient is unstable; the written question order does not imply delaying treatment.
+
+CLINICAL STEM
+
+Daniel Reed, a 42-year-old man, presents to the emergency department with severe dizziness, nausea and repeated vomiting since yesterday. He describes the room as moving and says head movement makes him feel worse. He had a cold one week ago. His history includes hypertension treated with perindopril. He is alert, afebrile and uncomfortable. Blood pressure is 154/88 mmHg, pulse 92/min and regular, respiratory rate 16/min, and oxygen saturation 98% on room air. Speech and gross limb power are normal. His gait and eye movements have not yet been assessed.
+
+QUESTION 1 (9 marks)
+
+List THREE (3) plausible diagnoses that could account for this patient's dizziness. For EACH diagnosis, state the underlying mechanism and give TWO (2) additional features on history and ONE (1) finding on examination that you would seek to help distinguish it from the other diagnoses. Briefly explain what the examination finding would suggest. Do not repeat information already supplied in the stem.
+
+Suggested response format: diagnosis | mechanism | history feature 1 | history feature 2 | examination finding and interpretation
+
+Mark allocation: For each of three diagnoses: diagnosis 0.5; mechanism 0.5; each additional history feature 0.5; examination finding 0.5; interpretation 0.5. Total 9.
+
+QUESTION 2 (5 marks)
+
+Symptoms have been continuous for 30 hours, including while lying still. There is no hearing change. Daniel walks independently, although he veers to the left. A senior clinician trained in assessing acute vestibular presentations finds direction-fixed right-beating horizontal-torsional nystagmus, a corrective saccade on leftward head impulse and no vertical ocular misalignment. The remainder of the neurological examination is normal.
+
+a) State the most likely diagnosis and explain ONE finding that supports it. [2 marks]
+
+b) Explain why the recent cold and normal limb power were insufficient to make this diagnosis at presentation. [2 marks]
+
+c) Name ONE circumstance in which urgent further neurological assessment or imaging would still be required. [1 marks]
+
+
+QUESTION 3 (6 marks)
+
+Daniel remains unable to keep fluids down but is haemodynamically stable. A junior colleague proposes regular sedating antivertigo medication for the next month and bed rest until all dizziness resolves.
+
+a) Give TWO immediate supportive measures, with a brief purpose for each. [2 marks]
+
+b) Explain TWO problems with the proposed month-long medication and bed-rest plan. [2 marks]
+
+c) Give TWO criteria you would assess before considering discharge. [2 marks]
+
+
+QUESTION 4 (5 marks)
+
+Consider how your assessment would change if the history or examination were different.
+
+a) Explain why a unilateral vestibular disturbance can cause both nystagmus and nausea. [2 marks]
+
+b) If Daniel also developed acute unilateral hearing loss, how would this alter your differential and the urgency of assessment? [2 marks]
+
+c) Why should the same bedside eye-movement algorithm not be used to rule out stroke in a patient with brief attacks who is now asymptomatic? [1 marks]
+
+
+TOTAL: 25 MARKS

@@ -1,13 +1,16 @@
 import { db, getSettings } from "../data/db";
-import { importSetPack, type SetPack } from "./exportImport";
+import { applyBankUpdate, importSetPack, type SetPack } from "./exportImport";
 
 export interface BankEntry {
   id: string;
   name: string;
   source?: string;
+  collection?: string;
+  tags?: string[];
   questionCount: number;
   presentations: string[];
   uploadedAt: number;
+  updatedAt?: number;
 }
 
 export class BankPasscodeError extends Error {}
@@ -45,18 +48,44 @@ export async function uploadBankSet(pack: SetPack, passcode: string): Promise<Ba
   return (await res.json()) as BankEntry;
 }
 
-/** Import every bank set that is not yet in the library. Returns the number imported, or null when no passcode is saved. */
+export async function updateBankSet(id: string, pack: SetPack, passcode: string): Promise<BankEntry> {
+  const res = await check(
+    await fetch(`/api/bank?id=${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...auth(passcode) },
+      body: JSON.stringify(pack),
+    }),
+  );
+  return (await res.json()) as BankEntry;
+}
+
+export async function deleteBankSet(id: string, passcode: string): Promise<void> {
+  await check(await fetch(`/api/bank?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: auth(passcode) }));
+}
+
+/**
+ * Import every bank set not yet in the library, and refresh local copies of
+ * sets that were edited in the bank since they were imported. Returns the
+ * number of sets touched, or null when no passcode is saved.
+ */
 export async function syncFromBank(): Promise<number | null> {
   const passcode = (await getSettings()).bankPasscode;
   if (!passcode) return null;
   const entries = await listBank(passcode);
-  const have = new Set((await db.sets.toArray()).map((s) => s.bankId).filter(Boolean));
+  const local = await db.sets.toArray();
+  const byBankId = new Map(local.filter((s) => s.bankId).map((s) => [s.bankId!, s]));
   let n = 0;
   for (const e of entries) {
-    if (have.has(e.id)) continue;
-    const pack = await fetchBankSet(e.id, passcode);
-    await importSetPack(pack, e.id);
-    n++;
+    const mine = byBankId.get(e.id);
+    if (!mine) {
+      const pack = await fetchBankSet(e.id, passcode);
+      await importSetPack(pack, e.id, e.updatedAt ?? e.uploadedAt);
+      n++;
+    } else if (e.updatedAt && e.updatedAt > (mine.bankUpdatedAt ?? 0) && e.updatedAt > (mine.updatedAt ?? 0)) {
+      const pack = await fetchBankSet(e.id, passcode);
+      await applyBankUpdate(mine.id, pack, e.updatedAt);
+      n++;
+    }
   }
   return n;
 }

@@ -1,0 +1,53 @@
+CASE 03: SUDDEN DIZZINESS WHILE PREPARING BREAKFAST
+MD2 short-answer questions | Total: 26 marks | Suggested time: 32 minutes
+
+INSTRUCTIONS
+- Answer the numbered questions in order, using only the information available at that point.
+- Use concise, patient-specific answers. Where requested, link each feature, investigation or action to its clinical purpose.
+- Specialist diagnostic criteria, numerical risk-score recall and drug doses are not required unless provided in the question.
+- Assessment and resuscitation occur concurrently when a patient is unstable; the written question order does not imply delaying treatment.
+
+CLINICAL STEM
+
+Peter Walsh, a 64-year-old man, is brought to the emergency department after sudden dizziness while preparing breakfast. He has vomited once and says he feels pulled to one side. He has hypertension, atrial fibrillation and hyperlipidaemia. He takes bisoprolol and atorvastatin; the name and adherence of his prescribed anticoagulant are not yet known. He is alert and speaking clearly. Blood pressure is 168/94 mmHg, pulse 96/min and irregular, respiratory rate 16/min, and oxygen saturation 97% on room air. No facial asymmetry or gross limb weakness is evident.
+
+QUESTION 1 (9 marks)
+
+List THREE (3) plausible diagnoses that could account for this patient's dizziness. For EACH diagnosis, state the underlying mechanism and give TWO (2) additional features on history and ONE (1) finding on examination that you would seek to help distinguish it from the other diagnoses. Briefly explain what the examination finding would suggest. Do not repeat information already supplied in the stem.
+
+Suggested response format: diagnosis | mechanism | history feature 1 | history feature 2 | examination finding and interpretation
+
+Mark allocation: For each of three diagnoses: diagnosis 0.5; mechanism 0.5; each additional history feature 0.5; examination finding 0.5; interpretation 0.5. Total 9.
+
+QUESTION 2 (5 marks)
+
+Symptoms began two hours ago and are still continuous. Peter cannot stand unsupported. Nystagmus changes direction with gaze. Capillary glucose is 6.8 mmol/L. His wife recalls a ten-minute episode of dizziness and double vision three days ago that completely resolved.
+
+a) State the leading diagnosis and explain the significance of the episode three days earlier. [2 marks]
+
+b) Outline the urgent brain/vascular imaging assessment to discuss with the stroke team, giving its immediate clinical purposes. [2 marks]
+
+c) Identify ONE medication-history detail that could change acute treatment eligibility and explain why. [1 marks]
+
+
+QUESTION 3 (6 marks)
+
+The initial non-contrast CT shows no acute abnormality. Peter is less nauseated after treatment but still cannot stand independently. The vascular imaging report is pending.
+
+a) Explain why neither the CT result nor improvement in nausea makes discharge safe. [2 marks]
+
+b) State FOUR immediate management priorities, including definitive-care assessment and supportive care. [4 marks]
+
+
+QUESTION 4 (6 marks)
+
+Peter’s family asks why stroke remains a concern when his arms and legs are strong.
+
+a) Explain anatomically how a stroke can produce severe dizziness and inability to stand without limb weakness. [2 marks]
+
+b) Explain how atrial fibrillation can cause this presentation and why checking the pulse alone does not establish the diagnosis. [2 marks]
+
+c) If an early MRI were also reported as negative but the central examination findings persisted, what should happen next, and why? [2 marks]
+
+
+TOTAL: 26 MARKS

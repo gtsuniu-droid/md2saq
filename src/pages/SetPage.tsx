@@ -51,7 +51,7 @@ export default function SetPage() {
 
   return (
     <div>
-      <div className="muted"><Link to="/browse">Browse</Link></div>
+      <div className="muted"><Link to="/browse">Browse</Link>{set.collection ? <>, <Link to={`/browse?collection=${encodeURIComponent(set.collection)}`}>{set.collection}</Link></> : null}</div>
       <h1 style={{ marginTop: "0.3rem" }}>{set.name}</h1>
       <p className="muted" style={{ marginTop: "-0.8rem" }}>
         {[
@@ -61,6 +61,17 @@ export default function SetPage() {
           set.source ?? "",
         ].filter(Boolean).join(", ")}
       </p>
+      {set.tags && set.tags.length > 0 && (
+        <p className="muted" style={{ marginTop: "-0.4rem" }}>
+          {set.tags.map((t, i) => <span key={t}>{i > 0 ? ", " : ""}<Link to={`/browse?tag=${encodeURIComponent(t)}`}>{t}</Link></span>)}
+        </p>
+      )}
+      {set.instructions && (
+        <details className="muted" style={{ marginTop: "0.4rem" }}>
+          <summary style={{ cursor: "pointer" }}>Instructions</summary>
+          <div className="pre" style={{ marginTop: "0.3rem" }}>{set.instructions}</div>
+        </details>
+      )}
 
       <div className="card row" style={{ margin: "1.2rem 0" }}>
         <button className="primary" onClick={() => start("practice")}>Practice</button>
@@ -69,6 +80,7 @@ export default function SetPage() {
         <span className="muted">min{set.suggestedMinutes ? ", as the paper suggests" : ""}. 0 for no timer.</span>
         <span style={{ flex: 1 }} />
         {unlocked && <ShareSetButton setId={set.id} className="small" />}
+        {unlocked && <Link to={`/set/${set.id}/edit`}><button className="small">Edit</button></Link>}
         <button className="small danger" onClick={remove}>Delete</button>
       </div>
       <p className="muted">Practice marks each question as you go. Exam reveals nothing until the whole paper is submitted.</p>

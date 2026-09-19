@@ -306,6 +306,14 @@ function buildQuestion(seg: Segment): ParsedQuestion {
   };
 }
 
+/** Attach a model answer to a parsed question, splitting it across parts when sectioned by their labels. */
+export function attachModelAnswer(q: ParsedQuestion, modelAnswer: string): void {
+  const text = modelAnswer.trim();
+  if (!text) return;
+  q.modelAnswer = text;
+  if (q.parts.length > 0) distributeModelAnswer(text, q.parts);
+}
+
 /** If the model answer is sectioned by the same labels as the parts, attach each section to its part. */
 function distributeModelAnswer(modelAnswer: string, parts: SubPart[]): void {
   const lines = modelAnswer.split("\n");

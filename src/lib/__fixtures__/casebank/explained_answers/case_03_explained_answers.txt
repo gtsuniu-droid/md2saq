@@ -1,0 +1,99 @@
+CASE 03: SUDDEN DIZZINESS WHILE PREPARING BREAKFAST
+EXPLAINED MODEL ANSWERS AND MARKING GUIDE | Total: 26 marks
+
+MARKING PRINCIPLES
+- Apply the explicit part caps. Do not award additional marks for longer lists.
+- Award credit for clinically equivalent answers and sensible locally applicable management.
+- Do not credit the same fact twice within a part; a repeated diagnosis label can be credited at a later question only when that question explicitly asks for updated diagnosis.
+- No negative marking. Unsafe suggestions receive no credit for the affected criterion and should be addressed in feedback.
+- These are example answers, not an exhaustive list. Award partial credit for correct components; use the stated caps.
+- Where a 1-mark item explicitly asks for an action/test and its reason, normally award 0.5 for each.
+- For Question 1, do not require every suggested finding to be present. A normal examination may be compatible with an episodic diagnosis but is rarely diagnostic by itself.
+
+QUESTION 1 (9 marks)
+
+For each of three diagnoses: diagnosis 0.5; mechanism 0.5; each additional history feature 0.5; examination finding 0.5; interpretation 0.5. Total 9.
+
+Award up to 3 marks per distinct, plausible diagnosis using the allocation in the question. Credit equivalent discriminating features and well-justified alternatives. Features must add to the original stem. Do not require every suggested finding to be present, and do not treat its absence as a definitive exclusion.
+
+1. Posterior circulation ischaemic stroke
+   Mechanism: Thromboembolic interruption of blood supply affects cerebellar/brainstem balance pathways.
+   History 1: Exact onset/last-known-well time and whether symptoms have persisted.
+   History 2: Diplopia, dysphagia, dysarthria or prior brief similar neurological episodes.
+   Examination: Marked gait/truncal ataxia or a central ocular-motor sign.
+   Interpretation: Localises concern to central pathways even with normal limb power.
+
+2. Vestibular neuritis
+   Mechanism: Unilateral peripheral vestibular hypofunction produces asymmetric vestibular input.
+   History 1: Continuous vertigo over hours to days.
+   History 2: Absence of auditory symptoms and a recent infective illness.
+   Examination: Coherent peripheral vestibular pattern on expert examination.
+   Interpretation: Would support a peripheral alternative, although vascular risk still requires careful assessment.
+
+3. Cerebellar haemorrhage
+   Mechanism: Acute bleeding disrupts cerebellar function and may cause mass effect.
+   History 1: Severe sudden headache or neck pain.
+   History 2: Anticoagulant exposure/adherence, bleeding tendency or recent trauma.
+   Examination: Truncal ataxia with deteriorating consciousness or other posterior-fossa signs.
+   Interpretation: Raises concern for an intracranial emergency; examination alone cannot reliably distinguish infarction from haemorrhage.
+
+Other acceptable differentials when justified:
+- Posterior circulation TIA if the episode has completely resolved
+- Arrhythmic presyncope if a brief perfusion-related event rather than ongoing vestibular symptoms is established
+
+QUESTION 2 (5 marks)
+
+a) State the leading diagnosis and explain the significance of the episode three days earlier. [2 marks]
+- [1 marks] Acute posterior circulation stroke, most likely ischaemic; haemorrhage still requires exclusion.
+- [1 marks] Transient vertigo with diplopia may have been a posterior circulation TIA: symptom resolution does not make it benign.
+
+b) Outline the urgent brain/vascular imaging assessment to discuss with the stroke team, giving its immediate clinical purposes. [2 marks]
+- [1 marks] Urgent local stroke imaging pathway: non-contrast CT to identify haemorrhage and CT angiography where indicated to assess large-vessel occlusion.
+- [1 marks] MRI with diffusion-weighted imaging may clarify suspected posterior-fossa infarction; do not delay time-critical stroke decisions waiting for MRI. Accept an appropriate rapid MRI-based local pathway.
+
+c) Identify ONE medication-history detail that could change acute treatment eligibility and explain why. [1 marks]
+- [1 marks] Exact anticoagulant, last dose and adherence (with relevant renal function) affect bleeding risk and reperfusion decisions; simply saying “on blood thinners” is insufficient.
+
+
+QUESTION 3 (6 marks)
+
+a) Explain why neither the CT result nor improvement in nausea makes discharge safe. [2 marks]
+- [1 marks] Early posterior-fossa ischaemia may not be visible on non-contrast CT.
+- [1 marks] Symptom relief does not reverse the persisting central examination findings or establish safe mobility.
+
+b) State FOUR immediate management priorities, including definitive-care assessment and supportive care. [4 marks]
+- [1 marks] Activate/continue urgent senior stroke-team care and monitored admission.
+- [1 marks] Rapidly assess eligibility for thrombolysis and/or thrombectomy using onset, imaging, anticoagulant exposure and local protocol; no dose recall required.
+- [1 marks] Keep nil by mouth until swallowing is screened; protect airway and prevent aspiration as indicated.
+- [1 marks] Monitor neurological state/vitals and provide safe hydration, glucose/oxygen management as indicated and falls precautions. Do not lower this BP routinely without a stroke-specific indication.
+
+
+QUESTION 4 (6 marks)
+
+a) Explain anatomically how a stroke can produce severe dizziness and inability to stand without limb weakness. [2 marks]
+- [1 marks] Cerebellar or brainstem vestibular pathways coordinate equilibrium and eye movements.
+- [1 marks] A lesion affecting those pathways may spare corticospinal motor pathways, leaving power normal.
+
+b) Explain how atrial fibrillation can cause this presentation and why checking the pulse alone does not establish the diagnosis. [2 marks]
+- [1 marks] Atrial thrombus can embolise into cerebral arteries and cause ischaemia.
+- [1 marks] An irregular pulse identifies a risk/source, not the location or nature of the neurological lesion; it does not distinguish embolic stroke from other causes.
+
+c) If an early MRI were also reported as negative but the central examination findings persisted, what should happen next, and why? [2 marks]
+- [1 marks] Continue specialist stroke/neurological assessment, observation and consideration of repeat or additional imaging.
+- [1 marks] Early small posterior circulation infarcts can be missed; imaging must be interpreted alongside the persistent clinical syndrome.
+
+
+COMMON REASONING ERRORS
+- Using normal power, a negative FAST screen or a normal CT to exclude posterior stroke.
+- Giving antithrombotics reflexively before haemorrhage and reperfusion decisions are addressed.
+
+CLINICAL THINKING TO TAKE INTO THE NEXT PATIENT
+- A transient focal neurological symptom changes the meaning of a dizziness history.
+- Normal tests only reassure about the conditions they can reliably detect.
+
+CLINICAL REFERENCES
+Guidance checked 19 September 2026. Fictional cases; use current local pathways for clinical decisions.
+- Australian Commission: Stroke Clinical Care Standard
+  https://www.safetyandquality.gov.au/clinical-care-standards/stroke
+- SAEM GRACE-3: Acute dizziness and vertigo
+  https://www.saem.org/publications/grace/grace-3

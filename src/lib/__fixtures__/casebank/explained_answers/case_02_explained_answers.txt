@@ -1,0 +1,101 @@
+CASE 02: DIZZINESS AFTER A RECENT RESPIRATORY ILLNESS
+EXPLAINED MODEL ANSWERS AND MARKING GUIDE | Total: 25 marks
+
+MARKING PRINCIPLES
+- Apply the explicit part caps. Do not award additional marks for longer lists.
+- Award credit for clinically equivalent answers and sensible locally applicable management.
+- Do not credit the same fact twice within a part; a repeated diagnosis label can be credited at a later question only when that question explicitly asks for updated diagnosis.
+- No negative marking. Unsafe suggestions receive no credit for the affected criterion and should be addressed in feedback.
+- These are example answers, not an exhaustive list. Award partial credit for correct components; use the stated caps.
+- Where a 1-mark item explicitly asks for an action/test and its reason, normally award 0.5 for each.
+- For Question 1, do not require every suggested finding to be present. A normal examination may be compatible with an episodic diagnosis but is rarely diagnostic by itself.
+
+QUESTION 1 (9 marks)
+
+For each of three diagnoses: diagnosis 0.5; mechanism 0.5; each additional history feature 0.5; examination finding 0.5; interpretation 0.5. Total 9.
+
+Award up to 3 marks per distinct, plausible diagnosis using the allocation in the question. Credit equivalent discriminating features and well-justified alternatives. Features must add to the original stem. Do not require every suggested finding to be present, and do not treat its absence as a definitive exclusion.
+
+1. Vestibular neuritis
+   Mechanism: Acute unilateral vestibular dysfunction causes an imbalance in resting vestibular input.
+   History 1: Persistent rather than separate brief episodes.
+   History 2: No new hearing loss or tinnitus.
+   Examination: Direction-fixed horizontal-torsional nystagmus with an abnormal head impulse on the affected side when assessed by a trained clinician.
+   Interpretation: Supports peripheral vestibular hypofunction in the appropriate syndrome, but isolated findings are not sufficient to exclude stroke.
+
+2. Posterior circulation ischaemic stroke
+   Mechanism: Ischaemia disrupts central vestibular or cerebellar pathways.
+   History 1: Abrupt maximal onset or transient diplopia, dysarthria or dysphagia.
+   History 2: Vascular disease, smoking or recent neck injury/pain.
+   Examination: Direction-changing gaze-evoked nystagmus or severe truncal/gait ataxia.
+   Interpretation: A central sign increases concern despite preserved gross limb power.
+
+3. Labyrinthitis
+   Mechanism: Inner-ear involvement affects both vestibular and cochlear function.
+   History 1: Acute new hearing loss or tinnitus with the vertigo.
+   History 2: Ear pain, discharge or a recent ear infection.
+   Examination: Hearing deficit on bedside assessment, with otoscopy for evidence of infection.
+   Interpretation: Cochlear involvement favours a process beyond isolated vestibular neuritis; acute hearing loss does not itself rule out stroke.
+
+Other acceptable differentials when justified:
+- Vestibular migraine if prior similar episodes and migraine features emerge
+- Drug or alcohol toxicity if exposure and examination support it
+
+QUESTION 2 (5 marks)
+
+a) State the most likely diagnosis and explain ONE finding that supports it. [2 marks]
+- [1 marks] Left vestibular neuritis / acute unilateral peripheral vestibulopathy.
+- [1 marks] Accept unilateral abnormal head impulse, the coherent direction-fixed pattern, or continuous vertigo without auditory involvement, interpreted in the full examination.
+
+b) Explain why the recent cold and normal limb power were insufficient to make this diagnosis at presentation. [2 marks]
+- [1 marks] A recent respiratory illness is common and nonspecific; it cannot establish a peripheral cause.
+- [1 marks] Posterior circulation stroke may affect balance/eye movements without weakness; a targeted neurological/vestibular examination was still needed.
+
+c) Name ONE circumstance in which urgent further neurological assessment or imaging would still be required. [1 marks]
+- [1 marks] A central/equivocal or unreliable examination, new neurological/hearing findings, inability to walk, or unexpected deterioration warrants reassessment and appropriate imaging.
+
+
+QUESTION 3 (6 marks)
+
+a) Give TWO immediate supportive measures, with a brief purpose for each. [2 marks]
+- [1 marks] Short-term antiemetic or vestibular suppressant for severe symptoms, with attention to sedation.
+- [1 marks] Assess dehydration and provide oral or intravenous fluid replacement as tolerated, monitoring clinical response.
+
+b) Explain TWO problems with the proposed month-long medication and bed-rest plan. [2 marks]
+- [1 marks] Prolonged suppression can impede vestibular compensation and cause sedation/falls.
+- [1 marks] Prolonged bed rest delays recovery; encourage safe early mobilisation and vestibular rehabilitation once vomiting permits.
+
+c) Give TWO criteria you would assess before considering discharge. [2 marks]
+- [1 marks] Can hydrate orally and symptoms are controlled sufficiently for safe basic activity.
+- [1 marks] Can mobilise safely with an appropriate home/support plan and clear reassessment advice; diagnostic confidence must remain adequate.
+
+
+QUESTION 4 (5 marks)
+
+a) Explain why a unilateral vestibular disturbance can cause both nystagmus and nausea. [2 marks]
+- [1 marks] Asymmetric vestibular input is interpreted as movement and drives compensatory slow eye movement with corrective fast phases.
+- [1 marks] Conflicting vestibular, visual and proprioceptive information activates autonomic/emetic pathways.
+
+b) If Daniel also developed acute unilateral hearing loss, how would this alter your differential and the urgency of assessment? [2 marks]
+- [1 marks] Consider cochlear/inner-ear disease such as labyrinthitis or sudden sensorineural hearing loss rather than isolated neuritis.
+- [1 marks] Also consider vascular inner-ear/brainstem involvement; new hearing loss requires urgent reassessment and must not be assumed to prove a benign peripheral cause.
+
+c) Why should the same bedside eye-movement algorithm not be used to rule out stroke in a patient with brief attacks who is now asymptomatic? [1 marks]
+- [1 marks] HINTS-type interpretation applies to an appropriate ongoing acute vestibular syndrome and requires training; performance outside that setting is not a reliable exclusion test.
+
+
+COMMON REASONING ERRORS
+- Calling a recent cold proof of a benign cause.
+- Using HINTS in intermittent dizziness, without appropriate training, or as a substitute for an overall examination.
+- Requiring steroids as an essential answer; their benefit is uncertain.
+
+CLINICAL THINKING TO TAKE INTO THE NEXT PATIENT
+- Build a syndrome from duration, auditory symptoms, gait and eye findings before attaching a label.
+- Ask what makes home care safe, rather than treating reduced nausea as the endpoint.
+
+CLINICAL REFERENCES
+Guidance checked 19 September 2026. Fictional cases; use current local pathways for clinical decisions.
+- Bárány Society: Acute unilateral vestibulopathy/vestibular neuritis consensus
+  https://pmc.ncbi.nlm.nih.gov/articles/PMC9661346/
+- SAEM GRACE-3: Acute dizziness and vertigo
+  https://www.saem.org/publications/grace/grace-3

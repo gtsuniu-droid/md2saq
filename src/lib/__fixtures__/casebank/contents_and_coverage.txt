@@ -1,0 +1,47 @@
+DIZZINESS SAQ BANK — CONTENTS AND COVERAGE
+15 additional cases, 406 marks; individual cases range from 25 to 30 marks.
+
+FILES
+- all_questions.txt: all remaining question papers, without model answers.
+- all_explained_answers.txt: worked answers, marks, common errors and clinical references.
+- questions/: one plain-text question paper per case.
+- explained_answers/: one plain-text answer guide per case.
+
+COVERAGE (contains diagnostic spoilers)
+02 — 25 marks — Dizziness after a recent respiratory illness
+  Vestibular neuritis; Labyrinthitis; Posterior circulation stroke; Drug-induced vestibular symptoms
+03 — 26 marks — Sudden dizziness while preparing breakfast
+  Posterior circulation ischaemic stroke; Cerebellar haemorrhage; Posterior circulation TIA; Vestibular neuritis
+04 — 25 marks — Recurrent dizziness with intermittent ear symptoms
+  Ménière disease; Vestibular migraine; BPPV; Vestibular schwannoma; Sensorineural versus conductive hearing loss
+05 — 26 marks — Recurrent dizziness in a university tutor
+  Vestibular migraine; BPPV; Ménière disease; Migraine aura; Panic symptoms
+06 — 28 marks — Dizziness on standing in a man with diabetes
+  Orthostatic hypotension; Autonomic neuropathy; Alpha-blocker adverse effects; Volume depletion; Arrhythmia
+07 — 28 marks — Dizziness followed by a brief collapse
+  Vasovagal syncope; Arrhythmic syncope; Epileptic seizure; Hypoglycaemia
+08 — 30 marks — Abrupt dizzy spells in an older man
+  Complete heart block; Other bradyarrhythmias; Tachyarrhythmia; Aortic stenosis; Orthostatic hypotension; Acute coronary syndrome
+09 — 28 marks — Dizziness and reduced exercise tolerance
+  Upper GI bleeding; Acute blood-loss anaemia; Hypovolaemic shock; NSAID adverse effects; ACS; Arrhythmia
+10 — 26 marks — Dizziness and confusion before lunch
+  Hypoglycaemia; Sulfonylurea adverse effects; Acute kidney injury; Electrolyte disturbance; Stroke mimic
+11 — 28 marks — Dizziness after recent surgery
+  Pulmonary embolism; DVT; ACS; Postoperative blood loss; Panic/hyperventilation
+12 — 28 marks — Persistent imbalance and falls at home
+  Sensory ataxia; Diabetic neuropathy; B12 deficiency; Medication-related disequilibrium; Visual impairment; Bilateral vestibular hypofunction; Cerebellar disease
+13 — 26 marks — Dizziness that persists between appointments
+  Persistent functional dizziness/PPPD; Vestibular migraine; Residual vestibular hypofunction; Panic/hyperventilation; Orthostatic intolerance
+14 — 28 marks — Dizziness with lower abdominal discomfort
+  Ectopic pregnancy; Intra-abdominal haemorrhage; Hypovolaemic shock; Vasovagal presyncope; Dehydration; Sepsis
+15 — 26 marks — Dizziness and headache after working indoors
+  Carbon monoxide poisoning; Other inhalational toxicity; Migraine; Heat illness; Dehydration
+16 — 28 marks — Dizziness after a medication change
+  Hypotonic hyponatraemia; Thiazide-like diuretic effects; SSRI-associated water retention; Excess water intake; Adrenal insufficiency; Stroke mimic
+
+Additional explanation questions cover adrenal insufficiency, cardiac outflow obstruction,
+hyperventilation physiology, ototoxic vestibular loss, test limitations and coexisting disease.
+Exact drug doses and specialist criteria are not required. Functional dizziness is tested
+through clinical reasoning and a supplied diagnostic explanation rather than rare-label recall.
+
+The cases are educational drafts, not formally calibrated or validated examination items.

@@ -2,11 +2,24 @@ export interface QuestionSet {
   id: string;
   name: string;
   source?: string;
+  /** Bank or paper the set belongs to, e.g. "Dizziness SAQ Bank". */
+  collection?: string;
+  /** Free tags such as the conditions the case covers. */
+  tags?: string[];
+  /** Candidate instructions printed at the top of the paper. */
+  instructions?: string;
+  /** Marking principles from the answer guide. */
+  markingNotes?: string;
+  /** Common errors, clinical thinking and references from the answer guide. */
+  debrief?: string;
   /** Time suggested by the paper itself, when it said so. */
   suggestedMinutes?: number;
   createdAt: number;
+  updatedAt?: number;
   /** Set on sets imported from the shared bank, so re-imports are detected. */
   bankId?: string;
+  /** The bank entry's updatedAt at the time of the last import, to detect newer versions. */
+  bankUpdatedAt?: number;
 }
 
 export interface SubPart {

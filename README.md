@@ -54,12 +54,18 @@ not, since it needs Netlify Blobs.
 
 Three ways, fastest first:
 
-1. **Drop files.** On Create, drop any number of `.md` or `.txt` files. Each becomes a
-   set named after the file, parsed with the rules below, and one click saves them all
-   or saves and shares them all. Review any file in the preview first if you want.
-2. **Paste.** Paste a whole paper into the box. Save keeps you on the page with the box
+1. **Drop a generated case bank.** On Create, drop the output folder of the generator,
+   or its files: `all_questions.txt`, `all_explained_answers.txt` and
+   `contents_and_coverage.txt`, or the per-case files. Every `CASE NN: TITLE` becomes a
+   set named "<Bank> NN: Title", with its stem, questions, parts and marks, the matching
+   explained answers attached per question and per part, the coverage file's conditions
+   as tags, and the paper's instructions, marking principles and debrief kept with it.
+   One click saves them all or saves and shares them all.
+2. **Drop plain files.** Any other `.md` or `.txt` file becomes one set named after
+   the file, parsed with the rules below.
+3. **Paste.** Paste a whole paper into the box. Save keeps you on the page with the box
    cleared, so you can paste the next one straight away.
-3. **Push from a script.** See "Pushing questions from your own generator" below.
+4. **Push from a script.** See "Pushing questions from your own generator" below.
 
 ## Staged cases and stems
 
@@ -80,6 +86,19 @@ A model answer follows a line starting with `Answer:`, `Model answer:` or `A:`. 
 marking point per line, or a semicolon-separated list. If the model answer is sectioned
 with the same labels as the parts, each part gets its own marking points. The preview on
 the Create page lets you fix any mis-split before saving.
+
+## Tags and collections
+
+A set carries a collection (the bank it came from) and free tags, normally the
+conditions it covers. Browse filters by either, and a set page links each tag. Both are
+editable on the set's Edit page, along with every question, part and model answer.
+
+## Editing the bank
+
+With the passcode, Edit on a set page or on the Bank page opens the editor; "Save and
+update bank" pushes the new version. Everyone else's copy refreshes the next time their
+app opens, matched by question position so their attempts and marks stay attached.
+Remove on the Bank page deletes the shared copy; local copies are kept.
 
 ## Creator area
 

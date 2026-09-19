@@ -10,6 +10,7 @@ import { presentationName } from "../data/presentations";
 import { PasscodeError, forgetPasscode, savedPasscode, shareSet } from "../lib/share";
 import { readFileText } from "../lib/exportImport";
 import PasscodeGate from "../components/PasscodeGate";
+import { caseSetName, isCaseBank, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -24,6 +25,38 @@ interface FileBatch {
   meta: PaperMeta;
 }
 
+interface CaseBatch {
+  key: string;
+  name: string;
+  collection?: string;
+  c: ParsedCase;
+  drafts: Draft[];
+}
+
+/** Read every text file from a drop, descending into folders. */
+async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
+  const out: File[] = [];
+  const entries = [...dt.items].map((it) => (typeof it.webkitGetAsEntry === "function" ? it.webkitGetAsEntry() : null));
+  if (entries.some(Boolean)) {
+    const walk = async (entry: FileSystemEntry): Promise<void> => {
+      if (entry.isFile) {
+        const f = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+        if (/\.(txt|md|markdown)$/i.test(f.name) && !f.name.startsWith(".")) out.push(f);
+      } else if (entry.isDirectory) {
+        const reader = (entry as FileSystemDirectoryEntry).createReader();
+        let batch: FileSystemEntry[];
+        do {
+          batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
+          for (const e of batch) await walk(e);
+        } while (batch.length > 0);
+      }
+    };
+    for (const e of entries) if (e) await walk(e);
+    return out;
+  }
+  return [...dt.files].filter((f) => /\.(txt|md|markdown)$/i.test(f.name));
+}
+
 function draftsFromText(text: string, preset: string): { drafts: Draft[]; meta: PaperMeta } {
   const { questions, meta } = parsePaper(text);
   const drafts = questions.map((q) => {
@@ -34,13 +67,14 @@ function draftsFromText(text: string, preset: string): { drafts: Draft[]; meta: 
   return { drafts, meta };
 }
 
-async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}): Promise<QuestionSet> {
+async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}, extra: Partial<QuestionSet> = {}): Promise<QuestionSet> {
   const set: QuestionSet = {
     id: newId(),
     name: name.trim() || meta.title || `Set ${new Date().toLocaleDateString()}`,
     source: source.trim() || undefined,
     suggestedMinutes: meta.minutes,
     createdAt: Date.now(),
+    ...extra,
   };
   const questions: Question[] = drafts.map((d, i) => ({
     id: newId(),
@@ -79,6 +113,7 @@ function CreateTools() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [meta, setMeta] = useState<PaperMeta>({});
   const [files, setFiles] = useState<FileBatch[]>([]);
+  const [cases, setCases] = useState<CaseBatch[]>([]);
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
   const [askPasscode, setAskPasscode] = useState<null | "paste" | "files">(null);
@@ -184,9 +219,29 @@ function CreateTools() {
   };
 
   const addFiles = async (list: FileList | File[]) => {
+    const all = Array.from(list);
+    const texts: CaseFile[] = [];
+    for (const f of all) texts.push({ name: f.name, text: await readFileText(f) });
+    if (isCaseBank(texts)) {
+      const bank = parseCaseBank(texts);
+      setCases((cs) => [
+        ...cs,
+        ...bank.cases.map((c) => ({
+          key: newId(),
+          name: caseSetName(bank.collection, c),
+          collection: bank.collection,
+          c,
+          drafts: c.questions.map((q) => {
+            const suggested = suggestPresentations([...q.stems, questionFullText(q)].join("\n"));
+            return { ...q, key: newId(), presentations: presetPresentation ? [presetPresentation] : suggested.slice(0, 1), suggested };
+          }),
+        })),
+      ]);
+      return;
+    }
     const batches: FileBatch[] = [];
-    for (const f of Array.from(list)) {
-      const text = await readFileText(f);
+    for (const f of all) {
+      const text = texts.find((t) => t.name === f.name)?.text ?? (await readFileText(f));
       const parsed = draftsFromText(text, presetPresentation);
       batches.push({ key: newId(), name: parsed.meta.title ?? f.name.replace(/\.[^.]+$/, ""), drafts: parsed.drafts, meta: parsed.meta });
     }
@@ -196,7 +251,32 @@ function CreateTools() {
   const onDrop = async (e: DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    await addFiles(e.dataTransfer.files);
+    await addFiles(await filesFromDrop(e.dataTransfer));
+  };
+
+  const saveCases = async (share: boolean) => {
+    if (cases.length === 0) return;
+    const code = share ? await passcodeFor("files") : "";
+    if (share && !code) return;
+    setSaving(true);
+    setNotice(null);
+    let questions = 0;
+    let sharedAll = true;
+    for (const b of cases) {
+      const set = await saveDrafts(b.name, source, b.drafts, { minutes: b.c.minutes }, {
+        collection: b.collection,
+        tags: b.c.conditions.length ? b.c.conditions : undefined,
+        instructions: b.c.instructions,
+        markingNotes: b.c.markingNotes,
+        debrief: b.c.debrief,
+      });
+      questions += b.drafts.length;
+      if (share && sharedAll) sharedAll = await shareOrReport(set.id, code!, `"${set.name}"`);
+    }
+    if (!share || sharedAll) setNotice({ text: `Saved ${cases.length} case${cases.length === 1 ? "" : "s"} with ${questions} questions${share ? " and shared them to the bank" : ""}.` });
+    setCases([]);
+    setAskPasscode(null);
+    setSaving(false);
   };
 
   const saveFiles = async (share: boolean) => {
@@ -275,12 +355,44 @@ function CreateTools() {
       >
         <div className="row spread">
           <span>
-            <strong>Many at once:</strong> drop .md or .txt files here, one set per file, named after the file.
+            <strong>Drop files or a folder here.</strong> A generated case bank (questions, explained answers, coverage) becomes one set per case, named and tagged automatically. Other .txt or .md files become one set each.
           </span>
           <button className="small" onClick={() => fileRef.current?.click()}>Choose files</button>
           <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,text/plain,text/markdown" style={{ display: "none" }}
             onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
         </div>
+        {cases.length > 0 && (
+          <>
+            <table style={{ marginTop: "0.6rem" }}>
+              <thead><tr><th>Case</th><th>Questions</th><th>Marks</th><th>Answers</th><th>Conditions</th><th></th></tr></thead>
+              <tbody>
+                {cases.map((b) => (
+                  <tr key={b.key}>
+                    <td><input type="text" value={b.name} style={{ width: "100%" }} onChange={(e) => setCases((cs) => cs.map((x) => (x.key === b.key ? { ...x, name: e.target.value } : x)))} /></td>
+                    <td>{b.drafts.length}</td>
+                    <td>{(b.c.marks ?? b.drafts.reduce((a, d) => a + (d.marks ?? 0), 0)) || "—"}</td>
+                    <td className="muted">{b.c.hasAnswers ? "yes" : "no"}</td>
+                    <td className="muted">{b.c.conditions.join(", ")}</td>
+                    <td><button className="small danger" onClick={() => setCases((cs) => cs.filter((x) => x.key !== b.key))}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="row" style={{ marginTop: "0.6rem" }}>
+              <button className="primary" onClick={() => saveCases(false)} disabled={saving}>Save {cases.length} cases</button>
+              {askPasscode === "files" ? (
+                <>
+                  <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && passcode) void saveCases(true); }} />
+                  <button onClick={() => saveCases(true)} disabled={saving || !passcode}>Save and share</button>
+                  <button onClick={() => setAskPasscode(null)}>Cancel</button>
+                </>
+              ) : (
+                <button onClick={() => saveCases(true)} disabled={saving}>Save and share all</button>
+              )}
+            </div>
+          </>
+        )}
         {files.length > 0 && (
           <>
             <table style={{ marginTop: "0.6rem" }}>
