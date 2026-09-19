@@ -55,3 +55,35 @@ the Import page lets you fix any mis-split before saving.
   error tags, reflection, learning point.
 - **Bank**: shared question sets. Import into your library, or upload one of yours.
 - **Settings**: minutes per mark, JSON backup and restore, Anki export of learning points.
+
+## Pushing questions from your own generator
+
+The bank accepts plain text, parsed with the same rules as the Import page, so any script
+or tool that can make an HTTP request can add questions. With `BANK_PASSCODE` set on the
+site:
+
+```bash
+curl -X POST https://YOUR-SITE.netlify.app/api/bank \
+  -H "content-type: application/json" \
+  -H "x-passcode: YOUR_PASSCODE" \
+  -d '{
+    "format": "saq-practice-text",
+    "name": "Chest pain batch 3",
+    "source": "generator",
+    "key": "chest-pain-batch-3",
+    "presentations": ["chest-pain"],
+    "text": "1. A 54-year-old man ... (4 marks)\nAnswer:\nECG\nTroponin\n2. ..."
+  }'
+```
+
+- `text` is the questions exactly as you would paste them.
+- `key` is optional. Sending the same key twice returns the existing set instead of
+  creating a duplicate, so a generator can retry safely.
+- `presentations` is optional. Ids are the kebab-case names in
+  `src/data/presentations.ts`, for example `chest-pain` or `altered-urinary-volume`.
+  Presentations are also detected from the text.
+- The passcode can go in `x-passcode` or as `Authorization: Bearer ...`.
+
+Every device with "Automatically import new bank sets" on (Settings, on by default) pulls
+new sets into its library the next time the app opens. Settings also has a "Check the bank
+now" button.

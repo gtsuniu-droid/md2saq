@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router";
 import { db } from "./data/db";
 import { loadSession } from "./lib/session";
+import { syncFromBank } from "./lib/bank";
+import { DEFAULT_SETTINGS } from "./data/types";
 import DashboardPage from "./pages/DashboardPage";
 import ImportPage from "./pages/ImportPage";
 import LibraryPage from "./pages/LibraryPage";
@@ -19,6 +21,16 @@ export default function App() {
   useEffect(() => {
     const current = loadSession()?.id;
     void db.attempts.filter((a) => a.submittedAt === undefined && a.sessionId !== current).delete();
+    // Pull new sets from the shared bank. Silently does nothing when the bank is unreachable.
+    void (async () => {
+      const settings = (await db.settings.get("settings")) ?? DEFAULT_SETTINGS;
+      if (settings.autoImportBank === false) return;
+      try {
+        await syncFromBank();
+      } catch {
+        /* offline or local dev */
+      }
+    })();
   }, []);
 
   const full = pathname.startsWith("/paper");

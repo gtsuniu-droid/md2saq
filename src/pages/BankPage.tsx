@@ -74,7 +74,7 @@ export default function BankPage() {
   return (
     <div>
       <h1>Shared bank</h1>
-      <p className="muted">Question sets shared by everyone using this site. Importing copies a set into your library; your answers stay on your device.</p>
+      <p className="muted">Question sets shared by everyone using this site. New sets are imported into your library automatically when the app opens (see Settings). Your answers stay on your device.</p>
       {error && <p style={{ color: "var(--bad)" }}>{error}</p>}
       {entries && entries.length === 0 && !error && <p className="muted">Nothing shared yet.</p>}
       {entries && entries.length > 0 && (

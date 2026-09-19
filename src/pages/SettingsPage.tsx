@@ -4,6 +4,7 @@ import { db } from "../data/db";
 import { DEFAULT_SETTINGS } from "../data/types";
 import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileText, type ExportFile } from "../lib/exportImport";
 import { formatDate } from "../lib/questions";
+import { syncFromBank } from "../lib/bank";
 
 export default function SettingsPage() {
   const settings = useLiveQuery(async () => (await db.settings.get("settings")) ?? DEFAULT_SETTINGS, []);
@@ -50,6 +51,21 @@ export default function SettingsPage() {
           <input type="number" step={0.25} min={0.25} value={settings.minutesPerMark}
             onChange={(e) => db.settings.put({ ...settings, minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
           <span className="muted">used to suggest timer lengths</span>
+        </div>
+      </div>
+
+      <h2>Shared bank</h2>
+      <div className="card stack">
+        <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
+          <input type="checkbox" checked={settings.autoImportBank !== false}
+            onChange={(e) => db.settings.put({ ...settings, autoImportBank: e.target.checked })} />
+          Automatically import new bank sets when the app opens
+        </label>
+        <div className="row">
+          <button onClick={async () => {
+            try { const n = await syncFromBank(); setMessage(n ? `Imported ${n} new set${n === 1 ? "" : "s"} from the bank.` : "Nothing new in the bank."); }
+            catch { setMessage("The bank is not reachable from here."); }
+          }}>Check the bank now</button>
         </div>
       </div>
 

@@ -100,9 +100,11 @@ export interface Settings {
   minutesPerMark: number;
   lastExportAt?: number;
   bankPasscode?: string;
+  /** Pull any bank set not yet in the library whenever the app opens. */
+  autoImportBank: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { id: "settings", minutesPerMark: 1.5 };
+export const DEFAULT_SETTINGS: Settings = { id: "settings", minutesPerMark: 1.5, autoImportBank: true };
 
 /** A practice or exam session, kept in sessionStorage. */
 export interface Session {
