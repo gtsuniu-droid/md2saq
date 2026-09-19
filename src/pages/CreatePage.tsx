@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { Link, useSearchParams } from "react-router";
 import { db, newId } from "../data/db";
 import type { Question, QuestionSet } from "../data/types";
 import { parseQuestions, questionFullText, type ParsedQuestion } from "../lib/parser";
@@ -8,6 +8,7 @@ import PresentationPicker from "../components/PresentationPicker";
 import { partLabel } from "../lib/questions";
 import { presentationName } from "../data/presentations";
 import { PasscodeError, forgetPasscode, savedPasscode, shareSet } from "../lib/share";
+import { readFileText } from "../lib/exportImport";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -15,32 +16,60 @@ interface Draft extends ParsedQuestion {
   suggested: string[];
 }
 
+interface FileBatch {
+  key: string;
+  name: string;
+  drafts: Draft[];
+}
+
+function draftsFromText(text: string, preset: string): Draft[] {
+  return parseQuestions(text).map((q) => {
+    const suggested = suggestPresentations(questionFullText(q));
+    const presentations = preset ? [preset] : suggested.slice(0, 1);
+    return { ...q, key: newId(), presentations, suggested };
+  });
+}
+
+async function saveDrafts(name: string, source: string, drafts: Draft[]): Promise<QuestionSet> {
+  const set: QuestionSet = { id: newId(), name: name.trim() || `Set ${new Date().toLocaleDateString()}`, source: source.trim() || undefined, createdAt: Date.now() };
+  const questions: Question[] = drafts.map((d, i) => ({
+    id: newId(),
+    setId: set.id,
+    order: i,
+    text: d.text,
+    marks: d.marks,
+    modelAnswer: d.modelAnswer,
+    parts: d.parts,
+    presentations: d.presentations,
+    tags: [],
+    createdAt: Date.now(),
+  }));
+  await db.transaction("rw", db.sets, db.questions, async () => {
+    await db.sets.add(set);
+    await db.questions.bulkAdd(questions);
+  });
+  return set;
+}
+
 export default function CreatePage() {
-  const nav = useNavigate();
   const [params] = useSearchParams();
   const presetPresentation = params.get("presentation") ?? "";
   const [raw, setRaw] = useState("");
   const [name, setName] = useState(presetPresentation ? `${presentationName(presetPresentation)} set` : "");
   const [source, setSource] = useState("");
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [files, setFiles] = useState<FileBatch[]>([]);
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
-  const [askPasscode, setAskPasscode] = useState(false);
+  const [askPasscode, setAskPasscode] = useState<null | "paste" | "files">(null);
   const [passcode, setPasscode] = useState("");
-  const [shareError, setShareError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; setId?: string; error?: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Re-parse when the paste changes. Manual edits to drafts are kept until the paste changes again.
   useEffect(() => {
-    const t = setTimeout(() => {
-      const parsed = parseQuestions(raw);
-      setDrafts(
-        parsed.map((q) => {
-          const suggested = suggestPresentations(questionFullText(q));
-          const presentations = presetPresentation ? [presetPresentation] : suggested.slice(0, 1);
-          return { ...q, key: newId(), presentations, suggested };
-        }),
-      );
-    }, 250);
+    const t = setTimeout(() => setDrafts(draftsFromText(raw, presetPresentation)), 250);
     return () => clearTimeout(t);
   }, [raw, presetPresentation]);
 
@@ -69,61 +98,172 @@ export default function CreatePage() {
 
   const totalMarks = useMemo(() => drafts.reduce((acc, d) => acc + (d.marks ?? 0), 0), [drafts]);
 
-  const save = async (share = false) => {
-    if (drafts.length === 0) return;
-    let code = "";
-    if (share) {
-      code = passcode || (await savedPasscode());
-      if (!code) {
-        setAskPasscode(true);
-        return;
-      }
-    }
-    setSaving(true);
-    const set: QuestionSet = { id: newId(), name: name.trim() || `Set ${new Date().toLocaleDateString()}`, source: source.trim() || undefined, createdAt: Date.now() };
-    const questions: Question[] = drafts.map((d, i) => ({
-      id: newId(),
-      setId: set.id,
-      order: i,
-      text: d.text,
-      marks: d.marks,
-      modelAnswer: d.modelAnswer,
-      parts: d.parts,
-      presentations: d.presentations,
-      tags: [],
-      createdAt: Date.now(),
-    }));
-    await db.transaction("rw", db.sets, db.questions, async () => {
-      await db.sets.add(set);
-      await db.questions.bulkAdd(questions);
-    });
-    if (share) {
-      try {
-        await shareSet(set.id, code);
-      } catch (e) {
-        setSaving(false);
-        if (e instanceof PasscodeError) {
-          await forgetPasscode();
-          setPasscode("");
-          setAskPasscode(true);
-          setShareError("Wrong passcode. The set was saved locally; enter the passcode to share it.");
-        } else {
-          setShareError(`Saved locally, but sharing failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
-        // The set now exists locally, so further clicks should share, not re-save.
-        nav(`/browse?set=${set.id}`, { replace: true });
-        return;
-      }
-    }
-    setSaving(false);
-    nav(`/browse?set=${set.id}`);
+  /** Resolve a passcode for sharing, or open the prompt and return null. */
+  const passcodeFor = async (which: "paste" | "files"): Promise<string | null> => {
+    const code = passcode || (await savedPasscode());
+    if (code) return code;
+    setAskPasscode(which);
+    return null;
   };
+
+  const shareOrReport = async (setId: string, code: string, label: string): Promise<boolean> => {
+    try {
+      await shareSet(setId, code);
+      return true;
+    } catch (e) {
+      if (e instanceof PasscodeError) {
+        await forgetPasscode();
+        setPasscode("");
+        setNotice({ text: `${label} saved locally, but the passcode was wrong. Share it from Browse once you have the right one.`, error: true });
+      } else {
+        setNotice({ text: `${label} saved locally, but sharing failed: ${e instanceof Error ? e.message : String(e)}`, error: true });
+      }
+      return false;
+    }
+  };
+
+  const savePaste = async (share: boolean) => {
+    if (drafts.length === 0) return;
+    const code = share ? await passcodeFor("paste") : "";
+    if (share && !code) return;
+    setSaving(true);
+    setNotice(null);
+    const set = await saveDrafts(name, source, drafts);
+    let shared = true;
+    if (share) shared = await shareOrReport(set.id, code!, `"${set.name}"`);
+    if (shared) setNotice({ text: `Saved "${set.name}" with ${drafts.length} questions${share ? " and shared it to the bank" : ""}.`, setId: set.id });
+    setRaw("");
+    setDrafts([]);
+    if (!presetPresentation) setName("");
+    setAskPasscode(null);
+    setSaving(false);
+  };
+
+  const addFiles = async (list: FileList | File[]) => {
+    const batches: FileBatch[] = [];
+    for (const f of Array.from(list)) {
+      const text = await readFileText(f);
+      const parsed = draftsFromText(text, presetPresentation);
+      batches.push({ key: newId(), name: f.name.replace(/\.[^.]+$/, ""), drafts: parsed });
+    }
+    setFiles((fs) => [...fs, ...batches]);
+  };
+
+  const onDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    await addFiles(e.dataTransfer.files);
+  };
+
+  const saveFiles = async (share: boolean) => {
+    const usable = files.filter((f) => f.drafts.length > 0);
+    if (usable.length === 0) return;
+    const code = share ? await passcodeFor("files") : "";
+    if (share && !code) return;
+    setSaving(true);
+    setNotice(null);
+    let sets = 0;
+    let questions = 0;
+    let sharedAll = true;
+    for (const f of usable) {
+      const set = await saveDrafts(f.name, source, f.drafts);
+      sets++;
+      questions += f.drafts.length;
+      if (share && sharedAll) sharedAll = await shareOrReport(set.id, code!, `"${set.name}"`);
+    }
+    if (!share || sharedAll) {
+      setNotice({ text: `Saved ${sets} set${sets === 1 ? "" : "s"} with ${questions} questions${share ? " and shared them to the bank" : ""}.` });
+    }
+    setFiles([]);
+    setAskPasscode(null);
+    setSaving(false);
+  };
+
+  const editFile = (f: FileBatch) => {
+    // Rebuild a pasteable text from the parsed questions so it can be reviewed in the preview.
+    const text = f.drafts
+      .map((d, i) => {
+        const head = `${i + 1}. ${d.text}${d.marks !== undefined && d.parts.length === 0 ? ` (${d.marks} marks)` : ""}`;
+        const parts = d.parts.map((p) => `${partLabel(p.label)} ${p.text}${p.marks !== undefined ? ` (${p.marks} marks)` : ""}`);
+        const answer = d.modelAnswer ? [`Answer:`, d.modelAnswer] : [];
+        return [head, ...parts, ...answer].join("\n");
+      })
+      .join("\n\n");
+    setRaw(text);
+    setName(f.name);
+    setFiles((fs) => fs.filter((x) => x.key !== f.key));
+    window.scrollTo({ top: 0 });
+  };
+
+  const passcodePrompt = (which: "paste" | "files") =>
+    askPasscode === which ? (
+      <>
+        <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && passcode) void (which === "paste" ? savePaste(true) : saveFiles(true)); }} />
+        <button onClick={() => (which === "paste" ? savePaste(true) : saveFiles(true))} disabled={saving || !passcode}>Save and share</button>
+        <button onClick={() => setAskPasscode(null)}>Cancel</button>
+      </>
+    ) : null;
+
+  const fileQuestionCount = files.reduce((a, f) => a + f.drafts.length, 0);
 
   return (
     <div>
       <h1>Create</h1>
+      {presetPresentation && (
+        <p className="muted">Every question you add here is tagged <strong>{presentationName(presetPresentation)}</strong>. <Link to="/create">Clear</Link></p>
+      )}
+      {notice && (
+        <p style={{ color: notice.error ? "var(--bad)" : "var(--ok)" }}>
+          {notice.text}{notice.setId && <> <Link to={`/browse?set=${notice.setId}`}>View</Link></>}
+        </p>
+      )}
+
+      <div
+        className="card"
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        style={{ borderStyle: "dashed", borderColor: dragging ? "var(--accent)" : "var(--border)", marginBottom: "0.8rem" }}
+      >
+        <div className="row spread">
+          <span>
+            <strong>Many at once:</strong> drop .md or .txt files here, one set per file, named after the file.
+          </span>
+          <button className="small" onClick={() => fileRef.current?.click()}>Choose files</button>
+          <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,text/plain,text/markdown" style={{ display: "none" }}
+            onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
+        </div>
+        {files.length > 0 && (
+          <>
+            <table style={{ marginTop: "0.6rem" }}>
+              <thead><tr><th>Set name</th><th>Questions</th><th>Marks</th><th></th></tr></thead>
+              <tbody>
+                {files.map((f) => (
+                  <tr key={f.key}>
+                    <td><input type="text" value={f.name} style={{ width: "100%" }} onChange={(e) => setFiles((fs) => fs.map((x) => (x.key === f.key ? { ...x, name: e.target.value } : x)))} /></td>
+                    <td>{f.drafts.length === 0 ? <span style={{ color: "var(--bad)" }}>none parsed</span> : f.drafts.length}</td>
+                    <td>{f.drafts.reduce((a, d) => a + (d.marks ?? 0), 0) || "—"}</td>
+                    <td className="row" style={{ justifyContent: "flex-end" }}>
+                      <button className="small" onClick={() => editFile(f)} disabled={f.drafts.length === 0}>Review</button>
+                      <button className="small danger" onClick={() => setFiles((fs) => fs.filter((x) => x.key !== f.key))}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="row" style={{ marginTop: "0.6rem" }}>
+              <button className="primary" onClick={() => saveFiles(false)} disabled={saving || fileQuestionCount === 0}>Save {files.filter((f) => f.drafts.length).length} sets ({fileQuestionCount} questions)</button>
+              {askPasscode === "files" ? passcodePrompt("files") : (
+                <button onClick={() => saveFiles(true)} disabled={saving || fileQuestionCount === 0}>Save and share all</button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
       <p className="muted">
-        Paste questions in any of these shapes: numbered (1. / Q1 / Question 1), blank-line separated, sub-parts as (a) or 1),
+        Or paste below. Formats: numbered (1. / Q1 / Question 1), blank-line separated, sub-parts as (a) or 1),
         marks as (4 marks) or [4], and model answers after a line starting with "Answer:" or "Model answer:".
       </p>
       <textarea value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste here" style={{ minHeight: "12rem" }} />
@@ -134,6 +274,12 @@ export default function CreatePage() {
             <input type="text" placeholder="Set name" value={name} onChange={(e) => setName(e.target.value)} />
             <input type="text" placeholder="Source (optional)" value={source} onChange={(e) => setSource(e.target.value)} />
             <span className="muted">{drafts.length} questions{totalMarks ? ` · ${totalMarks} marks` : ""}</span>
+          </div>
+          <div className="row" style={{ marginTop: "0.6rem" }}>
+            <button className="primary" onClick={() => savePaste(false)} disabled={saving}>Save {drafts.length} questions</button>
+            {askPasscode === "paste" ? passcodePrompt("paste") : (
+              <button onClick={() => savePaste(true)} disabled={saving}>Save and share to bank</button>
+            )}
           </div>
           <div className="card" style={{ marginTop: "0.8rem" }}>
             <div className="row spread">
@@ -178,18 +324,8 @@ export default function CreatePage() {
             ))}
           </div>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <button className="primary" onClick={() => save(false)} disabled={saving}>Save {drafts.length} questions</button>
-            {askPasscode ? (
-              <>
-                <input type="password" placeholder="Bank passcode" value={passcode} autoFocus onChange={(e) => setPasscode(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && passcode) void save(true); }} />
-                <button onClick={() => save(true)} disabled={saving || !passcode}>Save and share</button>
-                <button onClick={() => setAskPasscode(false)}>Cancel</button>
-              </>
-            ) : (
-              <button onClick={() => save(true)} disabled={saving}>Save and share to bank</button>
-            )}
-            {shareError && <span style={{ color: "var(--bad)" }}>{shareError}</span>}
+            <button className="primary" onClick={() => savePaste(false)} disabled={saving}>Save {drafts.length} questions</button>
+            {askPasscode !== "paste" && <button onClick={() => savePaste(true)} disabled={saving}>Save and share to bank</button>}
           </div>
         </>
       )}

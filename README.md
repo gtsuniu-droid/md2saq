@@ -33,6 +33,17 @@ The bank is stored in Netlify Blobs through `netlify/functions/bank.ts`. It only
 the deployed site, or locally under `netlify dev`. Under plain `npm run dev` the Bank
 page shows "not reachable", which is expected.
 
+## Adding many questions quickly
+
+Three ways, fastest first:
+
+1. **Drop files.** On Create, drop any number of `.md` or `.txt` files. Each becomes a
+   set named after the file, parsed with the rules below, and one click saves them all
+   or saves and shares them all. Review any file in the preview first if you want.
+2. **Paste.** Paste a whole paper into the box. Save keeps you on the page with the box
+   cleared, so you can paste the next one straight away.
+3. **Push from a script.** See "Pushing questions from your own generator" below.
+
 ## Import formats
 
 Numbered questions (`1.`, `1)`, `Q1`, `Question 1:`), or blank-line separated blocks.
