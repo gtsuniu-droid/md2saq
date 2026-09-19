@@ -69,7 +69,10 @@ export default function SettingsPage() {
         </div>
         <div className="row">
           <button onClick={async () => {
-            try { const n = await syncFromBank(); setMessage(n ? `Imported ${n} new set${n === 1 ? "" : "s"} from the bank.` : "Nothing new in the bank."); }
+            try {
+              const n = await syncFromBank();
+              setMessage(n === null ? "Enter the bank passcode first." : n ? `Imported ${n} new set${n === 1 ? "" : "s"} from the bank.` : "Nothing new in the bank.");
+            }
             catch { setMessage("The bank is not reachable from here."); }
           }}>Check the bank now</button>
         </div>

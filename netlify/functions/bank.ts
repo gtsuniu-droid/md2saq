@@ -59,9 +59,16 @@ function packFromText(u: TextUpload) {
   };
 }
 
+function suppliedPasscode(req: Request): string | null {
+  return req.headers.get("x-passcode") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+}
+
 export default async (req: Request): Promise<Response> => {
   const store = getStore("bank");
   const url = new URL(req.url);
+  const expected = process.env.BANK_PASSCODE;
+  if (!expected) return new Response("The bank is not configured on this site (BANK_PASSCODE is unset).", { status: 503 });
+  if (suppliedPasscode(req) !== expected) return new Response("Wrong passcode.", { status: 403 });
 
   if (req.method === "GET") {
     const id = url.searchParams.get("id");
@@ -74,11 +81,6 @@ export default async (req: Request): Promise<Response> => {
   }
 
   if (req.method === "POST") {
-    const expected = process.env.BANK_PASSCODE;
-    if (!expected) return new Response("Bank uploads are not configured on this site.", { status: 503 });
-    const supplied = req.headers.get("x-passcode") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-    if (supplied !== expected) return new Response("Wrong passcode.", { status: 403 });
-
     let body: TextUpload | SetPackUpload;
     try {
       body = (await req.json()) as TextUpload | SetPackUpload;

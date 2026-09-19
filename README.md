@@ -25,10 +25,9 @@ npm test
 1. Push this folder to a Git repository and connect it in Netlify, or drag the `dist`
    folder onto Netlify after `npm run build`. `netlify.toml` already sets the build
    command, publish folder and SPA redirect.
-2. To enable uploads to the shared bank, add an environment variable in the Netlify site
-   settings: `BANK_PASSCODE` set to whatever passcode you want to hand to trusted people.
-   Without it the bank is read-only. Browsing and importing from the bank needs no
-   passcode.
+2. Set an environment variable in the Netlify site settings: `BANK_PASSCODE`, the
+   passcode you hand to trusted people. The bank is locked behind it entirely: browsing,
+   importing and sharing all need it. Each device asks once and remembers it.
 
 The bank is stored in Netlify Blobs through `netlify/functions/bank.ts`. It only works on
 the deployed site, or locally under `netlify dev`. Under plain `npm run dev` the Bank
@@ -53,7 +52,8 @@ the Create page lets you fix any mis-split before saving.
   Timer at the top. When it hits zero, everything locks and submits.
 - **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
   error tags, reflection, learning point.
-- **Bank**: shared question sets. Import into your library, or upload one of yours.
+- **Bank**: every shared question set, browsable question by question behind the
+  passcode. Import into your library, or share one of yours.
 - **Settings**: minutes per mark, JSON backup and restore, Anki export of learning points.
 
 ## Pushing questions from your own generator

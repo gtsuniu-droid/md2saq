@@ -12,13 +12,17 @@ import handler from "../../netlify/functions/bank";
 
 const post = (body: unknown, passcode = "secret") =>
   handler(new Request("http://x/api/bank", { method: "POST", headers: { "content-type": "application/json", "x-passcode": passcode }, body: JSON.stringify(body) }));
+const get = (query = "", passcode = "secret") =>
+  handler(new Request(`http://x/api/bank${query}`, { headers: { "x-passcode": passcode } }));
 
 describe("bank function", () => {
   beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; });
 
-  it("rejects a wrong passcode", async () => {
+  it("rejects a wrong passcode for uploads and for browsing", async () => {
     const res = await post({ format: "saq-practice-text", name: "x", text: "1. Q?" }, "nope");
     expect(res.status).toBe(403);
+    expect((await get("", "nope")).status).toBe(403);
+    expect((await handler(new Request("http://x/api/bank"))).status).toBe(403);
   });
 
   it("parses plain text into a set and lists it", async () => {
@@ -34,10 +38,10 @@ describe("bank function", () => {
     expect(entry.presentations).toContain("chest-pain");
     expect(entry.presentations).toContain("haematuria");
 
-    const list = await (await handler(new Request("http://x/api/bank"))).json() as { sets: { id: string }[] };
+    const list = await (await get()).json() as { sets: { id: string }[] };
     expect(list.sets).toHaveLength(1);
 
-    const pack = await (await handler(new Request(`http://x/api/bank?id=${entry.id}`))).json() as { questions: { marks?: number; modelAnswer?: string }[] };
+    const pack = await (await get(`?id=${entry.id}`)).json() as { questions: { marks?: number; modelAnswer?: string }[] };
     expect(pack.questions[0].marks).toBe(3);
     expect(pack.questions[0].modelAnswer).toBe("ACS\nPE\nDissection");
   });
@@ -47,7 +51,7 @@ describe("bank function", () => {
     const again = await post({ format: "saq-practice-text", name: "a", key: "k", text: "1. What is this?" });
     expect(again.status).toBe(200);
     expect((await again.json() as { duplicate?: boolean }).duplicate).toBe(true);
-    const list = await (await handler(new Request("http://x/api/bank"))).json() as { sets: unknown[] };
+    const list = await (await get()).json() as { sets: unknown[] };
     expect(list.sets).toHaveLength(1);
   });
 
