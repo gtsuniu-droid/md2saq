@@ -102,9 +102,53 @@ export interface Settings {
   bankPasscode?: string;
   /** Pull any bank set not yet in the library whenever the app opens. */
   autoImportBank: boolean;
+  /** AMBOSS long-lived token from the add-on login mutation. */
+  ambossToken?: string;
+  ambossUser?: { eid: string; firstName?: string };
+  /** "platform_article" | "public_article" | "no_article" */
+  ambossAccess?: string;
+  /** Underline AMBOSS terms on questions and marking. */
+  ambossHighlights: boolean;
+  /** Also underline while sitting a paper (default off: no AMBOSS in the exam). */
+  ambossOnPaper: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { id: "settings", minutesPerMark: 1.5, autoImportBank: true };
+/** Cached phrase-finder result for one question. */
+export interface AmbossPhrases {
+  key: string;
+  terms: { term: string; pgId: string }[];
+  fetchedAt: number;
+}
+
+export interface AmbossDestination {
+  label: string;
+  articleEid?: string | null;
+  anchor?: string | null;
+  publicUrl?: string | null;
+}
+
+export interface AmbossMedia {
+  eid: string;
+  title?: string | null;
+  canonicalUrl?: string | null;
+  aspectRatio?: number | null;
+  copyright?: { html?: string | null } | null;
+}
+
+export interface AmbossPhraseGroup {
+  eid: string;
+  title: string;
+  synonyms: string[];
+  abstract?: string | null;
+  translation?: string | null;
+  destinations: AmbossDestination[];
+  media: AmbossMedia[];
+  /** True when the abstract was withheld (no valid access). */
+  paywalled?: boolean;
+  fetchedAt: number;
+}
+
+export const DEFAULT_SETTINGS: Settings = { id: "settings", minutesPerMark: 1.5, autoImportBank: true, ambossHighlights: true, ambossOnPaper: false };
 
 /** A practice or exam session, kept in sessionStorage. */
 export interface Session {

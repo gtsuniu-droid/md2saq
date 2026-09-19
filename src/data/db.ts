@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import { DEFAULT_SETTINGS, type Attempt, type Mark, type Question, type QuestionSet, type Settings } from "./types";
+import { DEFAULT_SETTINGS, type AmbossPhraseGroup, type AmbossPhrases, type Attempt, type Mark, type Question, type QuestionSet, type Settings } from "./types";
 
 export class SaqDatabase extends Dexie {
   sets!: EntityTable<QuestionSet, "id">;
@@ -7,6 +7,8 @@ export class SaqDatabase extends Dexie {
   attempts!: EntityTable<Attempt, "id">;
   marks!: EntityTable<Mark, "id">;
   settings!: EntityTable<Settings, "id">;
+  ambossPhrases!: EntityTable<AmbossPhrases, "key">;
+  ambossGroups!: EntityTable<AmbossPhraseGroup, "eid">;
 
   constructor() {
     super("saq-practice");
@@ -16,6 +18,10 @@ export class SaqDatabase extends Dexie {
       attempts: "id, questionId, submittedAt, sessionId",
       marks: "id, attemptId, questionId, markedAt",
       settings: "id",
+    });
+    this.version(2).stores({
+      ambossPhrases: "key, fetchedAt",
+      ambossGroups: "eid, fetchedAt",
     });
   }
 }

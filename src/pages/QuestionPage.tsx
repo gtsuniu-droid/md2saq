@@ -6,6 +6,7 @@ import PresentationPicker from "../components/PresentationPicker";
 import AnswerHtml from "../components/AnswerHtml";
 import { answerParts, formatDate, formatDuration, partLabel, totalMarks } from "../lib/questions";
 import { startSession } from "../lib/session";
+import AmbossText from "../components/AmbossText";
 
 export default function QuestionPage() {
   const { id = "" } = useParams();
@@ -50,11 +51,11 @@ export default function QuestionPage() {
         </div>
       </div>
       <div className="card" style={{ marginTop: "0.8rem" }}>
-        <div className="pre">{q.text}</div>
+        <AmbossText cacheKey={q.id} texts={[q.text, ...q.parts.map((p) => p.text)]} text={q.text} />
         {q.parts.map((p) => (
           <div key={p.label} className="part-head" style={{ marginTop: "0.6rem" }}>
             <span className="label">{partLabel(p.label)}</span>
-            <span className="text">{p.text}</span>
+            <AmbossText cacheKey={q.id} texts={[q.text, ...q.parts.map((x) => x.text)]} text={p.text} className="text" />
             {p.marks !== undefined && <span className="marks">({p.marks})</span>}
           </div>
         ))}

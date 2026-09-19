@@ -170,3 +170,26 @@ mark.hit { background: var(--hit); }
 .dash-row .name { flex: 1; }
 .dash-row.child { margin-left: 1.2rem; }
 .dash-row .stat { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+
+/* AMBOSS terms, styled as the add-on does */
+span.amboss-marker {
+  background: inherit;
+  color: inherit;
+  position: relative;
+  border-bottom: 2px solid #0fcad4;
+  cursor: pointer;
+}
+span.amboss-marker:hover { background: color-mix(in srgb, #0fcad4 18%, transparent); }
+.amboss-popup {
+  position: absolute; z-index: 20; width: min(360px, 100%);
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 0.7rem 0.85rem; font-size: 0.9rem; line-height: 1.45;
+  white-space: normal; font-weight: normal; text-align: left;
+}
+.amboss-popup-head { margin-bottom: 0.4rem; }
+.amboss-abstract { max-height: 14rem; overflow-y: auto; }
+.amboss-abstract p { margin: 0.3rem 0; }
+.amboss-abstract ul, .amboss-abstract ol { margin: 0.3rem 0; padding-left: 1.2rem; }
+.amboss-media { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+.amboss-media img { height: 56px; border-radius: 4px; border: 1px solid var(--border); }
+.amboss-dest { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }

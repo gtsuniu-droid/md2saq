@@ -6,6 +6,8 @@ import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
 import { answerParts, formatDuration, partLabel } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
+import AmbossText from "../components/AmbossText";
+import { getSettings } from "../data/db";
 
 export default function PaperPage() {
   const nav = useNavigate();
@@ -62,6 +64,8 @@ export default function PaperPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const ambossOnPaper = useLiveQuery(async () => (await getSettings()).ambossOnPaper, []) ?? false;
 
   const data = useLiveQuery(async () => {
     if (!session || !ready) return undefined;
@@ -219,7 +223,7 @@ export default function PaperPage() {
         </div>
         <div className="paper-stem">
           <div className="qnum">Question {index + 1}</div>
-          <div className="pre">{question.text}</div>
+          <AmbossText cacheKey={question.id} texts={[question.text, ...question.parts.map((p) => p.text)]} text={question.text} disabled={!ambossOnPaper} />
         </div>
         <div className="paper-answers">
           {parts.map((p) => {
@@ -228,7 +232,7 @@ export default function PaperPage() {
               <div key={`${attempt.id}-${p.label}`} className="part" id={`part-${p.label || "stem"}`}>
                 <div className="part-head">
                   {p.label && <span className="label">{partLabel(p.label)}</span>}
-                  <span className="text">{p.text}</span>
+                  <AmbossText cacheKey={question.id} texts={[question.text, ...question.parts.map((x) => x.text)]} text={p.text} className="text" disabled={!ambossOnPaper} />
                   {p.marks !== undefined && <span className="marks">({p.marks} mark{p.marks === 1 ? "" : "s"})</span>}
                   <button className={"small" + (ans?.flagged ? " active" : "")} title="Flag for review" onClick={() => toggleFlag(attempt.id, p.label)}>⚑</button>
                 </div>

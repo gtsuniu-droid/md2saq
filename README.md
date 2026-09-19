@@ -33,6 +33,23 @@ The bank is stored in Netlify Blobs through `netlify/functions/bank.ts`. It only
 the deployed site, or locally under `netlify dev`. Under plain `npm run dev` the Bank
 page shows "not reachable", which is expected.
 
+## AMBOSS
+
+Settings has an AMBOSS login. It does what the official AMBOSS Anki add-on does, using
+the same four calls: the add-on's login mutation for a token, the phrase finder to list
+the terms in a question, the phrase-group query for a term's definition, and the access
+check to decide whether links go to the full article or the public one. The calls go
+through `netlify/functions/amboss.ts` because AMBOSS's endpoints do not allow browser
+pages to call them directly. The relay stores nothing; the token lives in your browser.
+
+Terms are underlined in the same teal as the add-on on question pages and while
+marking. Click one for the definition and links into AMBOSS. Highlighting is off while
+sitting a paper unless you turn it on in Settings. Results are cached on the device for
+a month (terms) and a week (definitions), as the add-on caches them in memory.
+
+Under `npm run dev` the functions run inside Vite, so AMBOSS works locally. The bank does
+not, since it needs Netlify Blobs.
+
 ## Adding many questions quickly
 
 Three ways, fastest first:

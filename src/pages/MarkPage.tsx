@@ -7,6 +7,7 @@ import AnswerHtml from "../components/AnswerHtml";
 import { hitTerms, markingPoints } from "../lib/marking";
 import { answerParts, formatDuration, partLabel } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
+import AmbossText from "../components/AmbossText";
 
 export default function MarkPage() {
   const { attemptId = "" } = useParams();
@@ -63,6 +64,7 @@ export default function MarkPage() {
   const { attempt, question, existing } = data;
 
   const hasModel = partsInfo.some((pi) => pi.points.length > 0);
+  const ambossTexts = [question.text, ...question.parts.map((p) => p.text), ...partsInfo.flatMap((pi) => pi.points)];
   const needsConfidence = hasModel && confidence === undefined && !existing;
   const wholeModel = question.parts.length > 0 && question.modelAnswer && !question.parts.some((p) => p.modelAnswer);
 
@@ -141,7 +143,7 @@ export default function MarkPage() {
         </span>
       </div>
       <div className="card" style={{ margin: "0.8rem 0" }}>
-        <div className="pre">{question.text}</div>
+        <AmbossText cacheKey={question.id} texts={ambossTexts} text={question.text} />
       </div>
       {wholeModel && (
         <div className="card" style={{ marginBottom: "0.8rem" }}>
@@ -159,7 +161,7 @@ export default function MarkPage() {
             {pi.part.text && (
               <div className="part-head">
                 {pi.part.label && <span className="label">{partLabel(pi.part.label)}</span>}
-                <span className="text">{pi.part.text}</span>
+                <AmbossText cacheKey={question.id} texts={ambossTexts} text={pi.part.text} className="text" />
               </div>
             )}
             <div className="two-col">
@@ -182,7 +184,7 @@ export default function MarkPage() {
                     {pi.points.map((pt, idx) => (
                       <label key={idx}>
                         <input type="checkbox" checked={pm.pointsHit.includes(idx)} onChange={() => togglePoint(pi.part.label, idx, pi.points.length)} />
-                        <span>{pt}</span>
+                        <AmbossText cacheKey={question.id} texts={ambossTexts} text={pt} className="" />
                       </label>
                     ))}
                   </div>

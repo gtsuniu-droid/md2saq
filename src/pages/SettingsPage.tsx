@@ -5,11 +5,16 @@ import { DEFAULT_SETTINGS } from "../data/types";
 import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileText, type ExportFile } from "../lib/exportImport";
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
+import { AmbossAuthError, ambossCheck, ambossLogin, ambossLogout } from "../lib/amboss";
 
 export default function SettingsPage() {
   const settings = useLiveQuery(async () => await getSettings(), []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [ambossUser, setAmbossUser] = useState("");
+  const [ambossPass, setAmbossPass] = useState("");
+  const [ambossBusy, setAmbossBusy] = useState(false);
+  const [ambossMsg, setAmbossMsg] = useState<string | null>(null);
 
   if (!settings) return null;
   const stamp = new Date().toISOString().slice(0, 10);
@@ -52,6 +57,54 @@ export default function SettingsPage() {
             onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
           <span className="muted">used to suggest timer lengths</span>
         </div>
+      </div>
+
+      <h2>AMBOSS</h2>
+      <div className="card stack">
+        {settings.ambossToken ? (
+          <>
+            <div className="row spread">
+              <span>Logged in{settings.ambossUser?.firstName ? ` as ${settings.ambossUser.firstName}` : ""}{settings.ambossAccess ? ` · ${settings.ambossAccess.replace("_", " ")}` : ""}</span>
+              <span className="row">
+                <button className="small" onClick={async () => { setAmbossMsg((await ambossCheck()) ? "AMBOSS session is valid." : "AMBOSS rejected the session; log in again."); }}>Check</button>
+                <button className="small" onClick={async () => { await ambossLogout(); setAmbossMsg("Logged out of AMBOSS."); }}>Log out</button>
+              </span>
+            </div>
+            <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
+              <input type="checkbox" checked={settings.ambossHighlights} onChange={(e) => patchSettings({ ambossHighlights: e.target.checked })} />
+              Underline AMBOSS terms on questions and marking (click a term for its definition)
+            </label>
+            <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
+              <input type="checkbox" checked={settings.ambossOnPaper} onChange={(e) => patchSettings({ ambossOnPaper: e.target.checked })} />
+              Also while sitting a paper
+            </label>
+          </>
+        ) : (
+          <>
+            <p className="muted" style={{ margin: 0 }}>
+              Log in with your AMBOSS account to underline medical terms in questions and open their definitions, the way the AMBOSS Anki add-on does.
+              Your email and password go straight to AMBOSS through this site&apos;s relay and are not stored; only the token AMBOSS returns is kept on this device.
+            </p>
+            <div className="row">
+              <input type="text" placeholder="AMBOSS email" autoComplete="username" value={ambossUser} onChange={(e) => setAmbossUser(e.target.value)} />
+              <input type="password" placeholder="AMBOSS password" autoComplete="current-password" value={ambossPass} onChange={(e) => setAmbossPass(e.target.value)} />
+              <button className="primary" disabled={!ambossUser || !ambossPass || ambossBusy} onClick={async () => {
+                setAmbossBusy(true);
+                setAmbossMsg(null);
+                try {
+                  const u = await ambossLogin(ambossUser.trim(), ambossPass);
+                  setAmbossMsg(`Logged in${u.firstName ? ` as ${u.firstName}` : ""}.`);
+                  setAmbossPass("");
+                } catch (e) {
+                  setAmbossMsg(e instanceof AmbossAuthError ? e.message : `Login failed: ${e instanceof Error ? e.message : String(e)}`);
+                } finally {
+                  setAmbossBusy(false);
+                }
+              }}>Log in</button>
+            </div>
+          </>
+        )}
+        {ambossMsg && <p style={{ margin: 0 }}>{ambossMsg}</p>}
       </div>
 
       <h2>Shared bank</h2>
