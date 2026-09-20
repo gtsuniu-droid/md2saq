@@ -10,6 +10,9 @@ import { loadSummaries } from "../lib/sets";
 import { fullLabel } from "../lib/tree";
 import { bankErrorMessage, pushToBank } from "../lib/share";
 import { recordDeletes } from "../lib/sync";
+import { moveSetToPresentation } from "../lib/movePresentation";
+import { presentationName } from "../data/presentations";
+import PresentationSelect from "../components/PresentationSelect";
 
 /**
  * The single place for building the bank: add sets (drop or paste), edit,
@@ -145,6 +148,19 @@ function MasterContents() {
     }
   };
 
+  const moveSelected = async (presentationId: string) => {
+    if (!presentationId || selected.size === 0) return;
+    setBusy("move");
+    try {
+      for (const id of selected) await moveSetToPresentation(id, presentationId);
+      setMessage(`Moved ${selected.size} set${selected.size === 1 ? "" : "s"} to ${presentationName(presentationId)}. Publish to share the change.`);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const tagSelected = async () => {
     const tags = bulkTag.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
     if (tags.length === 0 || selected.size === 0) return;
@@ -189,6 +205,7 @@ function MasterContents() {
               <input type="text" placeholder="Tag to add, e.g. Dizziness::Vestibular" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void tagSelected(); }} style={{ minWidth: "16rem" }} />
               <button className="small" onClick={tagSelected} disabled={busy !== null || !bulkTag.trim()}>Add tag</button>
+              <PresentationSelect value="" onChange={moveSelected} disabled={busy !== null} placeholder="Move to presentation…" title="Each set takes the next number in that presentation" />
               <button className="small" onClick={publishSelected} disabled={busy !== null}>Publish selected</button>
               <button className="small danger" onClick={() => removeMany([...selected])} disabled={busy !== null}>Delete selected</button>
               <button className="small link" onClick={() => setSelected(new Set())}>Clear</button>

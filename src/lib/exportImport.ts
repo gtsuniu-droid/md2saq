@@ -1,5 +1,6 @@
 import { db, newId, patchSettings } from "../data/db";
 import { nextSetNumber } from "./sets";
+import { numberingGroup } from "./setGroup";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 
 export interface ExportFile {
@@ -56,7 +57,7 @@ export async function importSetPack(pack: SetPack, bankId?: string, bankUpdatedA
   // (synced attempts refer to them). Fall back to fresh ids only on a collision.
   const clash = !!(await db.sets.get(pack.set.id)) || (await db.questions.where("id").anyOf(pack.questions.map((q) => q.id)).count()) > 0;
   const setId = clash ? newId() : pack.set.id;
-  const num = number ?? pack.set.number ?? (await nextSetNumber());
+  const num = number ?? pack.set.number ?? (await nextSetNumber(numberingGroup(pack.set.tags, pack.questions)));
   const set: QuestionSet = { ...pack.set, id: setId, number: num, createdAt: Date.now(), updatedAt: undefined, bankId, bankUpdatedAt };
   const questions: Question[] = pack.questions.map((q) => ({ ...q, id: clash ? newId() : q.id, setId, createdAt: Date.now() }));
   await db.transaction("rw", db.sets, db.questions, async () => {

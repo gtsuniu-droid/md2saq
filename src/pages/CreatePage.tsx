@@ -16,7 +16,8 @@ import { getSettings } from "../data/db";
 import { hasQuestionChunks, isCaseBank, parseAnswersOnly, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
 import { matchAnswers, mergeAnswersIntoSet, type AnswerMatch } from "../lib/mergeAnswers";
 import { fullLabel } from "../lib/tree";
-import { loadSummaries, nextSetNumber } from "../lib/sets";
+import { loadSummaries, nextSetNumber, setLabel } from "../lib/sets";
+import { numberingGroup, setNumberLabel } from "../lib/setGroup";
 import { knownTags, suggestConditionTags } from "../lib/tags";
 import TagEditor from "../components/TagEditor";
 import { FORMAT_GUIDE } from "../data/formatGuide";
@@ -79,11 +80,11 @@ function draftsFromText(text: string, preset: string): { drafts: Draft[]; meta: 
 }
 
 async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}, extra: Partial<QuestionSet> = {}): Promise<QuestionSet> {
-  const number = await nextSetNumber();
+  const number = await nextSetNumber(numberingGroup(extra.tags, drafts));
   const set: QuestionSet = {
     id: newId(),
     number,
-    name: name.trim() || meta.title || `Set ${number}`,
+    name: name.trim() || meta.title || setNumberLabel(number),
     source: source.trim() || undefined,
     suggestedMinutes: meta.minutes,
     createdAt: Date.now(),
@@ -234,8 +235,8 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
     setSaving(true);
     setNotice(null);
     const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags() });
-    const ok = await pushOrReport(set.id, `Set ${set.number}`);
-    if (ok) setNotice({ text: `Saved Set ${set.number} with ${drafts.length} questions.`, setId: set.id });
+    const ok = await pushOrReport(set.id, setLabel(set));
+    if (ok) setNotice({ text: `Saved ${setLabel(set)} with ${drafts.length} questions.`, setId: set.id });
     setRaw("");
     setDrafts([]);
     setTags([]);
@@ -322,7 +323,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
         debrief: b.c.debrief,
       });
       questions += b.drafts.length;
-      if (ok) ok = await pushOrReport(set.id, `Set ${set.number}`);
+      if (ok) ok = await pushOrReport(set.id, setLabel(set));
     }
     if (ok) setNotice({ text: `Saved ${cases.length} case${cases.length === 1 ? "" : "s"} with ${questions} questions.` });
     setCases([]);
@@ -342,7 +343,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
       const set = await saveDrafts(f.name, "", f.drafts, f.meta, { tags: typedTags() });
       sets++;
       questions += f.drafts.length;
-      if (ok) ok = await pushOrReport(set.id, `Set ${set.number}`);
+      if (ok) ok = await pushOrReport(set.id, setLabel(set));
     }
     if (ok) setNotice({ text: `Saved ${sets} set${sets === 1 ? "" : "s"} with ${questions} questions.` });
     setFiles([]);

@@ -122,9 +122,12 @@ the Create page lets you fix any mis-split before saving.
 
 ## Numbers and tags
 
-Sets are known by number: Set 1, Set 2, and so on. The bank assigns the number when a
-set is first shared, so every device agrees; a set that has not reached the bank yet
-carries a provisional number. What a set is about is carried by its tags, normally the
+Sets are known by number within their presentation: Dizziness – Set 01, Set 02, and
+Abdominal pain starts again at Set 01, the way an Anki tag such as
+`Abdominal_pain::Set_01` would read. The server assigns the number when a set is first
+published, so every device agrees; a set that has not been published yet carries a
+provisional number. A set moved to another presentation takes the next number there.
+What a set is about is carried by its tags, normally the
 conditions it covers, and by its presentations. Browse filters by tag, presentation and
 collection, and a set page links each tag. Title and collection are kept as detail for
 searching and can be edited on the set's Edit page, along with every question, part and

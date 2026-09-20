@@ -8,6 +8,9 @@ import { loadSummaries, setLabel, startSet, suggestedMinutesFor } from "../lib/s
 import { fullLabel } from "../lib/tree";
 import { isAdmin } from "../lib/admin";
 import { recordDeletes } from "../lib/sync";
+import { moveSetToPresentation } from "../lib/movePresentation";
+import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
+import PresentationSelect from "../components/PresentationSelect";
 
 export default function SetPage() {
   const { id = "" } = useParams();
@@ -15,6 +18,8 @@ export default function SetPage() {
   const location = useLocation();
   const flash = (location.state as { message?: string } | null)?.message;
   const [minutes, setMinutes] = useState("");
+  const [moving, setMoving] = useState(false);
+  const [moveMessage, setMoveMessage] = useState<string | null>(null);
   const data = useLiveQuery(async () => {
     const summaries = await loadSummaries();
     const summary = summaries.find((s) => s.set.id === id) ?? null;
@@ -39,6 +44,29 @@ export default function SetPage() {
     const mins = minutes.trim() === "" ? suggested : Number(minutes);
     startSet(summary, mode, mins);
     nav("/paper");
+  };
+
+  const move = async (presentationId: string) => {
+    if (!presentationId || presentationId === summary.presentations[0]) return;
+    setMoving(true);
+    setMoveMessage(null);
+    try {
+      await moveSetToPresentation(set.id, presentationId);
+      if (await savedPasscode()) {
+        try {
+          await pushToBank(set.id);
+          setMoveMessage(`Moved to ${presentationName(presentationId)} and published.`);
+        } catch (e) {
+          setMoveMessage(`Moved here, not published: ${bankErrorMessage(e)}`);
+        }
+      } else {
+        setMoveMessage(`Moved to ${presentationName(presentationId)}.`);
+      }
+    } catch (e) {
+      setMoveMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMoving(false);
+    }
   };
 
   const remove = async () => {
@@ -67,10 +95,17 @@ export default function SetPage() {
           `${questions.length} question${questions.length === 1 ? "" : "s"}`,
           summary.marks ? `${summary.marks} marks` : "",
           summary.presentations.map(presentationName).join(", "),
-          set.number !== undefined && set.name && set.name !== setLabel(set) ? set.name : "",
+          set.number !== undefined && set.name && set.name !== setLabel(set) && !/^set\s*\d+$/i.test(set.name) ? set.name : "",
           set.source ?? "",
         ].filter(Boolean).join(", ")}
       </p>
+      {unlocked && (
+        <p className="row" style={{ marginTop: "-0.4rem" }}>
+          <label style={{ margin: 0 }}>Presentation</label>
+          <PresentationSelect value={summary.presentations[0] ?? ""} onChange={move} disabled={moving} placeholder="None" title="Move this set to a presentation. It takes the next number there." />
+          {moveMessage && <span className={moveMessage.includes("not published") ? "" : "muted"} style={moveMessage.includes("not published") ? { color: "var(--warn)" } : undefined}>{moveMessage}</span>}
+        </p>
+      )}
       {set.tags && set.tags.length > 0 && (
         <p className="muted" style={{ marginTop: "-0.4rem" }}>
           {set.tags.map((t, i) => <span key={t}>{i > 0 ? ", " : ""}<Link to={`/browse?tag=${encodeURIComponent(t)}`}>{t}</Link></span>)}

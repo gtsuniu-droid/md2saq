@@ -1,5 +1,5 @@
 import { PRESENTATIONS, presentationName } from "../data/presentations";
-import type { SetSummary } from "./sets";
+import { setLabel, type SetSummary } from "./sets";
 
 /**
  * Anki-style deck tree. A set's place comes from its hierarchical tags
@@ -108,6 +108,6 @@ export function filterTree(nodes: TreeNode[], q: string): TreeNode[] {
 /** "Dizziness – Set 3": the set's first branch and its number, for lists outside the tree. */
 export function fullLabel(s: SetSummary): string {
   const top = setPaths(s)[0]?.split(SEP).map(displayName).join(" / ");
-  const num = s.set.number !== undefined ? `Set ${s.set.number}` : s.set.name || "Set";
+  const num = setLabel(s.set);
   return top ? `${top} – ${num}` : num;
 }

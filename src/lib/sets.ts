@@ -2,6 +2,10 @@ import { db } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 import { totalMarks } from "./questions";
 import { startSession } from "./session";
+import { nextNumberIn, numberingGroup, rankedPresentations, setNumberLabel } from "./setGroup";
+
+/** Bumped when the numbering rule changes; local-only sets are renumbered once to match. */
+const NUMBERING = 2;
 
 export interface Sitting {
   sessionId: string;
@@ -71,8 +75,6 @@ export function summarise(sets: QuestionSet[], questions: Question[], attempts: 
   return sets
     .map((set) => {
       const qs = (byId.get(set.id) ?? []).sort((a, b) => a.order - b.order);
-      const counts = new Map<string, number>();
-      for (const q of qs) for (const p of q.presentations) counts.set(p, (counts.get(p) ?? 0) + 1);
       return {
         set,
         questions: qs,
@@ -80,7 +82,7 @@ export function summarise(sets: QuestionSet[], questions: Question[], attempts: 
         sittings: sittingsFor(qs, attempts, marks),
         attemptedQuestions: qs.filter((q) => attemptedQ.has(q.id)).length,
         markedQuestions: qs.filter((q) => markedQ.has(q.id)).length,
-        presentations: [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([p]) => p),
+        presentations: rankedPresentations(qs),
       };
     })
     .sort((a, b) => b.set.createdAt - a.set.createdAt);
@@ -111,33 +113,48 @@ export function startSet(summary: SetSummary, mode: "practice" | "exam", minutes
   );
 }
 
-/** How a set is referred to everywhere: its number, or its name until it has one. */
+/** How a set is referred to everywhere: "Set 01", or its name until it has a number. */
 export function setLabel(set: QuestionSet): string {
-  return set.number !== undefined ? `Set ${set.number}` : set.name || "Set";
+  return set.number !== undefined ? setNumberLabel(set.number) : set.name || "Set";
 }
 
-/** Next provisional number on this device: one above the highest known. */
-export async function nextSetNumber(): Promise<number> {
-  const sets = await db.sets.toArray();
-  return sets.reduce((m, s) => Math.max(m, s.number ?? 0), 0) + 1;
+/** Every set on the device with the group it is numbered in. */
+async function groupedSets(): Promise<{ set: QuestionSet; group: string; number?: number }[]> {
+  const [sets, questions] = await Promise.all([db.sets.toArray(), db.questions.toArray()]);
+  const bySet = new Map<string, Question[]>();
+  for (const q of questions) bySet.set(q.setId, [...(bySet.get(q.setId) ?? []), q]);
+  return sets.map((set) => ({ set, group: numberingGroup(set.tags, bySet.get(set.id) ?? []), number: set.number }));
+}
+
+/** Next provisional number on this device for a set in this group: one above the highest known there. */
+export async function nextSetNumber(group: string): Promise<number> {
+  return nextNumberIn(group, await groupedSets());
 }
 
 /**
- * Give numbers to sets that predate numbering, oldest first, and move any
- * local-only set whose provisional number now clashes with a bank number.
+ * Number sets that have none, within their presentation, and move any
+ * local-only set whose number clashes with a published set's in the same
+ * group. Published sets keep the number the server gave them.
  */
 export async function numberUnnumberedSets(): Promise<void> {
-  const sets = await db.sets.toArray();
-  let n = sets.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
-  const missing = sets.filter((s) => s.number === undefined).sort((a, b) => a.createdAt - b.createdAt);
-  for (const s of missing) {
-    s.number = ++n;
-    await db.sets.update(s.id, { number: s.number });
+  const migrated = (await db.meta.get("numbering"))?.value === NUMBERING;
+  const all = await groupedSets();
+  const groups = new Set(all.map((x) => x.group));
+  for (const group of groups) {
+    const members = all.filter((x) => x.group === group);
+    const taken = new Set(members.filter((x) => x.set.bankId && x.number !== undefined).map((x) => x.number!));
+    let next = Math.max(0, ...taken);
+    const locals = members.filter((x) => !x.set.bankId).sort((a, b) => (a.number ?? Infinity) - (b.number ?? Infinity) || a.set.createdAt - b.set.createdAt);
+    for (const x of locals) {
+      if (migrated && x.number !== undefined && !taken.has(x.number)) {
+        taken.add(x.number);
+        next = Math.max(next, x.number);
+        continue;
+      }
+      do next++; while (taken.has(next));
+      taken.add(next);
+      await db.sets.update(x.set.id, { number: next });
+    }
   }
-  const taken = new Set(sets.filter((s) => s.bankId && s.number !== undefined).map((s) => s.number));
-  for (const s of sets) {
-    if (s.bankId || s.number === undefined || !taken.has(s.number)) continue;
-    s.number = ++n;
-    await db.sets.update(s.id, { number: s.number });
-  }
+  if (!migrated) await db.meta.put({ id: "numbering", value: NUMBERING });
 }

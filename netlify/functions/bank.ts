@@ -5,13 +5,19 @@ import { dirname, join } from "node:path";
 import { parsePaper, questionFullText } from "../../src/lib/parser";
 import { suggestPresentations } from "../../src/lib/suggest";
 import { PRESENTATION_BY_ID } from "../../src/data/presentations";
+import { nextNumberIn, numberingGroup, rankedPresentations } from "../../src/lib/setGroup";
+
+/** Bumped when the numbering rule changes; the index is renumbered once to match. */
+const NUMBERING = 2;
 
 interface BankEntry {
   id: string;
   /** The set's own id inside the pack, so the same set published again from any device updates this entry. */
   setId?: string;
-  /** Running number across the bank, assigned when the set is first shared. */
+  /** Number within its presentation (see setGroup.ts), assigned when the set is first shared. */
   number?: number;
+  /** The presentation or branch the number counts within. */
+  group?: string;
   name: string;
   source?: string;
   collection?: string;
@@ -73,11 +79,12 @@ function packFromText(u: TextUpload) {
 
 function entryFrom(id: string, pack: Pack, previous?: BankEntry): BankEntry {
   const set = pack.set as SetPackUpload["set"];
-  const presentations = [...new Set(pack.questions.flatMap((q) => q.presentations ?? []))];
+  const presentations = rankedPresentations(pack.questions);
   return {
     id,
     setId: typeof set.id === "string" ? set.id : previous?.setId,
     number: previous?.number,
+    group: numberingGroup(set.tags, pack.questions),
     name: String(set.name ?? "Untitled set").slice(0, 200),
     source: set.source ? String(set.source).slice(0, 200) : undefined,
     collection: set.collection ? String(set.collection).slice(0, 200) : undefined,
@@ -156,14 +163,26 @@ export default async (req: Request): Promise<Response> => {
 
   const loadIndex = async (): Promise<BankEntry[]> => {
     const index = ((await store.get("index", { type: "json" })) as BankEntry[] | null) ?? [];
-    // Entries from before numbering get numbers in upload order, once.
-    if (index.some((e) => e.number === undefined)) {
-      let next = index.reduce((m, e) => Math.max(m, e.number ?? 0), 0);
-      for (const e of [...index].sort((a, b) => a.uploadedAt - b.uploadedAt)) if (e.number === undefined) e.number = ++next;
+    // Once, when the rule changes: number every entry within its presentation, keeping the old order.
+    if (index.length && (await store.get("numbering", { type: "json" })) !== NUMBERING) {
+      const ordered = [...index].sort((a, b) => (a.number ?? Infinity) - (b.number ?? Infinity) || a.uploadedAt - b.uploadedAt);
+      const counters = new Map<string, number>();
+      for (const e of ordered) {
+        e.group = numberingGroup(e.tags, [{ presentations: e.presentations }]);
+        e.number = (counters.get(e.group) ?? 0) + 1;
+        counters.set(e.group, e.number);
+      }
       await store.setJSON("index", index);
+      await store.setJSON("numbering", NUMBERING);
     }
     return index;
   };
+
+  /** The number an entry keeps, or a fresh one when it moved to another presentation. */
+  const numberFor = (entry: BankEntry, previous: BankEntry | undefined, index: BankEntry[]): number =>
+    previous?.number !== undefined && previous.group === entry.group
+      ? previous.number
+      : nextNumberIn(entry.group ?? "untagged", index.filter((e) => e.id !== entry.id) as { group: string; number?: number }[]);
 
   const readPack = async (): Promise<{ pack: Pack; key?: string } | Response> => {
     let body: TextUpload | SetPackUpload;
@@ -209,15 +228,16 @@ export default async (req: Request): Promise<Response> => {
     if (same) {
       // Already published, perhaps from another device: update in place rather than duplicate.
       const entry = entryFrom(same.id, r.pack, same);
-      (r.pack.set as { number?: number }).number = same.number;
+      entry.number = numberFor(entry, same, index);
+      (r.pack.set as { number?: number }).number = entry.number;
       await store.setJSON(`sets/${same.id}`, r.pack);
       await store.setJSON("index", index.map((e) => (e.id === same.id ? entry : e)));
       return json(entry);
     }
     const id = crypto.randomUUID();
-    const number = index.reduce((m, e) => Math.max(m, e.number ?? 0), 0) + 1;
-    const entry = { ...entryFrom(id, r.pack), number, key: r.key };
-    (r.pack.set as { number?: number }).number = number;
+    const entry = { ...entryFrom(id, r.pack), key: r.key };
+    entry.number = numberFor(entry, undefined, index);
+    (r.pack.set as { number?: number }).number = entry.number;
     await store.setJSON(`sets/${id}`, r.pack);
     await store.setJSON("index", [...index, entry]);
     return json(entry, 201);
@@ -232,7 +252,8 @@ export default async (req: Request): Promise<Response> => {
     const r = await readPack();
     if (r instanceof Response) return r;
     const entry = entryFrom(id, r.pack, previous);
-    (r.pack.set as { number?: number }).number = previous.number;
+    entry.number = numberFor(entry, previous, index);
+    (r.pack.set as { number?: number }).number = entry.number;
     await store.setJSON(`sets/${id}`, r.pack);
     await store.setJSON("index", index.map((e) => (e.id === id ? entry : e)));
     return json(entry);

@@ -89,6 +89,48 @@ describe("bank editing", () => {
   });
 });
 
+describe("numbering", () => {
+  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
+  const pack = (id: string, presentations: string[], tags?: string[]) => ({
+    format: "saq-practice-set", version: 1, set: { id, name: id, createdAt: 1, tags },
+    questions: [{ id: `${id}-q`, setId: id, order: 0, text: "Q?", parts: [], presentations, tags: [], createdAt: 1 }],
+  });
+
+  it("counts from 1 within each presentation", async () => {
+    const d1 = await (await post(pack("d1", ["dizziness"]))).json() as { number: number; group: string };
+    const d2 = await (await post(pack("d2", ["dizziness"]))).json() as { number: number };
+    const a1 = await (await post(pack("a1", ["abdominal-pain"]))).json() as { number: number; group: string };
+    const t1 = await (await post(pack("t1", ["chest-pain"], ["Dizziness::Vestibular"]))).json() as { number: number; group: string };
+    expect([d1.number, d2.number, a1.number, t1.number]).toEqual([1, 2, 1, 3]);
+    expect(d1.group).toBe("dizziness");
+    expect(a1.group).toBe("abdominal-pain");
+    expect(t1.group).toBe("dizziness");
+  });
+
+  it("gives a set a new number when it moves to another presentation, and keeps it otherwise", async () => {
+    const d1 = await (await post(pack("d1", ["dizziness"]))).json() as { id: string; number: number };
+    const kept = await (await post(pack("d1", ["dizziness"], ["Vestibular neuritis"]))).json() as { number: number };
+    expect(kept.number).toBe(d1.number);
+    const put = await handler(new Request(`http://x/api/bank?id=${d1.id}`, { method: "PUT", headers: { "content-type": "application/json", "x-passcode": "secret" }, body: JSON.stringify(pack("d1", ["chest-pain"])) }));
+    const moved = await put.json() as { number: number; group: string };
+    expect(moved.group).toBe("chest-pain");
+    expect(moved.number).toBe(1);
+  });
+
+  it("renumbers an index made under the old running scheme, once", async () => {
+    memory.set("index", [
+      { id: "x1", number: 1, name: "a", questionCount: 1, presentations: ["dizziness"], uploadedAt: 1 },
+      { id: "x2", number: 2, name: "b", questionCount: 1, presentations: ["abdominal-pain"], uploadedAt: 2 },
+      { id: "x3", number: 3, name: "c", questionCount: 1, presentations: ["dizziness"], uploadedAt: 3 },
+      { id: "x4", name: "d", questionCount: 1, presentations: ["abdominal-pain"], uploadedAt: 4 },
+    ]);
+    const list = await (await get()).json() as { sets: { id: string; number: number; group: string }[] };
+    const byId = Object.fromEntries(list.sets.map((s) => [s.id, `${s.group}:${s.number}`]));
+    expect(byId).toEqual({ x1: "dizziness:1", x3: "dizziness:2", x2: "abdominal-pain:1", x4: "abdominal-pain:2" });
+    expect(memory.get("numbering")).toBe(2);
+  });
+});
+
 describe("publishing the same set twice", () => {
   beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
 
