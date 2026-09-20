@@ -77,3 +77,33 @@ describe("case bank", () => {
     expect(bank.cases[0].conditions).toEqual([]);
   });
 });
+
+describe("abdominal pain bank (SET headers, title-first coverage)", () => {
+  const A = new URL("./__fixtures__/abdominal/", import.meta.url).pathname;
+  const readA = (rel: string): CaseFile => ({ name: rel.split("/").pop()!, text: readFileSync(A + rel, "utf8") });
+  const files = [readA("questions/abdominal_01_questions.txt"), readA("explained_answers/abdominal_01_explained_answers.txt"), readA("contents_and_coverage.txt")];
+
+  it("parses the set", async () => {
+    const { parseAnswersOnly, hasQuestionChunks } = await import("./caseBank");
+    const bank = parseCaseBank(files);
+    expect(bank.collection).toBe("Abdominal Pain SAQ Bank");
+    expect(bank.cases).toHaveLength(1);
+    const c = bank.cases[0];
+    expect(c.number).toBe(1);
+    expect(c.title).toBe("Pain that changes location");
+    expect(c.marks).toBe(28);
+    expect(c.minutes).toBe(35);
+    expect(c.stem.length).toBeGreaterThan(50);
+    expect(c.questions.map((q) => q.marks)).toEqual([9, 5, 8, 6]);
+    expect(c.questions[1].parts.map((p) => p.label)).toEqual(["a", "b"]);
+    expect(c.questions[1].parts[0].modelAnswer).toContain("FBC/CRP");
+    expect(c.questions[0].modelAnswer).toContain("Acute appendicitis");
+    expect(c.conditions).toContain("Appendicitis");
+    expect(c.conditions).toContain("Testicular torsion");
+    expect(hasQuestionChunks(files)).toBe(true);
+    const answersOnly = parseAnswersOnly([files[1]]);
+    expect(answersOnly).toHaveLength(1);
+    expect(answersOnly[0].byQuestion.get(3)).toContain("Laparoscopic appendicectomy");
+    expect(hasQuestionChunks([files[1]])).toBe(false);
+  });
+});

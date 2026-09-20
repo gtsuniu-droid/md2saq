@@ -1,0 +1,121 @@
+SET 01: PAIN THAT CHANGES LOCATION
+EXPLAINED MODEL ANSWERS | 28 marks
+
+MARKING PRINCIPLES
+- These are worked examples, not an exhaustive answer list. Credit clinically equivalent, justified alternatives.
+- Use the stated mark caps. Award partial credit for correct components and do not give extra marks for longer lists.
+- For a 1-mark test/action-plus-purpose item, normally award 0.5 for the choice and 0.5 for its relevant reason.
+- For Question 1, accept plausible additional features rather than demanding every example below. No single absent finding is a universal exclusion test.
+- The explanatory paragraphs develop the reasoning for learning; they do not add hidden requirements or marks.
+- No negative marking. An unsafe action does not earn the relevant mark and should be discussed in feedback.
+- Accept sensible local management pathways; exact drug doses and specialist technical details are not required.
+
+QUESTION 1 (9 marks)
+
+For each diagnosis: diagnosis 0.5; mechanism 0.5; each additional history feature 0.5; examination finding 0.5; interpretation 0.5. Total: 9 marks.
+
+1. Acute appendicitis
+Mechanism: Appendiceal inflammation initially activates visceral afferents; local peritoneal involvement produces more precisely localised pain.
+Additional history 1: Clarify the precise sequence of migration and whether pain preceded vomiting: a typical progression supports appendicitis, although it is not universal.
+Additional history 2: Ask about anorexia and pain on walking/coughing: these support an inflammatory process and possible peritoneal irritation.
+Examination: Local involuntary guarding or pain with gentle percussion/cough over the right iliac fossa.
+Interpretation: Supports local parietal peritoneal irritation. No single sign establishes appendicitis, and repeated painful rebound testing is unnecessary.
+
+2. Right ureteric calculus
+Mechanism: Acute ureteric obstruction, distension and muscular contraction generate colicky visceral pain.
+Additional history 1: Ask about flank-to-groin radiation and waves of pain: the route and colic favour ureteric disease.
+Additional history 2: Ask about visible haematuria, urinary urgency and previous stones: these raise urinary tract probability.
+Examination: Renal-angle tenderness or marked restlessness rather than lying still with local guarding.
+Interpretation: Supports a urinary pain pattern, but behaviour and haematuria are not sufficiently specific to exclude appendicitis.
+
+3. Terminal ileitis, including Crohn disease
+Mechanism: Inflammation of terminal ileum near the right iliac fossa can mimic appendiceal disease.
+Additional history 1: Ask about recurrent diarrhoea, nocturnal stooling or previous similar pain: these suggest a longer inflammatory history.
+Additional history 2: Ask about weight loss, oral ulcers or perianal symptoms: these support Crohn disease rather than an isolated acute appendix problem.
+Examination: Oral ulcers, perianal disease or a right iliac fossa mass when clinically appropriate to examine.
+Interpretation: Findings outside the tender area can support systemic/chronic bowel inflammation; they are not required for ileitis.
+
+Other acceptable differentials when justified:
+- Gastroenteritis if diarrhoea/exposure history supports it
+- Incarcerated inguinal hernia
+- Testicular torsion presenting with lower abdominal pain
+
+Reasoning approach: Start with the location and timing, then compare inflammatory, obstructive, vascular, urinary/reproductive and extra-abdominal mechanisms that fit this patient. A broad differential should still be plausible: listing unrelated diseases does not demonstrate prioritisation. Seek new information that would move a diagnosis up or down, and consider whether two processes could coexist.
+
+QUESTION 2 (5 marks)
+
+a) Name THREE initial investigations or bedside assessments and give a specific purpose for each. [3 marks]
+
+- [1 marks] FBC/CRP: assess inflammatory response and establish a baseline; normal early values do not exclude disease.
+- [1 marks] Urinalysis: look for evidence of urinary infection or stone disease while recognising that mild abnormalities may occur with adjacent appendiceal inflammation.
+- [1 marks] Renal function/electrolytes: assess dehydration and guide fluids/contrast decisions. Accept a different justified assessment, including an appropriate groin/genital examination for a competing emergency.
+
+Explanation: Choose tests to address a real diagnostic or management question. Three versions of the same inflammatory test do not represent three different clinical purposes, and none replaces serial examination.
+
+b) If imaging is needed, outline a reasonable approach for this young adult and ONE limitation of a negative or inconclusive initial ultrasound. [2 marks]
+
+- [1 marks] Use the local surgical/imaging pathway: ultrasound may be an initial option in a young adult; CT is appropriate if diagnostic uncertainty remains or complications are suspected. A justified initial CT approach is also acceptable.
+- [1 marks] Failure to visualise the appendix is not a negative diagnosis. Persistent clinical concern requires reassessment and often further imaging.
+
+Explanation: The question tests choosing and interpreting a test, not insisting on one universal sequence. Patient characteristics, expertise and radiation exposure influence the first modality.
+
+
+QUESTION 3 (8 marks)
+
+a) State FOUR immediate management priorities, giving the purpose of each. [4 marks]
+
+- [1 marks] Prompt surgical assessment to plan definitive management.
+- [1 marks] Give appropriate analgesia and an antiemetic; pain relief should not be withheld to preserve signs.
+- [1 marks] Keep nil by mouth pending the surgical plan and provide IV fluid replacement if oral intake/dehydration requires it.
+- [1 marks] Give appropriate antibiotics according to the planned appendicitis pathway and assess repeatedly for deterioration.
+
+Explanation: Stabilisation, comfort and definitive planning happen together. “Observe” alone is incomplete: observation requires a working plan, repeated observations and a clear threshold for escalation.
+
+b) Compare the usual definitive treatment with a possible alternative in selected uncomplicated cases. [2 marks]
+
+- [1 marks] Laparoscopic appendicectomy is a standard definitive option.
+- [1 marks] Antibiotic treatment without immediate surgery can be discussed in appropriately selected uncomplicated cases, with counselling about failure/recurrence and reliable follow-up.
+
+Explanation: Antibiotic-only treatment is not a default for perforation, peritonitis or deterioration. Selection and shared decision-making belong within a surgical service; no formal selection score is required.
+
+c) Give TWO changes that would make you concerned about progression to complicated disease. [2 marks]
+
+- [1 marks] Generalised guarding/rigidity, spreading pain or another sign of peritonitis.
+- [1 marks] New hypotension, marked tachycardia, fever/sepsis or worsening clinical state; accept another independent meaningful change.
+
+Explanation: A change in the pattern is more informative than a single repeat white-cell count. Worsening physiology or peritonism calls for urgent reassessment.
+
+
+QUESTION 4 (6 marks)
+
+a) Explain why appendiceal pain can begin around the umbilicus and later localise to the right iliac fossa. [3 marks]
+
+- [1 marks] Early pain arises from visceral afferents from a midgut structure and is poorly localised.
+- [1 marks] Those inputs are referred to the central/periumbilical region, conventionally around T10.
+- [1 marks] Inflammation reaching the adjacent parietal peritoneum activates somatic nerves and causes sharper localised pain.
+
+Explanation: The migration reflects a change in the tissue generating pain, not physical movement of the appendix. Exact dermatomal numbering is useful but not essential if the visceral-to-somatic explanation is correct.
+
+b) Name TWO important additional areas to examine, with consent, in a young man with lower abdominal pain and state what you are looking for. [2 marks]
+
+- [1 marks] Groins/hernial orifices: a tender irreducible hernia may obstruct or strangulate bowel.
+- [1 marks] Scrotum/testes when torsion or another genital cause is possible: tenderness, abnormal lie or swelling warrants urgent assessment.
+
+Explanation: Pain may be referred from structures outside the apparent abdominal focus. A brief targeted genital history and examination can prevent missing a time-critical diagnosis.
+
+c) Why can a pelvic appendix produce urinary symptoms or diarrhoea? [1 marks]
+
+- [1 marks] Its proximity to the bladder, ureter or rectum allows adjacent irritation, so those symptoms do not automatically establish a urinary infection or gastroenteritis.
+
+Explanation: Anatomical relationships explain why textbook presentations vary. Use symptoms to adjust probabilities rather than treating them as absolute exclusions.
+
+
+CLINICAL THINKING TO CARRY FORWARD
+- Track symptom sequence, not simply the final location.
+- A non-visualised appendix is not proof of no appendicitis.
+- Look beyond the abdomen when the shared anatomy makes another emergency possible.
+
+CLINICAL REFERENCES
+Guidance checked 19 September 2026. Fictional educational cases; management should follow current local pathways.
+- WSES: Diagnosis and Treatment of Acute Appendicitis, 2025 edition
+  https://doi.org/10.1001/jamasurg.2025.6218

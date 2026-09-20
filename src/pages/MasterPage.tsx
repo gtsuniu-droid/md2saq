@@ -1,5 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { db, getSettings, patchSettings } from "../data/db";
 import PasscodeGate from "../components/PasscodeGate";
@@ -31,6 +31,9 @@ function MasterContents() {
   const [bankError, setBankError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("");
+  const [bulkTag, setBulkTag] = useState("");
 
   const refreshBank = async () => {
     try {
@@ -49,8 +52,25 @@ function MasterContents() {
   };
   useEffect(() => { void refreshBank(); }, []);
 
+  const rows = useMemo(() => {
+    if (!summaries) return [];
+    const q = filter.trim().toLowerCase();
+    return [...summaries]
+      .filter((s) => !q || [fullLabel(s), s.set.source ?? "", ...(s.set.tags ?? [])].join(" ").toLowerCase().includes(q))
+      .sort((a, b) => fullLabel(a).localeCompare(fullLabel(b), undefined, { numeric: true }));
+  }, [summaries, filter]);
+
   if (!summaries) return null;
   const bankById = new Map((bank ?? []).map((e) => [e.id, e]));
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.set.id));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.set.id)));
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const pushAll = async () => {
     setBusy("push");
@@ -75,30 +95,70 @@ function MasterContents() {
     }
   };
 
-  const remove = async (setId: string) => {
-    const s = summaries.find((x) => x.set.id === setId);
-    if (!s) return;
-    if (!confirm(`Delete ${fullLabel(s)} for everyone, with every attempt and mark on this device?`)) return;
-    setBusy(setId);
+  const removeMany = async (ids: string[]) => {
+    const targets = summaries.filter((x) => ids.includes(x.set.id));
+    if (targets.length === 0) return;
+    const what = targets.length === 1 ? fullLabel(targets[0]) : `${targets.length} sets`;
+    if (!confirm(`Delete ${what} for everyone, with every attempt and mark on this device?`)) return;
+    setBusy("delete");
     try {
-      if (s.set.bankId && bankById.has(s.set.bankId)) {
-        const code = (await getSettings()).bankPasscode ?? "";
-        await deleteBankSet(s.set.bankId, code);
+      const code = (await getSettings()).bankPasscode ?? "";
+      for (const s of targets) {
+        if (s.set.bankId && bankById.has(s.set.bankId)) await deleteBankSet(s.set.bankId, code);
+        const qids = s.questions.map((q) => q.id);
+        const goneAttempts = (await db.attempts.where("questionId").anyOf(qids).primaryKeys()) as string[];
+        const goneMarks = (await db.marks.where("questionId").anyOf(qids).primaryKeys()) as string[];
+        await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
+          await db.marks.where("questionId").anyOf(qids).delete();
+          await db.attempts.where("questionId").anyOf(qids).delete();
+          await db.questions.bulkDelete(qids);
+          await db.sets.delete(s.set.id);
+        });
+        await recordDeletes("attempts", goneAttempts);
+        await recordDeletes("marks", goneMarks);
       }
-      const qids = s.questions.map((q) => q.id);
-      const goneAttempts = (await db.attempts.where("questionId").anyOf(qids).primaryKeys()) as string[];
-      const goneMarks = (await db.marks.where("questionId").anyOf(qids).primaryKeys()) as string[];
-      await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
-        await db.marks.where("questionId").anyOf(qids).delete();
-        await db.attempts.where("questionId").anyOf(qids).delete();
-        await db.questions.bulkDelete(qids);
-        await db.sets.delete(setId);
-      });
-      await recordDeletes("attempts", goneAttempts);
-      await recordDeletes("marks", goneMarks);
+      setSelected(new Set());
       await refreshBank();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const remove = (setId: string) => removeMany([setId]);
+
+  const publishSelected = async () => {
+    setBusy("push");
+    setMessage(null);
+    let n = 0;
+    try {
+      for (const id of selected) {
+        await pushToBank(id);
+        n++;
+      }
+      setMessage(`Published ${n} set${n === 1 ? "" : "s"}.`);
+      await refreshBank();
+    } catch (e) {
+      setMessage(`Could not publish: ${bankErrorMessage(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const tagSelected = async () => {
+    const tags = bulkTag.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
+    if (tags.length === 0 || selected.size === 0) return;
+    setBusy("tag");
+    try {
+      for (const id of selected) {
+        const set = await db.sets.get(id);
+        if (!set) continue;
+        const merged = [...(set.tags ?? [])];
+        for (const t of tags) if (!merged.some((x) => x.toLowerCase() === t.toLowerCase())) merged.push(t);
+        await db.sets.update(id, { tags: merged, updatedAt: Date.now(), dirty: true });
+      }
+      setBulkTag("");
+      setMessage(`Tagged ${selected.size} set${selected.size === 1 ? "" : "s"}. Publish to share the change.`);
     } finally {
       setBusy(null);
     }
@@ -113,39 +173,62 @@ function MasterContents() {
       {bankError && <p className="muted">{bankError}</p>}
       {message && <p>{message}</p>}
 
-      <h2>Add</h2>
-      <CreateTools embedded onSaved={() => void refreshBank()} />
+      <details className="section" open={summaries.length === 0}>
+        <summary><h2>Add</h2></summary>
+        <CreateTools embedded onSaved={() => void refreshBank()} />
+      </details>
 
-      <h2>Sets</h2>
-      <div className="row" style={{ marginBottom: "0.5rem" }}>
-        <button className="small" onClick={pushAll} disabled={busy !== null || !bank}>Publish local changes</button>
-      </div>
-      <table>
-        <thead>
-          <tr><th>Set</th><th>Questions</th><th>Status</th><th>Updated</th><th></th></tr>
-        </thead>
-        <tbody>
-          {[...summaries].sort((a, b) => fullLabel(a).localeCompare(fullLabel(b), undefined, { numeric: true })).map((s) => {
-            const entry = bankById.get(s.set.bankId ?? "");
-            const status = !s.set.bankId ? "not published" : !bank ? "" : !entry ? "not found on the server" : s.set.dirty ? "edits not published" : "published";
-            return (
-              <tr key={s.set.id}>
-                <td>
-                  <Link to={`/set/${s.set.id}`}>{fullLabel(s)}</Link>
-                  <div className="muted">{[(s.set.tags ?? []).join(", "), s.set.source].filter(Boolean).join(", ")}</div>
-                </td>
-                <td>{s.questions.length}</td>
-                <td className="muted">{status}</td>
-                <td className="muted">{formatDate(s.set.updatedAt ?? s.set.createdAt)}</td>
-                <td className="row" style={{ justifyContent: "flex-end" }}>
-                  <button className="small" onClick={() => nav(`/set/${s.set.id}/edit`)}>Edit</button>
-                  <button className="small danger" onClick={() => remove(s.set.id)} disabled={busy !== null}>Delete</button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <details className="section" open>
+        <summary><h2>Sets</h2></summary>
+        <div className="row" style={{ margin: "0.4rem 0 0.6rem" }}>
+          <input type="search" placeholder="Filter sets" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <span className="muted">{selected.size ? `${selected.size} selected` : `${rows.length} sets`}</span>
+          <span style={{ flex: 1 }} />
+          {selected.size > 0 ? (
+            <>
+              <input type="text" placeholder="Tag to add, e.g. Dizziness::Vestibular" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void tagSelected(); }} style={{ minWidth: "16rem" }} />
+              <button className="small" onClick={tagSelected} disabled={busy !== null || !bulkTag.trim()}>Add tag</button>
+              <button className="small" onClick={publishSelected} disabled={busy !== null}>Publish selected</button>
+              <button className="small danger" onClick={() => removeMany([...selected])} disabled={busy !== null}>Delete selected</button>
+              <button className="small link" onClick={() => setSelected(new Set())}>Clear</button>
+            </>
+          ) : (
+            <button className="small" onClick={pushAll} disabled={busy !== null || !bank}>Publish local changes</button>
+          )}
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: "1.6rem" }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all shown" /></th>
+              <th>Set</th><th>Questions</th><th>Status</th><th>Updated</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((s) => {
+              const entry = bankById.get(s.set.bankId ?? "");
+              const status = !s.set.bankId ? "not published" : !bank ? "" : !entry ? "not found on the server" : s.set.dirty ? "edits not published" : "published";
+              return (
+                <tr key={s.set.id} className={selected.has(s.set.id) ? "selected" : ""}>
+                  <td><input type="checkbox" checked={selected.has(s.set.id)} onChange={() => toggle(s.set.id)} /></td>
+                  <td>
+                    <Link to={`/set/${s.set.id}`}>{fullLabel(s)}</Link>
+                    <div className="muted">{[(s.set.tags ?? []).join(", "), s.set.source].filter(Boolean).join(", ")}</div>
+                  </td>
+                  <td>{s.questions.length}</td>
+                  <td className="muted">{status}</td>
+                  <td className="muted">{formatDate(s.set.updatedAt ?? s.set.createdAt)}</td>
+                  <td className="row" style={{ justifyContent: "flex-end" }}>
+                    <button className="small" onClick={() => nav(`/set/${s.set.id}/edit`)}>Edit</button>
+                    <button className="small danger" onClick={() => remove(s.set.id)} disabled={busy !== null}>Delete</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && summaries.length > 0 && <p className="muted">Nothing matches the filter.</p>}
+      </details>
       {summaries.length === 0 && <p className="muted">No sets yet. Drop a folder or paste a paper above.</p>}
     </div>
   );

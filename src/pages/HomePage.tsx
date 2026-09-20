@@ -5,7 +5,9 @@ import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import Heatmap from "../components/Heatmap";
 import { formatDuration, totalMarks } from "../lib/questions";
-import { startSession } from "../lib/session";
+import { discardSession, startSession } from "../lib/session";
+import { remainingSec } from "../lib/sessionClock";
+import { useSession } from "../lib/useSession";
 import { answeredPerDay, compileQuestions, heatGrid, presentationProgress, summarise } from "../lib/stats";
 
 type Range = "week" | "year" | "overall";
@@ -21,6 +23,12 @@ export default function HomePage() {
   const [mode, setMode] = useState<"practice" | "exam">("practice");
   const [minutes, setMinutes] = useState("");
   const [search, setSearch] = useState("");
+  const session = useSession();
+  const inProgress = useLiveQuery(async () => {
+    if (!session) return null;
+    const attempts = await db.attempts.where("sessionId").equals(session.id).toArray();
+    return { submitted: attempts.filter((a) => a.submittedAt !== undefined).length, answered: attempts.filter((a) => a.answers.some((x) => x.text.trim())).length };
+  }, [session?.id]);
 
   const data = useLiveQuery(async () => {
     const [questions, attempts, marks, settings] = await Promise.all([
@@ -76,8 +84,33 @@ export default function HomePage() {
     nav("/paper");
   };
 
+  const left = session ? remainingSec(session, Date.now()) : null;
+  const total = session?.questionIds.length ?? 0;
+  const done = inProgress?.submitted ?? 0;
+  const submittedAll = !!session && total > 0 && done >= total;
+
   return (
     <div>
+      {session && inProgress && (
+        <div className="card home-card resume">
+          <div>
+            <div className="resume-title">{submittedAll ? "Paper submitted, waiting to be marked" : `${session.mode === "exam" ? "Exam" : "Practice"} in progress`}</div>
+            <div className="muted">
+              {total} question{total === 1 ? "" : "s"}
+              {session.mode === "practice" ? `, ${done} submitted` : `, ${Math.max(done, inProgress.answered)} answered`}
+              {left !== null && !submittedAll ? `, ${formatDuration(left)} left on the clock` : ""}
+              {submittedAll ? "" : ", saved where you left it"}
+            </div>
+          </div>
+          <span style={{ flex: 1 }} />
+          {submittedAll ? (
+            <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Mark</button>
+          ) : (
+            <button className="primary" onClick={() => nav("/paper")}>Continue</button>
+          )}
+          <button onClick={() => void discardSession()} title={session.mode === "practice" && done > 0 ? "Submitted questions stay answered" : undefined}>Discard</button>
+        </div>
+      )}
       <div className="card home-card">
         <div className="row spread">
           <div className="seg">

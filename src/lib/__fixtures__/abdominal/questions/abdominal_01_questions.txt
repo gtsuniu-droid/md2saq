@@ -1,0 +1,53 @@
+SET 01: PAIN THAT CHANGES LOCATION
+Abdominal pain | MD2 | 28 marks | Suggested time: 35 minutes
+
+INSTRUCTIONS
+- Answer questions in order, using only the information available at that point.
+- Use concise, patient-specific answers. Explain the clinical purpose when requested; an unqualified list will not receive full marks.
+- Broad anatomical relationships and mechanisms are expected; rare diagnoses, detailed operative techniques, numerical risk-score recall and exact drug doses are not required.
+- Assessment, analgesia and resuscitation occur concurrently when needed. The written question order does not imply delaying care.
+- Where a later question explicitly describes an alternative presentation, treat it as a separate reasoning exercise rather than a new event in the original patient.
+
+CLINICAL STEM
+
+James Li, a 23-year-old man, presents to the emergency department with abdominal pain that began earlier today. It was initially difficult to localise but is now more uncomfortable on the right side of his lower abdomen. He feels nauseated and has vomited once. He takes no regular medication and has no previous abdominal operations. His bowel, urinary and genital symptoms have not yet been explored. He is alert. Temperature is 37.7°C, heart rate 96/min, BP 122/76 mmHg and respiratory rate 18/min. There is right lower abdominal tenderness, but a detailed examination has not yet been completed.
+
+QUESTION 1 (9 marks)
+
+List THREE (3) plausible diagnoses that could account for this patient’s abdominal pain. For EACH diagnosis, state the underlying mechanism and give TWO (2) additional features on history and ONE (1) finding on examination that you would seek to help distinguish it from the other diagnoses. Briefly explain what the examination finding would suggest. Do not merely repeat information already supplied.
+
+Suggested layout: diagnosis | mechanism | history feature 1 | history feature 2 | examination finding and interpretation
+
+Mark allocation: For each diagnosis: diagnosis 0.5; mechanism 0.5; each additional history feature 0.5; examination finding 0.5; interpretation 0.5. Total: 9 marks.
+
+QUESTION 2 (5 marks)
+
+Pain has become constant and movement makes it worse. He has no diarrhoea or urinary symptoms. Gentle percussion causes local pain and there is involuntary right iliac fossa guarding.
+
+a) Name THREE initial investigations or bedside assessments and give a specific purpose for each. [3 marks]
+
+b) If imaging is needed, outline a reasonable approach for this young adult and ONE limitation of a negative or inconclusive initial ultrasound. [2 marks]
+
+
+QUESTION 3 (8 marks)
+
+Imaging demonstrates an inflamed appendix without abscess, free gas or another identified cause. James is stable but remains in pain.
+
+a) State FOUR immediate management priorities, giving the purpose of each. [4 marks]
+
+b) Compare the usual definitive treatment with a possible alternative in selected uncomplicated cases. [2 marks]
+
+c) Give TWO changes that would make you concerned about progression to complicated disease. [2 marks]
+
+
+QUESTION 4 (6 marks)
+
+Explain the anatomical reasoning behind your assessment.
+
+a) Explain why appendiceal pain can begin around the umbilicus and later localise to the right iliac fossa. [3 marks]
+
+b) Name TWO important additional areas to examine, with consent, in a young man with lower abdominal pain and state what you are looking for. [2 marks]
+
+c) Why can a pelvic appendix produce urinary symptoms or diarrhoea? [1 marks]
+
+TOTAL: 28 MARKS

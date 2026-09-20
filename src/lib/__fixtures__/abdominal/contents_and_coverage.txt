@@ -1,0 +1,39 @@
+ABDOMINAL PAIN SAQ BANK — CONTENTS AND COVERAGE
+10 sets | 284 marks | Individual sets: 28–30 marks
+
+FILES
+- all_questions.txt: complete question bank without model answers.
+- all_explained_answers.txt: fuller answers with reasoning and references.
+- questions/: ten separate plain-text question papers.
+- explained_answers/: ten separate plain-text answer guides.
+
+COVERAGE (diagnostic spoilers)
+01 — Pain that changes location — 28 marks
+  Appendicitis; Ureteric colic; Terminal ileitis/Crohn disease; Gastroenteritis; Incarcerated hernia; Testicular torsion; Visceral and parietal pain
+02 — Pain beneath the right ribs — 28 marks
+  Biliary colic; Acute cholecystitis; Choledocholithiasis; Cholangitis; Hepatitis; Basal pneumonia; Biliary anatomy
+03 — Persistent upper abdominal pain — 28 marks
+  Acute pancreatitis; Peptic ulcer disease; Perforated viscus; ACS; Gallstone disease; Retroperitoneal and duct anatomy
+04 — Severe abdominal pain in an older patient — 28 marks
+  Acute mesenteric ischaemia; Ruptured AAA; Perforated viscus; Threatened bowel; Foregut/midgut/hindgut blood supply
+05 — Cramping pain, vomiting and abdominal swelling — 30 marks
+  Adhesive SBO; Large-bowel obstruction/colorectal cancer; Ileus; Opioid constipation; Incarcerated hernia; Strangulation; Obstruction anatomy
+06 — Left lower abdominal pain and a change in bowel habit — 28 marks
+  Diverticulitis; Colorectal cancer; Infectious/IBD/ischaemic colitis; Constipation; Diverticular abscess/fistula; Sigmoid and bladder relationships
+07 — Pain from the flank towards the lower abdomen — 28 marks
+  Ureteric stone; Pyelonephritis; Infected obstruction; AAA; Referred ureteric pain; Unilateral renal obstruction
+08 — Lower abdominal pain in a young woman — 30 marks
+  PID; Ectopic pregnancy; Adnexal torsion; Ovarian cyst; Appendicitis; UTI; Endometriosis; Pelvic anatomical relationships
+09 — Recurrent pain with changing bowel symptoms — 28 marks
+  IBS; IBD; Coeliac disease; Chronic infection; Endometriosis; Colorectal red flags; Nutrient absorption anatomy
+10 — Diffuse pain and vomiting in a patient with diabetes — 28 marks
+  DKA; Gastroenteritis; Appendicitis; Pregnancy-related causes; UTI; Pancreatitis; Thoracic referred pain; Potassium and acid–base physiology
+
+DESIGN
+The difficulty comes from prioritisation, discrimination between common diseases,
+changing the differential as findings emerge, and explaining anatomy and management.
+Each set retains a 9-mark differential/history/examination question in the requested format.
+Investigation selection/interpretation is focused, not the majority of the assessment.
+The explanations provide learning detail without requiring essays for small mark items.
+
+These are original educational drafts, not formally calibrated examination items.

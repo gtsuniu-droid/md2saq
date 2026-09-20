@@ -160,3 +160,27 @@ describe("staged papers with stems", () => {
     expect(qs[0].stems).toEqual([]);
   });
 });
+
+describe("markdown from generators", () => {
+  it("ignores headings, bold and rules, and reads Marks: n", () => {
+    const qs = parseQuestions(`## **Question 1** (3 marks)
+A man with chest pain. List three causes.
+
+---
+
+### Question 2
+Marks: 2
+**Part (a)** Name one investigation. [1 mark]
+**Part (b)** Justify it. [1 mark]
+
+**Answer key:**
+a) ECG
+b) Ischaemia`);
+    expect(qs).toHaveLength(2);
+    expect(qs[0].marks).toBe(3);
+    expect(qs[0].text).toMatch(/^A man with chest pain/);
+    expect(qs[1].marks).toBe(2);
+    expect(qs[1].parts.map((p) => p.label)).toEqual(["a", "b"]);
+    expect(qs[1].parts[0].modelAnswer).toBe("ECG");
+  });
+});

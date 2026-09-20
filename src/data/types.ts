@@ -211,7 +211,7 @@ export interface AmbossPhraseGroup {
 
 export const DEFAULT_SETTINGS: Settings = { id: "settings", minutesPerMark: 1.5, autoImportBank: true, ambossHighlights: true, ambossOnPaper: false };
 
-/** A practice or exam session, kept in sessionStorage. */
+/** A practice or exam session, kept in localStorage until submitted and reviewed, or discarded. */
 export interface Session {
   id: string;
   mode: "practice" | "exam";
@@ -219,6 +219,9 @@ export interface Session {
   index: number;
   /** Total time for exam mode. */
   totalSec?: number;
+  /** Start of the clock; moved forward on resume by the time spent away. */
   startedAt: number;
   attemptIds: string[];
+  /** Set while the paper is not open, so the exam clock stands still. */
+  pausedAt?: number;
 }

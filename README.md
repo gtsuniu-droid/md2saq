@@ -54,10 +54,15 @@ Setup, once, about ten minutes:
    For local development put the same four in a `.env.local` file (see `.env.example`).
 
 Then Settings shows "Sign in with Google". Sync runs after sign-in, whenever the tab
-comes back into view, and every two minutes; "Sync now" forces it. Records modified
-since the last sync go up, newer records come down, newest wins. A record from another
-device finds its question by bank set and position, so both devices must have imported
-the set from the bank.
+comes back into view, every two minutes, and a few seconds after anything is typed into
+a paper or a mark is saved; "Sync now" forces it. Records modified since the last sync
+go up, newer records come down, newest wins. A record from another device finds its
+question by bank set and position, so both devices must have imported the set from the
+bank.
+
+The paper in progress follows the account too: its answers are saved as they are typed,
+and the paper itself (which questions, where you were, the exam clock) goes up with them.
+Sign in on another device and Home offers to continue it there.
 
 ## AMBOSS
 
@@ -163,7 +168,10 @@ passcode is remembered per device and can be cleared from Settings.
   with a draggable divider between the two panels. Select text in the stem and press
   Highlight, or ⌘⇧H, to mark it; the highlights persist through the sitting and show
   while marking. Bold, italic, underline, highlight. Timer at the top. When it hits zero,
-  everything locks and submits.
+  everything locks and submits. Leaving the paper (Home, Browse, marking a question,
+  closing the tab) keeps it: the exam clock stops, and "Continue progress" in the nav or
+  the card at the top of Home takes you back to where you were, or discards it. Admins
+  see an Edit button on the stem and on each question.
 - **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
   error tags, reflection, learning point.
 - **Settings**: minutes per mark, AMBOSS login, bank passcode, JSON backup and restore,

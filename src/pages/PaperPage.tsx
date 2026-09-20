@@ -5,15 +5,20 @@ import { db, newId } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
-import { loadSession, saveSession } from "../lib/session";
+import { loadSession, pauseSession, resumeSession, saveSession } from "../lib/session";
+import { remainingSec } from "../lib/sessionClock";
 import AmbossText from "../components/AmbossText";
+import QuickEdit from "../components/QuickEdit";
+import { isAdmin } from "../lib/admin";
 import { selectionOffsets, toggleRange, type Range } from "../lib/highlights";
 import { getSettings } from "../data/db";
-import { questionRef } from "../lib/sync";
+import { questionRef, recordDeletes, requestSync } from "../lib/sync";
 
 export default function PaperPage() {
   const nav = useNavigate();
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const sessionRef = useRef<Session | null>(session);
+  sessionRef.current = session;
   const [now, setNow] = useState(Date.now());
   const [ready, setReady] = useState(false);
   const [activePart, setActivePart] = useState<string>("");
@@ -57,37 +62,62 @@ export default function PaperPage() {
   // Create attempts for the session's questions if they do not exist yet.
   useEffect(() => {
     if (!session) {
-      nav("/browse", { replace: true });
+      nav("/", { replace: true });
       return;
     }
     (async () => {
+      // Questions deleted since the paper was started drop out of it.
+      const found = await db.questions.bulkGet(session.questionIds);
+      const keep = session.questionIds.map((_, i) => !!found[i]);
+      let current = session;
+      if (keep.some((k) => !k)) {
+        const questionIds = session.questionIds.filter((_, i) => keep[i]);
+        const gone = session.attemptIds.filter((id, i) => id && !keep[i]);
+        if (gone.length) {
+          await db.attempts.bulkDelete(gone);
+          await recordDeletes("attempts", gone);
+        }
+        if (questionIds.length === 0) {
+          saveSession(null);
+          nav("/", { replace: true });
+          return;
+        }
+        current = {
+          ...session,
+          questionIds,
+          attemptIds: session.attemptIds.filter((_, i) => keep[i]),
+          index: Math.min(session.index, questionIds.length - 1),
+        };
+      }
+      // A session adopted from another device may name attempts that have not arrived yet.
+      const present = new Set((await db.attempts.bulkGet(current.attemptIds.filter(Boolean))).filter((a): a is Attempt => !!a).map((a) => a.id));
+      if (current.attemptIds.some((id) => id && !present.has(id))) {
+        current = { ...current, attemptIds: current.attemptIds.map((id) => (present.has(id) ? id : "")) };
+      }
       // Idempotent: reuse any attempt already created for this session and question
       // (StrictMode runs this effect twice in development).
       const refs = new Map<string, Awaited<ReturnType<typeof questionRef>>>();
-      for (const qid of session.questionIds) {
-        const q = await db.questions.get(qid);
-        if (q) refs.set(qid, await questionRef(q));
-      }
+      for (const q of found) if (q) refs.set(q.id, await questionRef(q));
       const ids = await db.transaction("rw", db.attempts, async () => {
-        const existing = await db.attempts.where("sessionId").equals(session.id).toArray();
-        const result = [...session.attemptIds];
-        for (let i = 0; i < session.questionIds.length; i++) {
+        const existing = await db.attempts.where("sessionId").equals(current.id).toArray();
+        const result = [...current.attemptIds];
+        for (let i = 0; i < current.questionIds.length; i++) {
           if (result[i]) continue;
-          const found = existing.find((a) => a.questionId === session.questionIds[i] && !result.includes(a.id));
+          const found = existing.find((a) => a.questionId === current.questionIds[i] && !result.includes(a.id));
           if (found) {
             result[i] = found.id;
             continue;
           }
           const a: Attempt = {
             id: newId(),
-            questionId: session.questionIds[i],
-            qref: refs.get(session.questionIds[i]),
+            questionId: current.questionIds[i],
+            qref: refs.get(current.questionIds[i]),
             answers: [],
             startedAt: Date.now(),
             elapsedSec: 0,
-            timerLimitSec: session.totalSec,
-            mode: session.mode,
-            sessionId: session.id,
+            timerLimitSec: current.totalSec,
+            mode: current.mode,
+            sessionId: current.id,
           };
           await db.attempts.add(a);
           existing.push(a);
@@ -95,8 +125,9 @@ export default function PaperPage() {
         }
         return result;
       });
-      if (ids.join(",") !== session.attemptIds.join(",")) {
-        const next = { ...session, attemptIds: ids };
+      if (current !== session || ids.join(",") !== current.attemptIds.join(",")) {
+        // Keep the clock state the resume effect may have written meanwhile.
+        const next = { ...(loadSession() ?? current), ...current, attemptIds: ids };
         saveSession(next);
         setSession(next);
       }
@@ -105,7 +136,13 @@ export default function PaperPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ambossOnPaper = useLiveQuery(async () => (await getSettings()).ambossOnPaper, []) ?? false;
+  const prefs = useLiveQuery(async () => {
+    const settings = await getSettings();
+    return { ambossOnPaper: settings.ambossOnPaper, admin: isAdmin(settings) };
+  }, []);
+  const ambossOnPaper = prefs?.ambossOnPaper ?? false;
+  const admin = prefs?.admin ?? false;
+  const [editing, setEditing] = useState<Question | null>(null);
 
   const data = useLiveQuery(async () => {
     if (!session || !ready) return undefined;
@@ -130,8 +167,7 @@ export default function PaperPage() {
   const index = session?.index ?? 0;
   const question = data?.questions[index];
   const attempt = data?.attempts[index];
-  const deadline = session?.totalSec ? session.startedAt + session.totalSec * 1000 : null;
-  const remaining = deadline ? Math.ceil((deadline - now) / 1000) : null;
+  const remaining = session ? remainingSec(session, now) : null;
   const expired = remaining !== null && remaining <= 0;
 
   const flushAttempt = useCallback(async (attemptId: string) => {
@@ -144,6 +180,33 @@ export default function PaperPage() {
     if (elapsedSec !== undefined) patch.elapsedSec = elapsedSec;
     await db.attempts.update(attemptId, patch);
   }, []);
+
+  /** Write every cached answer, highlight and elapsed time of the paper to the database. */
+  const flushAll = useCallback(() => {
+    for (const t of flushTimers.current.values()) clearTimeout(t);
+    flushTimers.current.clear();
+    const s = sessionRef.current;
+    if (!s) return;
+    for (const id of s.attemptIds) if (id && answersRef.current.has(id)) void flushAttempt(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Coming back to the paper restarts the exam clock; leaving it (another page,
+  // marking, closing the tab) saves everything and stops the clock.
+  useEffect(() => {
+    const resumed = resumeSession();
+    if (resumed) setSession(resumed);
+    const leave = () => {
+      flushAll();
+      pauseSession();
+    };
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+  }, [flushAll]);
+
 
   // Clock: ticks the display and the active attempt's elapsed time.
   useEffect(() => {
@@ -190,7 +253,7 @@ export default function PaperPage() {
     answersRef.current.set(attemptId, next);
     const prev = flushTimers.current.get(attemptId);
     if (prev) clearTimeout(prev);
-    flushTimers.current.set(attemptId, window.setTimeout(() => void flushAttempt(attemptId), 600));
+    flushTimers.current.set(attemptId, window.setTimeout(() => void flushAttempt(attemptId).then(() => requestSync()), 600));
   };
 
   const toggleFlag = async (attemptId: string, label: string) => {
@@ -201,6 +264,7 @@ export default function PaperPage() {
       : [...current, { label, doc: null, text: "", flagged: true }];
     answersRef.current.set(attemptId, next);
     await flushAttempt(attemptId);
+    requestSync();
   };
 
   /** Make question i current (without scrolling), e.g. when one of its answer boxes gets focus. */
@@ -232,7 +296,7 @@ export default function PaperPage() {
     highlightsRef.current.set(attempt.id, [...existing.filter((h) => h.stem !== stem), ...next.map((r) => ({ stem, ...r }))]);
     sel?.removeAllRanges();
     bump((n) => n + 1);
-    void flushAttempt(attempt.id);
+    void flushAttempt(attempt.id).then(() => requestSync());
   }, [attempt, flushAttempt]);
 
   useEffect(() => {
@@ -336,6 +400,8 @@ export default function PaperPage() {
         <div className="paper-stem" style={{ flexBasis: `${stemPct}%` }} ref={stemRef}>
           <div className="col-head">
             <span>{groupLabel}</span>
+            <span style={{ flex: 1 }} />
+            {admin && <button className="small hl-btn" onClick={() => setEditing(question)} title="Edit this question and its stem (admin)">Edit</button>}
             <button className="small hl-btn" onMouseDown={(e) => e.preventDefault()} onClick={highlightSelection} title="Highlight the selected text (⌘⇧H). Select highlighted text and press again to remove.">Highlight</button>
           </div>
           {stems.map((st, si) => (
@@ -361,11 +427,14 @@ export default function PaperPage() {
             const parts = answerParts(q);
             const showText = stemsOf(q).length > 0 || q.parts.length === 0;
             return (
-              <div key={q.id} className={"question-block" + (qi === index ? " current" : "")} id={`part-${qi}-q`} onMouseDownCapture={() => { if (qi !== index) setCurrent(qi); }}>
-                {groupIndices.length > 1 && (
+              <div key={q.id} className={"question-block" + (qi === index ? " current" : "")} id={`part-${qi}-q`}
+                onMouseDownCapture={() => { if (qi !== index) setCurrent(qi); }}>
+                {(groupIndices.length > 1 || admin) && (
                   <div className="qhead">
-                    <span>{qi + 1}</span>
+                    <span>{groupIndices.length > 1 ? qi + 1 : ""}</span>
+                    <span style={{ flex: 1 }} />
                     {a.submittedAt && <span className="muted">submitted</span>}
+                    {admin && <button className="small" onClick={() => setEditing(q)} title="Edit this question (admin)">Edit</button>}
                   </div>
                 )}
                 {showText && (
@@ -407,6 +476,21 @@ export default function PaperPage() {
         </div>
         </div>
       </div>
+      {editing && (
+        <QuickEdit
+          question={editing}
+          onClose={() => setEditing(null)}
+          onDeleted={() => {
+            const next = loadSession();
+            if (!next) {
+              nav("/", { replace: true });
+              return;
+            }
+            setSession(next);
+            setActivePart("");
+          }}
+        />
+      )}
     </>
   );
 }

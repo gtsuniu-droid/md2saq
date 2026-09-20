@@ -1,4 +1,5 @@
 import { attachModelAnswer, parsePaper, type ParsedQuestion } from "./parser";
+import type { SubPart } from "../data/types";
 
 /**
  * Parser for generated case banks: one or more text files holding
@@ -31,10 +32,14 @@ export interface ParsedCaseBank {
   cases: ParsedCase[];
 }
 
-const CASE_HEADER = /^\s*CASE\s+(\d{1,3})\s*[:.\-–—]\s*(.+?)\s*$/i;
+/** "CASE 02: TITLE", "SET 01: TITLE", "PAPER 3 - Title", "STATION 4: Title". */
+const CASE_HEADER = /^\s*(?:CASE|SET|PAPER|STATION|SCENARIO)\s+(\d{1,3})\s*[:.\-–—]\s*(.+?)\s*$/i;
 const RULE = /^\s*=+\s*$/;
-const COVERAGE_ROW = /^\s*(\d{1,3})\s*[—–-]\s*(\d+)\s*marks?\s*[—–-]\s*(.+?)\s*$/i;
-const BANK_TITLE = /^\s*(.+?)\s+[—–-]\s+(?:CASES?\b|CONTENTS|EXPLAINED)/i;
+/** "02 — 25 marks — Title" or "02 — Title — 25 marks". */
+const COVERAGE_ROW_MARKS_FIRST = /^\s*(\d{1,3})\s*[—–-]\s*(\d+)\s*marks?\s*[—–-]\s*(.+?)\s*$/i;
+const COVERAGE_ROW_TITLE_FIRST = /^\s*(\d{1,3})\s*[—–-]\s*(.+?)\s*[—–-]\s*(\d+)\s*marks?\s*$/i;
+/** "DIZZINESS SAQ BANK — CONTENTS", "ABDOMINAL PAIN: 10 SAQ SETS", "CHEST PAIN — CASES 01–05". */
+const BANK_TITLE = /^\s*(.+?)\s+[—–-]\s+(?:CASES?\b|SETS?\b|CONTENTS|EXPLAINED)|^\s*(.+?)\s*:\s*\d+\s+SAQ\b/i;
 
 export function isCaseBank(files: CaseFile[]): boolean {
   return files.some((f) => f.text.split(/\r?\n/).some((l) => CASE_HEADER.test(l)));
@@ -103,15 +108,19 @@ function coverage(files: CaseFile[]): Map<number, Coverage> {
   for (const f of files) {
     const lines = f.text.replace(/\r\n?/g, "\n").split("\n");
     for (let i = 0; i < lines.length; i++) {
-      const m = COVERAGE_ROW.exec(lines[i]);
-      if (!m) continue;
+      const a = COVERAGE_ROW_MARKS_FIRST.exec(lines[i]);
+      const b = a ? null : COVERAGE_ROW_TITLE_FIRST.exec(lines[i]);
+      if (!a && !b) continue;
+      const number = Number((a ?? b)![1]);
+      const marks = Number(a ? a[2] : b![3]);
+      const title = (a ? a[3] : b![2]).trim();
       const conditions: string[] = [];
       let j = i + 1;
-      while (j < lines.length && /^\s+\S/.test(lines[j]) && !COVERAGE_ROW.test(lines[j])) {
+      while (j < lines.length && /^\s+\S/.test(lines[j]) && !COVERAGE_ROW_MARKS_FIRST.test(lines[j]) && !COVERAGE_ROW_TITLE_FIRST.test(lines[j])) {
         conditions.push(...lines[j].split(/;/).map((s) => s.trim()).filter(Boolean));
         j++;
       }
-      map.set(Number(m[1]), { title: m[3].trim(), marks: Number(m[2]), conditions });
+      map.set(number, { title, marks, conditions });
     }
   }
   return map;
@@ -121,7 +130,7 @@ function bankTitle(files: CaseFile[]): string | undefined {
   for (const f of files) {
     const first = f.text.split(/\r?\n/).find((l) => l.trim());
     const m = first ? BANK_TITLE.exec(first) : null;
-    if (m) return titleCaseBank(m[1].trim());
+    if (m) return titleCaseBank((m[1] ?? m[2]).trim());
   }
   return undefined;
 }
@@ -149,7 +158,7 @@ function parseQuestionChunk(c: Chunk): Omit<ParsedCase, "conditions" | "hasAnswe
       continue;
     }
     if (section === "meta") {
-      const t = /total\s*[:\-–—]?\s*(\d+)\s*marks?/i.exec(line);
+      const t = /total\s*[:\-–—]?\s*(\d+)\s*marks?/i.exec(line) ?? /\b(\d+)\s*marks?\b/i.exec(line);
       if (t) marks = Number(t[1]);
       const s = /suggested\s+time\s*[:\-–—]?\s*(\d+)\s*min/i.exec(line);
       if (s) minutes = Number(s[1]);
@@ -234,6 +243,23 @@ function stripRepeatedPrompt(answer: string, prompt: string): string {
   return lines.join("\n").trim();
 }
 
+/** Attach answer text per question number to question-like objects (parsed or stored), splitting across parts. */
+export function applyAnswers<Q extends { text: string; parts: SubPart[]; modelAnswer?: string }>(questions: Q[], byQuestion: Map<number, string>): number {
+  let n = 0;
+  questions.forEach((q, i) => {
+    const text = byQuestion.get(i + 1);
+    if (!text) return;
+    const draft: ParsedQuestion = { stems: [], text: q.text, parts: q.parts.map((p) => ({ ...p })), modelAnswer: undefined };
+    attachModelAnswer(draft, text);
+    if (draft.parts.length === 0) draft.modelAnswer = stripRepeatedPrompt(draft.modelAnswer ?? "", q.text.split("\n")[0]) || draft.modelAnswer;
+    for (const p of draft.parts) if (p.modelAnswer) p.modelAnswer = stripRepeatedPrompt(p.modelAnswer, p.text) || p.modelAnswer;
+    q.modelAnswer = draft.modelAnswer;
+    q.parts = draft.parts;
+    n++;
+  });
+  return n;
+}
+
 export function parseCaseBank(files: CaseFile[]): ParsedCaseBank {
   const all = chunks(files);
   const cov = coverage(files);
@@ -275,6 +301,26 @@ export function parseCaseBank(files: CaseFile[]): ParsedCaseBank {
 }
 
 /** Sets are named by case number; the case title travels separately. */
+export interface ParsedAnswers {
+  number: number;
+  title: string;
+  byQuestion: Map<number, string>;
+  markingNotes?: string;
+  debrief?: string;
+}
+
+/** Answer guides on their own, keyed by case number, for merging into sets already imported. */
+export function parseAnswersOnly(files: CaseFile[]): ParsedAnswers[] {
+  return chunks(files)
+    .filter((c) => c.kind === "answers")
+    .map((c) => ({ number: c.number, title: sentenceCase(c.header.trim()), ...parseAnswerChunk(c) }))
+    .sort((a, b) => a.number - b.number);
+}
+
+export function hasQuestionChunks(files: CaseFile[]): boolean {
+  return chunks(files).some((c) => c.kind === "questions");
+}
+
 export function caseSetName(c: ParsedCase): string {
   return `Case ${String(c.number).padStart(2, "0")}`;
 }

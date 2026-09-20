@@ -13,6 +13,7 @@ import { presentationName } from "../data/presentations";
 import { isAdmin } from "../lib/admin";
 import { bankErrorMessage, pushToBank } from "../lib/share";
 import { recordDeletes } from "../lib/sync";
+import AutoTextarea from "../components/AutoTextarea";
 
 interface DraftQuestion extends Question {
   key: string;
@@ -194,11 +195,11 @@ export default function SetEditPage() {
             </div>
           </div>
           <label>Instructions shown at the top of the paper</label>
-          <textarea value={set.instructions ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchSet({ instructions: e.target.value || undefined })} />
+          <AutoTextarea value={set.instructions ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchSet({ instructions: e.target.value || undefined })} />
           <label>Marking notes shown while marking</label>
-          <textarea value={set.markingNotes ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchSet({ markingNotes: e.target.value || undefined })} />
+          <AutoTextarea value={set.markingNotes ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchSet({ markingNotes: e.target.value || undefined })} />
           <label>Debrief shown after marking</label>
-          <textarea value={set.debrief ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchSet({ debrief: e.target.value || undefined })} />
+          <AutoTextarea value={set.debrief ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchSet({ debrief: e.target.value || undefined })} />
         </details>
       </div>
 
@@ -230,7 +231,7 @@ export default function SetEditPage() {
                   <label>Stem {si + 1}</label>
                   <button className="small link" onClick={() => patchQ(q.key, { stems: (q.stems ?? []).filter((_, x) => x !== si) })}>remove stem</button>
                 </div>
-                <textarea value={st} style={{ minHeight: "4rem" }} onChange={(e) => patchQ(q.key, { stems: (q.stems ?? []).map((x, xi) => (xi === si ? e.target.value : x)) })} />
+                <AutoTextarea value={st} style={{ minHeight: "4rem" }} onChange={(e) => patchQ(q.key, { stems: (q.stems ?? []).map((x, xi) => (xi === si ? e.target.value : x)) })} />
               </div>
             ))}
             <div className="row" style={{ marginTop: "0.4rem" }}>
@@ -243,7 +244,7 @@ export default function SetEditPage() {
               <ImageRow key={im.id} img={im} onCaption={(c) => patchImage(q.key, im.id, { caption: c })} onRemove={() => removeImage(q.key, im.id)} />
             ))}
             <label>Question</label>
-            <textarea value={q.text} style={{ minHeight: "4rem" }} onChange={(e) => patchQ(q.key, { text: e.target.value })} />
+            <AutoTextarea value={q.text} style={{ minHeight: "4rem" }} onChange={(e) => patchQ(q.key, { text: e.target.value })} />
             <div className="row" style={{ marginTop: "0.4rem" }}>
               <button className="small link" onClick={() => fileInputs.current.get(q.key + ":question")?.click()}>+ Picture with the question</button>
               <input ref={(el) => { if (el) fileInputs.current.set(q.key + ":question", el); }} type="file" accept="image/*" multiple style={{ display: "none" }}
@@ -262,14 +263,14 @@ export default function SetEditPage() {
                   <input type="number" min={0} value={p.marks ?? ""} onChange={(e) => patchPart(q.key, pi, { marks: e.target.value === "" ? undefined : Number(e.target.value) })} />
                   <button className="small danger" onClick={() => removePart(q.key, pi)}>Remove part</button>
                 </div>
-                <textarea value={p.text} style={{ minHeight: "3rem", marginTop: "0.4rem" }} onChange={(e) => patchPart(q.key, pi, { text: e.target.value })} />
+                <AutoTextarea value={p.text} style={{ minHeight: "3rem", marginTop: "0.4rem" }} onChange={(e) => patchPart(q.key, pi, { text: e.target.value })} />
                 <label>Model answer for this part</label>
-                <textarea value={p.modelAnswer ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchPart(q.key, pi, { modelAnswer: e.target.value || undefined })} />
+                <AutoTextarea value={p.modelAnswer ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchPart(q.key, pi, { modelAnswer: e.target.value || undefined })} />
               </div>
             ))}
             <button className="small link" style={{ marginTop: "0.4rem" }} onClick={() => addPart(q.key)}>+ Add part</button>
             <label>{q.parts.length ? "Model answer for the whole question (optional)" : "Model answer, one marking point per line"}</label>
-            <textarea value={q.modelAnswer ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchQ(q.key, { modelAnswer: e.target.value || undefined })} />
+            <AutoTextarea value={q.modelAnswer ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchQ(q.key, { modelAnswer: e.target.value || undefined })} />
             <label>Presentations</label>
             <PresentationPicker selected={q.presentations} onChange={(ids) => patchQ(q.key, { presentations: ids })} />
           </div>

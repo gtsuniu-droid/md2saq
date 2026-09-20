@@ -82,6 +82,7 @@ input[type="text"], input[type="number"], input[type="password"], input[type="se
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--muted); }
 textarea { width: 100%; min-height: 6rem; resize: vertical; line-height: 1.5; }
+textarea.autosize { min-height: 2.6rem; resize: none; overflow: hidden; }
 input[type="number"] { width: 5rem; }
 label { display: block; margin: 0.8rem 0 0.25rem; font-size: 0.82rem; color: var(--muted); }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
@@ -228,7 +229,7 @@ span.amboss-marker:hover { background: color-mix(in srgb, #0fcad4 18%, transpare
 
 .question-block { padding-bottom: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); scroll-margin-top: 1rem; }
 .question-block:last-of-type { border-bottom: 0; }
-.qhead { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.6rem; }
+.qhead { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; margin-bottom: 0.6rem; }
 
 mark.user-hl { background: var(--hl); color: inherit; padding: 0; }
 .col-head { display: flex; justify-content: space-between; align-items: center; }
@@ -346,3 +347,26 @@ mark.user-hl { background: var(--hl); color: inherit; padding: 0; }
 .amboss-abstract.pane { max-height: none; }
 .amboss-media.pane { flex-wrap: wrap; }
 .amboss-media.pane img { height: 96px; }
+
+/* Format guide */
+.guide summary { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; list-style: none; padding: 0.5rem 0.8rem; border: 1px solid var(--border); border-radius: 8px; }
+.guide summary::-webkit-details-marker { display: none; }
+.guide[open] summary { border-radius: 8px 8px 0 0; }
+.guide-text { margin: 0; padding: 0.9rem 1rem; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px; background: var(--card); font: 0.8rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; cursor: copy; max-height: 26rem; overflow-y: auto; }
+
+/* Collapsible admin sections */
+details.section > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; }
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary::before { content: "▸"; color: var(--muted); font-size: 0.8rem; }
+details.section[open] > summary::before { content: "▾"; }
+details.section > summary h2 { margin: 1.4rem 0 0.4rem; }
+tr.selected td { background: var(--teal-soft); }
+
+.amboss-pane.quick-edit { width: min(560px, 100%); }
+.amboss-pane.quick-edit textarea { width: 100%; }
+
+/* Paper in progress */
+.home-card.resume { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1.2rem; }
+.resume-title { font-weight: 600; margin-bottom: 0.15rem; }
+.nav .nav-paper { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--navy-fg); }
+.nav .nav-paper .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px rgba(255,255,255,0.18); }

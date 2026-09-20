@@ -13,10 +13,14 @@ import PasscodeGate from "../components/PasscodeGate";
 import { isAdmin } from "../lib/admin";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getSettings } from "../data/db";
-import { isCaseBank, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
+import { hasQuestionChunks, isCaseBank, parseAnswersOnly, parseCaseBank, type CaseFile, type ParsedCase } from "../lib/caseBank";
+import { matchAnswers, mergeAnswersIntoSet, type AnswerMatch } from "../lib/mergeAnswers";
+import { fullLabel } from "../lib/tree";
 import { loadSummaries, nextSetNumber } from "../lib/sets";
 import { knownTags, suggestConditionTags } from "../lib/tags";
 import TagEditor from "../components/TagEditor";
+import { FORMAT_GUIDE } from "../data/formatGuide";
+import AutoTextarea from "../components/AutoTextarea";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -138,10 +142,22 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const [meta, setMeta] = useState<PaperMeta>({});
   const [files, setFiles] = useState<FileBatch[]>([]);
   const [cases, setCases] = useState<CaseBatch[]>([]);
+  const [merges, setMerges] = useState<AnswerMatch[]>([]);
+  const summaries = useLiveQuery(loadSummaries, []) ?? [];
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ text: string; setId?: string; error?: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyGuide = async () => {
+    try {
+      await navigator.clipboard.writeText(FORMAT_GUIDE);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt("Copy the guide:", FORMAT_GUIDE);
+    }
+  };
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Re-parse when the paste changes. Manual edits to drafts are kept until the paste changes again.
@@ -232,6 +248,13 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
     const all = Array.from(list);
     const texts: CaseFile[] = [];
     for (const f of all) texts.push({ name: f.name, text: await readFileText(f) });
+    if (isCaseBank(texts) && !hasQuestionChunks(texts)) {
+      // Answers on their own: pair them with sets already in the library.
+      const parsed = parseAnswersOnly(texts);
+      const sets = await db.sets.toArray();
+      setMerges((m) => [...m, ...matchAnswers(parsed, sets)]);
+      return;
+    }
     if (isCaseBank(texts)) {
       const bank = parseCaseBank(texts);
       setCases((cs) => [
@@ -265,6 +288,23 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
     e.preventDefault();
     setDragging(false);
     await addFiles(await filesFromDrop(e.dataTransfer));
+  };
+
+  const applyMerges = async () => {
+    const ready = merges.filter((m) => m.setId);
+    if (ready.length === 0) return;
+    setSaving(true);
+    setNotice(null);
+    let questions = 0;
+    let ok = true;
+    for (const m of ready) {
+      questions += await mergeAnswersIntoSet(m.setId!, m.answers);
+      if (ok) ok = await pushOrReport(m.setId!, `Answers for case ${m.answers.number}`);
+    }
+    if (ok) setNotice({ text: `Added answers to ${questions} question${questions === 1 ? "" : "s"} across ${ready.length} set${ready.length === 1 ? "" : "s"}.` });
+    setMerges((ms) => ms.filter((m) => !m.setId));
+    setSaving(false);
+    onSaved?.();
   };
 
   const saveCases = async () => {
@@ -352,12 +392,37 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
       >
         <div className="row spread">
           <span>
-            <strong>Drop files or a folder here.</strong> A generated case bank becomes one numbered set per case, tagged from its coverage file. Other .txt or .md files become one set each.
+            <strong>Drop files or a folder here.</strong> A generated case bank becomes one numbered set per case, tagged from its coverage file. An answers file on its own is merged into the matching sets. Other .txt or .md files become one set each.
           </span>
           <button className="small" onClick={() => fileRef.current?.click()}>Choose files</button>
           <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,text/plain,text/markdown" style={{ display: "none" }}
             onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
         </div>
+        {merges.length > 0 && (
+          <>
+            <p className="muted" style={{ marginTop: "0.6rem" }}>Answer guides only. Each one is paired with a set already in the library; change the pairing if it guessed wrong.</p>
+            <table>
+              <thead><tr><th>Answers for</th><th>Goes into</th><th></th></tr></thead>
+              <tbody>
+                {merges.map((m, i) => (
+                  <tr key={`${m.answers.number}-${i}`}>
+                    <td>Case {String(m.answers.number).padStart(2, "0")}: {m.answers.title}<div className="muted">{m.answers.byQuestion.size} question{m.answers.byQuestion.size === 1 ? "" : "s"}{m.reason !== "none" ? `, matched by ${m.reason}` : ", no match"}</div></td>
+                    <td>
+                      <select value={m.setId ?? ""} onChange={(e) => setMerges((ms) => ms.map((x, xi) => (xi === i ? { ...x, setId: e.target.value || null } : x)))}>
+                        <option value="">Choose a set</option>
+                        {summaries.map((s) => <option key={s.set.id} value={s.set.id}>{fullLabel(s)}{s.set.source ? ` — ${s.set.source}` : ""}</option>)}
+                      </select>
+                    </td>
+                    <td><button className="small danger" onClick={() => setMerges((ms) => ms.filter((_, xi) => xi !== i))}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="row" style={{ marginTop: "0.6rem" }}>
+              <button className="primary" onClick={applyMerges} disabled={saving || !merges.some((m) => m.setId)}>Add answers to {merges.filter((m) => m.setId).length} set{merges.filter((m) => m.setId).length === 1 ? "" : "s"}</button>
+            </div>
+          </>
+        )}
         {cases.length > 0 && (
           <>
             <table style={{ marginTop: "0.6rem" }}>
@@ -410,11 +475,18 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
         )}
       </div>
 
+      <details className="guide" style={{ margin: "0.8rem 0" }}>
+        <summary style={{ cursor: "pointer" }}>
+          <span>Format guide for question generators</span>
+          <button className="small" onClick={(e) => { e.preventDefault(); e.stopPropagation(); void copyGuide(); }}>{copied ? "Copied" : "Copy guide"}</button>
+        </summary>
+        <pre className="guide-text" onClick={() => void copyGuide()} title="Click to copy">{FORMAT_GUIDE}</pre>
+      </details>
       <p className="muted">
         Or paste below. Formats: numbered (1. / Q1 / Question 1), blank-line separated, sub-parts as (a) or 1),
         marks as (4 marks) or [4], and model answers after a line starting with "Answer:" or "Model answer:".
       </p>
-      <textarea value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste here" style={{ minHeight: "12rem" }} />
+      <AutoTextarea value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste here" style={{ minHeight: "12rem" }} />
 
       {drafts.length > 0 && (
         <>
@@ -463,7 +535,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                       {inherited ? (
                         <div className="muted pre" style={{ fontSize: "0.85rem", maxHeight: "4.5rem", overflow: "hidden" }}>{st}</div>
                       ) : (
-                        <textarea value={st} placeholder="Case information the candidate reads before this question" onChange={(e) => updateStem(d.key, si, e.target.value)} style={{ minHeight: "4rem" }} />
+                        <AutoTextarea value={st} placeholder="Case information the candidate reads before this question" onChange={(e) => updateStem(d.key, si, e.target.value)} style={{ minHeight: "4rem" }} />
                       )}
                     </div>
                   );
@@ -472,11 +544,11 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                   <button className="small" onClick={() => addStem(d.key)} title="Adds a stem here and to every later question">+ Add stem</button>
                 </div>
                 <label>Question</label>
-                <textarea value={d.text} onChange={(e) => update(d.key, { text: e.target.value })} style={{ minHeight: "4rem" }} />
+                <AutoTextarea value={d.text} onChange={(e) => update(d.key, { text: e.target.value })} style={{ minHeight: "4rem" }} />
                 {d.parts.map((p, pi) => (
                   <div key={pi} className="row" style={{ marginTop: "0.3rem", alignItems: "flex-start" }}>
                     <span style={{ minWidth: "2.2rem", fontWeight: 600 }}>{partLabel(p.label)}</span>
-                    <textarea
+                    <AutoTextarea
                       value={p.text}
                       style={{ minHeight: "2.4rem", flex: 1 }}
                       onChange={(e) => update(d.key, { parts: d.parts.map((x, xi) => (xi === pi ? { ...x, text: e.target.value } : x)) })}
@@ -486,7 +558,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                   </div>
                 ))}
                 <label>Model answer (optional, one marking point per line)</label>
-                <textarea value={d.modelAnswer ?? ""} onChange={(e) => update(d.key, { modelAnswer: e.target.value || undefined })} style={{ minHeight: "3rem" }} />
+                <AutoTextarea value={d.modelAnswer ?? ""} onChange={(e) => update(d.key, { modelAnswer: e.target.value || undefined })} style={{ minHeight: "3rem" }} />
                 <label>Presentations</label>
                 <PresentationPicker selected={d.presentations} suggested={d.suggested} onChange={(ids) => update(d.key, { presentations: ids })} />
               </div>

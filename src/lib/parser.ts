@@ -30,10 +30,10 @@ const STRONG_START = /^\s*(?:q|question)\s*(\d{1,3})\b/i;
 const UNNUMBERED_START = /^\s*(?:q|question)\s*[:.]\s*(.*)$/i;
 
 const ANSWER_MARKER =
-  /^\s*(?:model\s+answer|suggested\s+answer|sample\s+answer|answers?|marking\s+(?:guide|scheme|key|criteria)|solution|key|a)\s*[:\-–]\s*(.*)$/i;
+  /^\s*(?:model\s+answers?|suggested\s+answers?|sample\s+answers?|expected\s+answers?|worked\s+answers?|answer\s+key|answers?|marking\s+(?:guide|scheme|key|criteria)|mark\s+scheme|solutions?|key|a)\s*[:\-–—]\s*(.*)$/i;
 
 const SUBPART =
-  /^\s*\(?((?:[a-h])|(?:i{1,3}|iv|v|vi{1,3}|ix|x))\s*[.)]\s+(.*)$/i;
+  /^\s*(?:part\s+)?\(?((?:[a-h])|(?:i{1,3}|iv|v|vi{1,3}|ix|x))\s*[.):]\s+(.*)$/i;
 /** Numeric sub-parts "1)" "2." inside a question body (only accepted when they run 1, 2, 3…). */
 const NUMERIC_SUBPART = /^\s*\(?(\d{1,2})\s*[.)]\s+(.*)$/;
 
@@ -52,6 +52,7 @@ function looksLikeQuestion(text: string): boolean {
 
 const MARKS_PATTERNS: RegExp[] = [
   /\(\s*(\d+(?:\.\d+)?)\s*(?:marks?|pts?|points?)\s*\)/i,
+  /\(?\s*marks?\s*[:=]\s*(\d+(?:\.\d+)?)\s*\)?/i,
   /\[\s*(\d+(?:\.\d+)?)\s*(?:marks?|pts?|points?)?\s*\]/i,
   /(?:^|\s)(\d+(?:\.\d+)?)\s*marks?\b/i,
   /\(\s*(\d+(?:\.\d+)?)\s*\)\s*$/,
@@ -78,7 +79,22 @@ function normalise(input: string): string[] {
     .replace(/\r\n?/g, "\n")
     .replace(/ /g, " ")
     .split("\n")
-    .map((l) => l.replace(/^\s*[•●◦▪]\s*/, "").replace(/\s+$/, ""));
+    .map(demarkdown);
+}
+
+/**
+ * Strip the markdown that AI generators add: heading hashes, bold and italic
+ * markers around headers, block quotes, horizontal rules, and bullet glyphs.
+ */
+function demarkdown(line: string): string {
+  let l = line.replace(/\s+$/, "");
+  l = l.replace(/^\s*#{1,6}\s+/, "");
+  l = l.replace(/^\s*>\s?/, "");
+  if (/^\s*(?:[-*_]\s*){3,}$/.test(l)) return "";
+  l = l.replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1");
+  l = l.replace(/^\s*\*(?!\s)([^*]+?)\*\s*$/, "$1").replace(/^\s*_(?!\s)([^_]+?)_\s*$/, "$1");
+  l = l.replace(/^\s*[•●◦▪]\s*/, "");
+  return l;
 }
 
 interface Segment {

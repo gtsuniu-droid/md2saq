@@ -1,18 +1,21 @@
 import { db, withRemoteWrites } from "../data/db";
-import type { Attempt, Mark, Question, QuestionRef, Settings } from "../data/types";
+import type { Attempt, Mark, Question, QuestionRef, Session, Settings } from "../data/types";
 import { cloudConfigured, currentUser, deleteMany, fetchSince, writeMany, type CloudUser } from "./firebase";
+import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
 
 /**
- * Offline-first sync of a signed-in person's own records: attempts, marks and
- * settings. The browser database stays the working copy; records modified
- * since the last push go up, records modified in the cloud since the last pull
- * come down, newest wins. Questions and sets are not synced here; they come
- * from the shared bank, and a record carries a QuestionRef so it can find its
- * question on a device whose question ids differ.
+ * Offline-first sync of a signed-in person's own records: attempts (drafts
+ * included, so a paper's answers are saved to the account as they are typed),
+ * marks, settings and the paper in progress. The browser database stays the
+ * working copy; records modified since the last push go up, records modified
+ * in the cloud since the last pull come down, newest wins. Questions and sets
+ * are not synced here; they come from the shared bank, and a record carries a
+ * QuestionRef so it can find its question on a device whose question ids differ.
  */
 
 const CURSOR_PUSH = "sync.pushedAt";
 const CURSOR_PULL = "sync.pulledAt";
+const SESSION_PUSHED = "sync.sessionPushedM";
 const SETTINGS_SYNCED: (keyof Settings)[] = [
   "minutesPerMark",
   "autoImportBank",
@@ -60,6 +63,33 @@ export function resolveQuestionId(
     if (q) return q.id;
   }
   return null;
+}
+
+/** The paper in progress as stored in the account: question ids travel as refs. */
+export interface CloudSession {
+  id: "session";
+  _m: number;
+  session: Session | null;
+  qrefs?: QuestionRef[];
+}
+
+/**
+ * Rebuild a session from another device on this one, resolving each question
+ * by reference. Questions this device lacks drop out; null when none resolve.
+ */
+export function adoptSession(remote: CloudSession, byId: Map<string, Question>, byBankAndOrder: Map<string, Question>): Session | null {
+  const s = remote.session;
+  if (!s) return null;
+  const questionIds: string[] = [];
+  const attemptIds: string[] = [];
+  s.questionIds.forEach((qid, i) => {
+    const local = resolveQuestionId(qid, remote.qrefs?.[i], byId, byBankAndOrder);
+    if (!local) return;
+    questionIds.push(local);
+    attemptIds.push(s.attemptIds[i] ?? "");
+  });
+  if (questionIds.length === 0) return null;
+  return { ...s, questionIds, attemptIds, index: Math.min(s.index, questionIds.length - 1) };
 }
 
 /** Whether a cloud record should replace the local one. */
@@ -122,13 +152,23 @@ async function push(uid: string): Promise<number> {
     db.settings.get("settings"),
     db.syncDeletes.toArray(),
   ]);
-  // Unsubmitted attempts are drafts of the current paper; they sync once submitted.
-  const attemptDocs = attempts.filter((a) => a.submittedAt !== undefined).map((a) => stripUndefined(a) as unknown as Record<string, unknown>);
+  const attemptDocs = attempts.map((a) => stripUndefined(a) as unknown as Record<string, unknown>);
   const markDocs = marks.map((m) => stripUndefined(m) as unknown as Record<string, unknown>);
   await writeMany(uid, "attempts", attemptDocs);
   await writeMany(uid, "marks", markDocs);
   if (settings && (settings._m ?? 0) > since) {
     await writeMany(uid, "settings", [stripUndefined(settingsForCloud(settings)) as unknown as Record<string, unknown>]);
+  }
+  const env = loadSessionEnvelope();
+  if (env._m > 0 && env._m !== (await cursor(SESSION_PUSHED))) {
+    const qrefs: QuestionRef[] = [];
+    for (const qid of env.session?.questionIds ?? []) {
+      const q = await db.questions.get(qid);
+      qrefs.push(q ? await questionRef(q) : { setId: "", order: -1 });
+    }
+    const doc: CloudSession = { id: "session", _m: env._m, session: env.session, qrefs };
+    await writeMany(uid, "settings", [stripUndefined(doc) as unknown as Record<string, unknown>]);
+    await setCursor(SESSION_PUSHED, env._m);
   }
   if (deletes.length) {
     const byTable = { attempts: deletes.filter((d) => d.table === "attempts"), marks: deletes.filter((d) => d.table === "marks") };
@@ -186,7 +226,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
         await db.marks.put({ ...raw, questionId: qid });
         applied++;
       }
-      const remoteSettings = settingsDocs[0] as (Partial<Settings> & { _m?: number }) | undefined;
+      const remoteSettings = settingsDocs.find((d) => d.id === "settings") as (Partial<Settings> & { _m?: number }) | undefined;
       if (remoteSettings) {
         const local = await db.settings.get("settings");
         if (!local || remoteWins(local._m, remoteSettings._m)) {
@@ -201,13 +241,32 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
       }
     });
   });
+  // The paper in progress follows the account: a newer one from another device replaces this device's.
+  const remoteSession = settingsDocs.find((d) => d.id === "session") as CloudSession | undefined;
+  if (remoteSession && remoteWins(loadSessionEnvelope()._m, remoteSession._m)) {
+    const adopted = adoptSession(remoteSession, byId, byBankAndOrder);
+    saveSessionEnvelope({ session: adopted, _m: remoteSession._m });
+    await setCursor(SESSION_PUSHED, remoteSession._m);
+    applied++;
+  }
   await setCursor(CURSOR_PULL, started);
   return { applied, unresolved };
 }
 
 /** Forget the cursors, so the next sync compares everything again (used after sign-in on a device with history). */
 export async function resetCursors(): Promise<void> {
-  await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL]);
+  await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED]);
+}
+
+let requested: number | undefined;
+/** Sync soon, once typing pauses: called after each saved answer and session change. */
+export function requestSync(delayMs = 4000): void {
+  if (!cloudConfigured() || typeof window === "undefined") return;
+  if (requested) window.clearTimeout(requested);
+  requested = window.setTimeout(() => {
+    requested = undefined;
+    if (navigator.onLine) void syncNow().catch(() => undefined);
+  }, delayMs);
 }
 
 /** Start background syncing: on sign-in, when the tab becomes visible, and every couple of minutes. */

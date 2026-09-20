@@ -8,7 +8,11 @@ import { hitTerms, markingPoints } from "../lib/marking";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
-import { questionRef } from "../lib/sync";
+import QuickEdit from "../components/QuickEdit";
+import { isAdmin } from "../lib/admin";
+import { getSettings } from "../data/db";
+import { questionRef, requestSync } from "../lib/sync";
+import AutoTextarea from "../components/AutoTextarea";
 
 export default function MarkPage() {
   const { attemptId = "" } = useParams();
@@ -37,6 +41,8 @@ export default function MarkPage() {
   const [learningPoint, setLearningPoint] = useState("");
   const [notes, setNotes] = useState("");
   const [seeded, setSeeded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const admin = useLiveQuery(async () => isAdmin(await getSettings()), []) ?? false;
 
   const partsInfo = useMemo(() => {
     if (!data) return [];
@@ -108,6 +114,7 @@ export default function MarkPage() {
       markedAt: Date.now(),
     };
     await db.marks.put(mark);
+    requestSync();
     if (inSession) {
       if (inSession.mode === "exam") {
         nav(`/session/${inSession.id}`);
@@ -124,6 +131,21 @@ export default function MarkPage() {
     }
     nav(`/question/${question.id}`);
   };
+
+  const editor = editing ? (
+    <QuickEdit
+      question={question}
+      onClose={() => setEditing(false)}
+      onDeleted={() => {
+        // The attempt being marked went with the question.
+        const rest = loadSession();
+        if (!inSession) nav(`/set/${question.setId}`, { replace: true });
+        else if (!rest) nav("/", { replace: true });
+        else if (rest.mode === "practice") nav("/paper", { replace: true });
+        else nav(`/session/${rest.id}`, { replace: true });
+      }}
+    />
+  ) : null;
 
   if (needsConfidence) {
     return (
@@ -144,8 +166,9 @@ export default function MarkPage() {
     <div>
       <div className="row spread">
         <h1 style={{ margin: 0 }}>Mark</h1>
-        <span className="muted">
+        <span className="muted row">
           {formatDuration(attempt.elapsedSec)}, {attempt.mode}{confidence !== undefined ? `, confidence ${confidence}/5` : ""}, <Link to={`/question/${question.id}`}>question</Link>
+          {admin && <button className="small" onClick={() => setEditing(true)} title="Edit this question and its model answer (admin)">Edit</button>}
         </span>
       </div>
       <div className="card" style={{ margin: "0.8rem 0" }}>
@@ -257,7 +280,7 @@ export default function MarkPage() {
         </div>
         <div>
           <label>Notes</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: "3rem" }} />
+          <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: "3rem" }} />
         </div>
         <div className="row">
           <button className="primary" onClick={save}>
@@ -267,6 +290,7 @@ export default function MarkPage() {
           </button>
         </div>
       </div>
+      {editor}
     </div>
   );
 }

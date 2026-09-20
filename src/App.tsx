@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { db, getSettings, patchSettings } from "./data/db";
-import { loadSession } from "./lib/session";
+import { loadSession, subscribeSession } from "./lib/session";
+import { useSession } from "./lib/useSession";
 import { syncFromBank } from "./lib/bank";
 import { numberUnnumberedSets } from "./lib/sets";
 import HomePage from "./pages/HomePage";
@@ -18,7 +19,7 @@ import AmbossPanel from "./components/AmbossPanel";
 import { cloudConfigured, onCloudUser, signInWithGoogle, signOutCloud, type CloudUser } from "./lib/firebase";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
-import { resetCursors, startSyncLoop, syncNow } from "./lib/sync";
+import { recordDeletes, requestSync, resetCursors, startSyncLoop, syncNow } from "./lib/sync";
 
 function AccountButton() {
   const settings = useLiveQuery(getSettings, []);
@@ -87,11 +88,14 @@ function AccountButton() {
 
 export default function App() {
   const { pathname } = useLocation();
+  const session = useSession();
 
   // Cloud sync: follow sign-in state, sync on arrival and in the background.
   useEffect(() => {
     let user: CloudUser | null = null;
     const stopLoop = startSyncLoop(() => user);
+    // The paper in progress follows the account: every change to it syncs soon after.
+    const stopSession = subscribeSession(() => requestSync());
     let unsub: (() => void) | undefined;
     void onCloudUser(async (u) => {
       user = u;
@@ -104,6 +108,7 @@ export default function App() {
     }).then((fn) => { unsub = fn; });
     return () => {
       stopLoop();
+      stopSession();
       unsub?.();
     };
   }, []);
@@ -111,7 +116,12 @@ export default function App() {
   // Drop unsubmitted attempts left behind by abandoned papers.
   useEffect(() => {
     const current = loadSession()?.id;
-    void db.attempts.filter((a) => a.submittedAt === undefined && a.sessionId !== current).delete();
+    void (async () => {
+      const orphans = (await db.attempts.filter((a) => a.submittedAt === undefined && a.sessionId !== current).primaryKeys()) as string[];
+      if (orphans.length === 0) return;
+      await db.attempts.bulkDelete(orphans);
+      await recordDeletes("attempts", orphans);
+    })();
     // Pull the shared bank into the library, for everyone. Silently does nothing when unreachable.
     void (async () => {
       await numberUnnumberedSets();
@@ -133,6 +143,7 @@ export default function App() {
         <NavLink to="/" end>Home</NavLink>
         <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/settings">Settings</NavLink>
+        {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue progress</NavLink>}
         <span style={{ flex: 1 }} />
         <AccountButton />
       </nav>
