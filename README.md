@@ -88,16 +88,22 @@ Three ways, fastest first:
 
 1. **Drop a generated case bank.** On Create, drop the output folder of the generator,
    or its files: `all_questions.txt`, `all_explained_answers.txt` and
-   `contents_and_coverage.txt`, or the per-case files. A case that appears in both the
-   combined file and its own file is taken once. Every `CASE NN: TITLE` becomes a
+   `contents_and_coverage.txt`, or the per-case files, or one file holding every case's
+   questions and answers together. A case that appears in both the
+   combined file and its own file is taken once. Every `CASE NN: TITLE`, `SET NN: TITLE` or
+   `VOM-01 | Title` becomes a
    numbered set with the case title kept as detail, its stem, questions, parts and marks, the matching
    explained answers attached per question and per part, the coverage file's conditions
    as tags, and the paper's instructions, marking principles and debrief kept with it.
+   Answers may be separate files keyed by question, or inline under each question or part
+   as `Answer:` or `Credit:` bullets; `Marking:` and `Teaching note:` lines are kept out of
+   the tick points and shown in the debrief instead.
    One click saves them all or saves and shares them all.
 2. **Drop plain files.** Any other `.md` or `.txt` file becomes one set named after
    the file, parsed with the rules below.
 3. **Paste.** Paste a whole paper into the box. Save keeps you on the page with the box
-   cleared, so you can paste the next one straight away.
+   cleared, so you can paste the next one straight away. Pasted text with `CASE NN:` or
+   `SET NN:` headers is split into a set per case exactly as a dropped file would be.
 4. **Push from a script.** See "Pushing questions from your own generator" below.
 
 ## Staged cases and stems
@@ -126,7 +132,8 @@ Sets are known by number within their presentation: Dizziness – Set 01, Set 02
 Abdominal pain starts again at Set 01, the way an Anki tag such as
 `Abdominal_pain::Set_01` would read. The server assigns the number when a set is first
 published, so every device agrees; a set that has not been published yet carries a
-provisional number. A set moved to another presentation takes the next number there.
+provisional number. Numbering is automatic: the sets of a presentation are always 01 to n,
+and deleting one or moving one to another presentation closes the gap.
 What a set is about is carried by its tags, normally the
 conditions it covers, and by its presentations. Browse filters by tag, presentation and
 collection, and a set page links each tag. Title and collection are kept as detail for

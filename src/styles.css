@@ -370,3 +370,8 @@ tr.selected td { background: var(--teal-soft); }
 .resume-title { font-weight: 600; margin-bottom: 0.15rem; }
 .nav .nav-paper { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--navy-fg); }
 .nav .nav-paper .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px rgba(255,255,255,0.18); }
+
+/* Browse search hits */
+.deck-hits { padding: 0 0.8rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+.deck-hits .hit-line { padding: 0.15rem 0; cursor: pointer; }
+.deck-hits .hit-line:hover { color: var(--teal); }

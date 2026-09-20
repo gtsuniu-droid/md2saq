@@ -1,0 +1,221 @@
+VOMITING SAQs — QUESTIONS AND ANSWERS
+Five sets, 23–25 marks each.
+Answers and explanations appear directly below each question or subquestion.
+
+Each bullet under "Answer" is an acceptable answer or alternative, worth one
+mark unless the marking instruction specifies the two separate points. Where
+more alternatives are listed than marks available, choose only the number the
+question asks for. Do not require every alternative. Accept equivalent wording
+and other clinically appropriate answers. Do not award two marks for the same
+point expressed twice within one subquestion.
+
+Teaching notes explain the reasoning. They are NOT extra marking requirements.
+Management is limited to MD2 principles. Therapeutic Guidelines (eTG), Australia,
+was consulted directly to check management content on 20 September 2026.
+Source codes beside questions link to the references at the end of each set.
+These are original practice cases and marking guides, not official eTG questions.
+
+
+VOM-01 | Acute vomiting and diarrhoea — questions and answers
+Total: 23 marks
+==============================================================================
+
+STEM
+Ella, a 24-year-old woman, presents with 18 hours of vomiting, watery diarrhoea and generalised
+abdominal cramps. She has no known medical conditions and takes no regular medication. She is
+alert but thirsty. Temperature is 37.6°C, pulse 104/min and blood pressure 110/70 mmHg. Her
+abdomen is soft with mild generalised tenderness and no guarding. You have not yet asked about
+food exposure, sick contacts or urine output.
+
+Question 1 (3 marks)
+
+a) State the most likely diagnosis. (1 mark)
+
+Answer:
+- Acute infectious gastroenteritis.
+Marking: Award 1 mark per correct point, up to 1. Equivalent wording is accepted.
+
+Teaching note — not required for marks: Foodborne infection or toxin-related illness is also a
+reasonable working explanation. The initial label does not establish severity.
+
+b) Write TWO history questions about exposure that could support an infectious or food-related
+cause. (2 marks)
+
+Answer:
+- Has anyone around you had similar symptoms?
+- Did you eat a shared or suspicious meal before becoming ill?
+- Have you recently travelled or drunk untreated water?
+Marking: Award 1 mark per correct point, up to 2. Equivalent wording is accepted.
+
+Teaching note — not required for marks: One clear question earns one mark. Naming an organism or
+explaining its incubation period is not required.
+
+Question 2 (4 marks)
+Two people who shared a meal with Ella are also unwell. You now assess how dehydrated she is.
+
+List FOUR clinical findings you would assess for dehydration. You do not need to explain each
+finding. (4 marks)
+
+Answer:
+- Pulse rate.
+- Blood pressure, including a postural change if safe.
+- Dryness of the mouth/mucous membranes.
+- Capillary refill/peripheral perfusion.
+- Urine output.
+- Mental state.
+Marking: Award 1 mark for each distinct finding, maximum 4. No rationale is required.
+
+Teaching note — not required for marks: Assess the whole clinical picture. Urine output is
+included as a clinical assessment even though it is usually obtained from history or monitoring.
+Do not stand a patient who is faint or unstable.
+
+Question 3 (4 marks)
+She reports very little urine and has been unable to keep drinks down. You decide that
+bedside/blood testing is appropriate.
+
+a) Name TWO initial bedside or blood investigations. (2 marks)
+
+Answer:
+- Urea, electrolytes and creatinine (one panel).
+- Capillary blood glucose.
+- Full blood count, if assessing an unwell or febrile patient.
+Marking: Award 1 mark per correct point, up to 2. Equivalent wording is accepted.
+
+Teaching note — not required for marks: Routine tests are not necessary in every mild,
+self-limited episode. The poor intake and low urine output justify checking for complications
+here.
+
+b) For EACH investigation you named, state ONE thing it would assess. (2 marks)
+
+Answer:
+- Renal/electrolyte panel: dehydration-related kidney injury or an electrolyte disturbance.
+- Glucose: hypoglycaemia or another glucose abnormality.
+- Full blood count: leukocytosis or haemoconcentration.
+Marking: Award 1 mark for one correct purpose linked to each of the two tests, maximum 2.
+
+Teaching note — not required for marks: Credit one relevant purpose for each chosen test. The
+candidate does not need to give every possible result.
+
+Question 4 (5 marks)
+Ella remains alert but continues to vomit after an attempted oral rehydration trial.
+
+a) Choose the route of fluid replacement now. Then give ONE reason for your choice. (2 marks)
+
+Answer:
+- Intravenous fluid replacement.
+- She cannot retain enough oral fluid.
+Marking: 1 mark for IV replacement; 1 mark for inability to retain oral fluid.
+
+Teaching note — not required for marks: An isotonic crystalloid is usual when IV replacement is
+needed. Reassess her response; a fixed volume or prescribing rate is not required for these
+marks.
+
+b) Name ONE suitable antiemetic. (1 mark)
+
+Answer:
+- Ondansetron.
+- Metoclopramide.
+- Prochlorperazine.
+Marking: Award 1 mark per correct point, up to 1. Equivalent wording is accepted.
+
+Teaching note — not required for marks: Choice depends on contraindications, route and local
+practice. Drug dose is not required.
+
+c) State ONE recognised adverse effect of the antiemetic you chose. (1 mark)
+
+Answer:
+- Ondansetron: constipation or QT prolongation.
+- Metoclopramide: an extrapyramidal reaction such as acute dystonia.
+- Prochlorperazine: an extrapyramidal reaction or sedation.
+Marking: Award 1 mark for one correct adverse effect of the selected drug.
+
+Teaching note — not required for marks: Only one adverse effect is required, and it must match
+the selected medicine. QT risk is more relevant with electrolyte disturbance.
+
+d) Give ONE reason antibiotics are not routinely needed for uncomplicated acute watery
+gastroenteritis. (1 mark)
+
+Answer:
+- It is commonly self-limiting.
+- Many cases are viral and antibiotics will not treat the cause.
+Marking: Award 1 mark per correct point, up to 1. Equivalent wording is accepted.
+
+Teaching note — not required for marks: This does not mean antibiotics are never indicated.
+Severe systemic infection and selected bacterial infections need a different assessment.
+
+Relevant eTG source(s): TG01, TG02, TG03, TG04.
+
+Question 5 (5 marks)
+Despite initial fluid replacement, Ella develops temperature 39.3°C, BP 86/50 mmHg and new
+confusion.
+
+a) Name the major complication that must now be considered, beyond dehydration alone. (1 mark)
+
+Answer:
+- Sepsis.
+Marking: Award 1 mark per correct point, up to 1. Equivalent wording is accepted.
+
+Teaching note — not required for marks: Hypovolaemia and sepsis can coexist. Sepsis is suspected
+infection with organ dysfunction; fever or tachycardia alone would not establish it.
+
+b) List THREE immediate management actions. (3 marks)
+
+Answer:
+- Call for urgent senior/resuscitation help.
+- Give reassessed IV isotonic fluid resuscitation.
+- Give prompt IV antibiotics for suspected sepsis.
+- Closely monitor vital signs and urine output.
+Marking: Award 1 mark per appropriate distinct action, maximum 3. No dose, detailed protocol or
+rationale is required.
+
+Teaching note — not required for marks: Clinical assessment, cultures when feasible and
+treatment proceed together. Do not delay needed antibiotics simply to complete testing.
+
+c) State ONE finding that would make loperamide inappropriate. (1 mark)
+
+Answer:
+- Bloody diarrhoea.
+- High fever with suspected inflammatory/invasive diarrhoea.
+- Concern for bowel obstruction or ileus.
+Marking: Award 1 mark per correct point, up to 1. Equivalent wording is accepted.
+
+Teaching note — not required for marks: Antimotility treatment is not a substitute for assessing
+a worsening patient.
+
+Relevant eTG source(s): TG05, TG03.
+
+Question 6 (2 marks)
+
+Before discharge after recovery, state TWO practical checks or pieces of advice. (2 marks)
+
+Answer:
+- Confirm that she can drink and retain enough fluid.
+- Confirm that urine output/perfusion is improving.
+- Advise return for worsening illness, blood in stool or inability to drink.
+- Give hand-hygiene and relevant food-handling/work advice.
+Marking: Award 1 mark per correct point, up to 2. Equivalent wording is accepted.
+
+Teaching note — not required for marks: Choose two. A detailed written discharge plan is not
+required for two marks.
+
+Relevant eTG source(s): TG01.
+
+END OF VOM-01 — 23 marks
+
+REFERENCES — Therapeutic Guidelines, Australia (accessed 20 September 2026)
+
+TG01: Approach to managing acute gastroenteritis
+https://app.tg.org.au/viewTopic?etgAccess=true&guidelinePage=Gastrointestinal&topicfile=c_GIG_Gastro-oesophageal-reflux-in-adultstopic_1&guidelinename=auto&sectionId=c_GIG_Approach-to-managing-acute-gastroenteritistopic_2#c_GIG_Approach-to-managing-acute-gastroenteritistopic_2
+
+TG02: Rehydration for acute gastroenteritis in adults
+https://app.tg.org.au/viewTopic?etgAccess=true&guidelinePage=Gastrointestinal&topicfile=disorders-oesophagus&guidelinename=auto&sectionId=c_GIG_Rehydration-for-acute-acute-gastroenteritis-in-adultstopic_1#c_GIG_Rehydration-for-acute-acute-gastroenteritis-in-adultstopic_1
+
+TG03: Other supportive therapy and considerations for acute gastroenteritis
+https://app.tg.org.au/viewTopic?etgAccess=true&guidelinePage=Gastrointestinal&topicfile=disorders-oesophagus&guidelinename=auto&sectionId=c_GIG_Other-supportive-therapy-and-considerations-for-acute-gastroenteritistopic_2#c_GIG_Other-supportive-therapy-and-considerations-for-acute-gastroenteritistopic_2
+
+TG04: Antiemetic drugs in adults
+https://app.tg.org.au/viewTopic?etgAccess=true&guidelinePage=Gastrointestinal&topicfile=disorders-oesophagus&guidelinename=auto&sectionId=c_GIG_Antiemetic-drugs-in-adultstopic_1#c_GIG_Antiemetic-drugs-in-adultstopic_1
+
+TG05: Principles of managing sepsis and septic shock
+https://app.tg.org.au/viewTopic?etgAccess=true&guidelinePage=Antibiotic&topicfile=bartonella-infections&guidelinename=auto&sectionId=c_ABG_Principles-of-managing-sepsis-and-septic-shock_topic_2#c_ABG_Principles-of-managing-sepsis-and-septic-shock_topic_2
+

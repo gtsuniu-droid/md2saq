@@ -4,9 +4,6 @@ import { totalMarks } from "./questions";
 import { startSession } from "./session";
 import { nextNumberIn, numberingGroup, rankedPresentations, setNumberLabel } from "./setGroup";
 
-/** Bumped when the numbering rule changes; local-only sets are renumbered once to match. */
-const NUMBERING = 2;
-
 export interface Sitting {
   sessionId: string;
   mode: "practice" | "exam";
@@ -132,29 +129,27 @@ export async function nextSetNumber(group: string): Promise<number> {
 }
 
 /**
- * Number sets that have none, within their presentation, and move any
- * local-only set whose number clashes with a published set's in the same
- * group. Published sets keep the number the server gave them.
+ * Numbering is automatic. Published sets carry the number the server gave
+ * them (1..n within their presentation); sets not yet published follow on
+ * after those, in creation order, so the list never shows a gap or a clash.
+ * A name that was only ever "Set N" follows the number.
  */
 export async function numberUnnumberedSets(): Promise<void> {
-  const migrated = (await db.meta.get("numbering"))?.value === NUMBERING;
   const all = await groupedSets();
   const groups = new Set(all.map((x) => x.group));
   for (const group of groups) {
     const members = all.filter((x) => x.group === group);
-    const taken = new Set(members.filter((x) => x.set.bankId && x.number !== undefined).map((x) => x.number!));
-    let next = Math.max(0, ...taken);
+    const published = members.filter((x) => x.set.bankId && x.number !== undefined).map((x) => x.number!);
+    let next = Math.max(0, ...published);
     const locals = members.filter((x) => !x.set.bankId).sort((a, b) => (a.number ?? Infinity) - (b.number ?? Infinity) || a.set.createdAt - b.set.createdAt);
     for (const x of locals) {
-      if (migrated && x.number !== undefined && !taken.has(x.number)) {
-        taken.add(x.number);
-        next = Math.max(next, x.number);
-        continue;
-      }
-      do next++; while (taken.has(next));
-      taken.add(next);
-      await db.sets.update(x.set.id, { number: next });
+      next++;
+      if (x.number !== next) await db.sets.update(x.set.id, { number: next });
+      x.number = next;
+    }
+    for (const x of members) {
+      if (x.number === undefined || !/^set\s*\d+$/i.test(x.set.name) || x.set.name === setNumberLabel(x.number)) continue;
+      await db.sets.update(x.set.id, { name: setNumberLabel(x.number) });
     }
   }
-  if (!migrated) await db.meta.put({ id: "numbering", value: NUMBERING });
 }

@@ -31,7 +31,9 @@ c) Third part. [1 marks]
 
 TOTAL: 25 MARKS
 
-ANSWERS go in a second file (or after a line of ===== in the same file):
+ANSWERS may follow in the same file (after a line of =====) or go in a second file.
+Several cases per file are fine, questions first then answers, or each case's answers
+straight after its questions. One file, a folder or a paste all split into one set per case.
 
 CASE 01: TITLE IN CAPITALS
 EXPLAINED MODEL ANSWERS AND MARKING GUIDE | Total: 25 marks
@@ -74,6 +76,7 @@ RULES
 - One marking point per line in answers. Keep each point self-contained; the marker ticks points individually.
 - The same case number links questions, answers and coverage. Titles in the coverage file replace the capitals header.
 - Diagnosis-style questions ("List THREE diagnoses...") feed automatic tags: put the condition name first on each answer line.
+- Also accepted: "VOM-01 | Title" case headers, a "STEM" heading, "Question 1 (3 marks)" with parts "a) ... (1 mark)", and the answers inline under each part as "Answer:" or "Credit:" bullets followed by "Marking:" and "Teaching note:" lines (those two go to the debrief, not the marking points), with a contents file of "VOM-01: Title — 23 marks" rows and "Coverage:" lines.
 - Anything else (Stage 1 / Stage 2 stems, "Question 1 — Title (3 marks)", "Answer:" blocks) also parses when pasted, but the layout above is the one to generate.`;
 
 /** Tiny sample in the guide's format, used by tests and as a paste example. */

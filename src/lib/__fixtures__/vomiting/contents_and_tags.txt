@@ -1,0 +1,58 @@
+VOMITING SAQ SETS — CONTENTS AND TAGS
+
+This index contains diagnostic spoilers. Use all_questions.txt for practice.
+Each set has a separate question file and explained-answer file.
+
+VOM-01: Acute vomiting and diarrhoea — 23 marks
+Coverage: Gastroenteritis/foodborne illness, Dehydration, Sepsis, Basic fluid treatment,
+Antiemetics and adverse effects
+
+VOM-02: Vomiting food several hours after meals — 23 marks
+Coverage: Gastroparesis, Gastric outlet obstruction, Diabetes, Medication effects,
+Metoclopramide
+
+VOM-03: Blood in the vomit — 25 marks
+Coverage: Peptic ulcer bleeding, Varices, Mallory–Weiss tear, Bleeding severity, Oesophageal
+rupture, PPI, Alcohol withdrawal, Thiamine
+
+VOM-04: Vomiting with weakness and low blood pressure — 25 marks
+Coverage: Adrenal crisis, Sepsis/pyelonephritis, Hypoglycaemia, Hyponatraemia, Hypercalcaemia,
+Uraemia, Steroid withdrawal, Wernicke encephalopathy, Hepatic encephalopathy
+
+VOM-05: Vomiting with headache — 23 marks
+Coverage: Migraine, Meningitis, Subarachnoid haemorrhage, Raised intracranial pressure, Basic
+neurological assessment, Antiemetic pharmacology
+
+ALCOHOL CROSSOVER TAGS
+
+Use "alcohol abuse" as your umbrella tag if that matches your existing deck.
+An alternative umbrella label is "alcohol use disorder".
+A tag indicates topic overlap; it does not establish the cause in a patient.
+
+VOM-03 Q1(b) — alcohol abuse; complications; chronic liver disease; examination
+VOM-03 Q2(a–b) — alcohol abuse; complications; haematemesis; varices; Mallory–Weiss; differential diagnosis
+VOM-03 Q3–4 — alcohol abuse; complications; upper GI bleeding; investigations; initial management
+VOM-03 Q5 — alcohol abuse; complications; forceful vomiting; oesophageal rupture; red flags
+VOM-03 Q6(a) — alcohol abuse; withdrawal; recognition
+VOM-03 Q6(b) — alcohol abuse; withdrawal; basic management; benzodiazepines
+VOM-03 Q6(c) — alcohol abuse; malnutrition; Wernicke prevention; thiamine
+VOM-04 Q7(a) — alcohol abuse; complications; confusion; Wernicke encephalopathy
+VOM-04 Q7(b) — alcohol abuse; complications; confusion; hepatic encephalopathy
+
+For Q2–5, retain the stem or the relevant short scenario when making a card.
+Bleeding and oesophageal rupture also have causes unrelated to alcohol.
+This is a vomiting bank with alcohol overlap, not a complete alcohol curriculum.
+
+LEVEL AND MARKING
+
+One fact per mark. If a reason is requested, it receives its own mark.
+Explanations in the answer files are optional learning material.
+No drug doses, withdrawal scores, complex fluid calculations, antibiotic schedules,
+specialist intervention choices or exact eTG protocols are examined.
+
+SOURCE APPROACH
+
+Management content was checked directly against Australian Therapeutic Guidelines
+(eTG) on 20 September 2026. Specific topic links accompany the answer guides.
+Guideline detail was deliberately reduced to principles suitable for MD2 practice.
+The questions and teaching explanations are original; this is not an official eTG product.

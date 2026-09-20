@@ -117,7 +117,20 @@ describe("numbering", () => {
     expect(moved.number).toBe(1);
   });
 
-  it("renumbers an index made under the old running scheme, once", async () => {
+  it("closes the gap when a set is deleted", async () => {
+    const d1 = await (await post(pack("d1", ["dizziness"]))).json() as { id: string };
+    await post(pack("d2", ["dizziness"]));
+    const d3 = await (await post(pack("d3", ["dizziness"]))).json() as { id: string; number: number };
+    expect(d3.number).toBe(3);
+    await handler(new Request(`http://x/api/bank?id=${d1.id}`, { method: "DELETE", headers: { "x-passcode": "secret" } }));
+    const list = await (await get()).json() as { sets: { setId: string; number: number }[] };
+    expect(Object.fromEntries(list.sets.map((s) => [s.setId, s.number]))).toEqual({ d2: 1, d3: 2 });
+    const packAfter = await (await get(`?id=${d3.id}`)).json() as { set: { number: number } };
+    // The stored pack keeps its old number; clients take the number from the index.
+    expect(packAfter.set.number).toBe(3);
+  });
+
+  it("renumbers an index made under the old running scheme", async () => {
     memory.set("index", [
       { id: "x1", number: 1, name: "a", questionCount: 1, presentations: ["dizziness"], uploadedAt: 1 },
       { id: "x2", number: 2, name: "b", questionCount: 1, presentations: ["abdominal-pain"], uploadedAt: 2 },
@@ -127,7 +140,6 @@ describe("numbering", () => {
     const list = await (await get()).json() as { sets: { id: string; number: number; group: string }[] };
     const byId = Object.fromEntries(list.sets.map((s) => [s.id, `${s.group}:${s.number}`]));
     expect(byId).toEqual({ x1: "dizziness:1", x3: "dizziness:2", x2: "abdominal-pain:1", x4: "abdominal-pain:2" });
-    expect(memory.get("numbering")).toBe(2);
   });
 });
 

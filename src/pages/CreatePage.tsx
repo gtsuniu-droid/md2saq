@@ -162,13 +162,21 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Re-parse when the paste changes. Manual edits to drafts are kept until the paste changes again.
+  // A paste holding whole cases ("CASE 01: ..." headers) is split into sets like a dropped file.
   useEffect(() => {
     const t = setTimeout(() => {
+      const pasted: CaseFile[] = [{ name: "Pasted text", text: raw }];
+      if (isCaseBank(pasted) && parseCaseBank(pasted).cases.some((c) => c.questions.length > 0)) {
+        void addTexts(pasted);
+        setRaw("");
+        return;
+      }
       const r = draftsFromText(raw, presetPresentation);
       setDrafts(r.drafts);
       setMeta(r.meta);
     }, 250);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw, presetPresentation]);
 
   const update = (key: string, patch: Partial<Draft>) =>
@@ -249,6 +257,11 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
     const all = Array.from(list);
     const texts: CaseFile[] = [];
     for (const f of all) texts.push({ name: f.name, text: await readFileText(f) });
+    await addTexts(texts, all);
+  };
+
+  /** Case-bank text (one file or many, questions and answers together or apart) becomes sets; anything else, one set per file. */
+  const addTexts = async (texts: CaseFile[], all: File[] = []) => {
     if (isCaseBank(texts) && !hasQuestionChunks(texts)) {
       // Answers on their own: pair them with sets already in the library.
       const parsed = parseAnswersOnly(texts);

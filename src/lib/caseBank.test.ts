@@ -14,6 +14,20 @@ describe("case bank", () => {
     read("contents_and_coverage.txt"),
   ];
 
+  it("splits one file holding every case's questions and answers into sets", () => {
+    const one = { name: "everything.txt", text: files.slice(0, 4).map((f) => f.text).join("\n\n") };
+    const bank = parseCaseBank([one, read("contents_and_coverage.txt")]);
+    expect(bank.cases.map((c) => c.number)).toEqual([2, 3]);
+    for (const c of bank.cases) {
+      expect(c.hasAnswers).toBe(true);
+      expect(c.questions.length).toBeGreaterThan(0);
+      expect(c.questions.every((q) => q.modelAnswer || q.parts.some((p) => p.modelAnswer))).toBe(true);
+    }
+    // Each case's answers straight after its questions works too.
+    const interleaved = { name: "everything.txt", text: [files[0], files[2], files[1], files[3]].map((f) => f.text).join("\n\n") };
+    expect(parseCaseBank([interleaved]).cases.map((c) => [c.number, c.hasAnswers])).toEqual([[2, true], [3, true]]);
+  });
+
   it("detects the format", () => {
     expect(isCaseBank(files)).toBe(true);
     expect(isCaseBank([{ name: "x.txt", text: "1. What is this?" }])).toBe(false);

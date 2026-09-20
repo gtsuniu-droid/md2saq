@@ -90,15 +90,69 @@ export function setsInBranch(node: TreeNode): SetSummary[] {
   return out;
 }
 
+export interface QuestionHit {
+  questionId: string;
+  /** 1-based question number in the set. */
+  number: number;
+  /** Where in the question the text was found. */
+  field: "stem" | "question" | "part" | "model answer";
+  /** A window of text around the first match. */
+  snippet: string;
+}
+
+export interface SetHits {
+  /** Matching tags, as written. */
+  tags: string[];
+  /** Whether the set's label, name or source matched. */
+  label: boolean;
+  questions: QuestionHit[];
+}
+
+const SNIPPET = 70;
+
+/** A window of text around the first match, with ellipses where it was cut. */
+export function snippetAround(text: string, needle: string): string | null {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const at = flat.toLowerCase().indexOf(needle);
+  if (at < 0) return null;
+  const start = Math.max(0, at - SNIPPET);
+  const end = Math.min(flat.length, at + needle.length + SNIPPET);
+  return (start > 0 ? "…" : "") + flat.slice(start, end) + (end < flat.length ? "…" : "");
+}
+
+/** Everything in a set that contains the search text: tags, label, and each question's content. */
+export function searchHits(s: SetSummary, q: string): SetHits | null {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return null;
+  const tags = (s.set.tags ?? []).filter((t) => t.toLowerCase().includes(needle));
+  const label = [setLabel(s.set), s.set.name, s.set.source ?? ""].join(" ").toLowerCase().includes(needle);
+  const questions: QuestionHit[] = [];
+  for (const x of s.questions) {
+    const fields: [QuestionHit["field"], string][] = [
+      ...(x.stems ?? []).map((st): [QuestionHit["field"], string] => ["stem", st]),
+      ["question", x.text],
+      ...x.parts.map((p): [QuestionHit["field"], string] => ["part", `(${p.label}) ${p.text}`]),
+      ["model answer", [x.modelAnswer ?? "", ...x.parts.map((p) => p.modelAnswer ?? "")].join(" ")],
+    ];
+    for (const [field, text] of fields) {
+      const snippet = snippetAround(text, needle);
+      if (snippet) {
+        questions.push({ questionId: x.id, number: x.order + 1, field, snippet });
+        break;
+      }
+    }
+  }
+  if (tags.length === 0 && !label && questions.length === 0) return null;
+  return { tags, label, questions };
+}
+
 /** Filter the tree to nodes or sets matching a search string. */
 export function filterTree(nodes: TreeNode[], q: string): TreeNode[] {
   const needle = q.trim().toLowerCase();
   if (!needle) return nodes;
-  const match = (s: SetSummary) =>
-    [String(s.set.number ?? ""), s.set.name, s.set.source ?? "", ...(s.set.tags ?? []), ...s.questions.map((x) => x.text)].join(" ").toLowerCase().includes(needle);
   const walk = (n: TreeNode): TreeNode | null => {
     const children = n.children.map(walk).filter((c): c is TreeNode => !!c);
-    const sets = n.label.toLowerCase().includes(needle) ? n.sets : n.sets.filter(match);
+    const sets = n.label.toLowerCase().includes(needle) ? n.sets : n.sets.filter((s) => searchHits(s, q) !== null);
     if (children.length === 0 && sets.length === 0) return null;
     return { ...n, children, sets };
   };
