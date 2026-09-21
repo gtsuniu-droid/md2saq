@@ -9,8 +9,9 @@ import { refreshSharedNotes, saveSharedNote, SHARED_OWNER } from "../lib/sharedN
 import { cloudConfigured } from "../lib/firebase";
 import { NOTE_KINDS, NOTE_SECTIONS, noteSection } from "../lib/noteModel";
 import { getNotesSyncState, saveNote, subscribeNotesSync, syncNotes } from "../lib/notes";
-import NoteEditor, { noteHtml } from "../components/NoteEditor";
+import NoteEditor from "../components/NoteEditor";
 
+import { NoteContent, NoteReadingControls, useNoteReadingSize } from "../components/NoteReading";
 import NoteSectionTabs from "../components/NoteSectionTabs";
 
 const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
@@ -24,6 +25,7 @@ export default function NotesPage() {
 }
 
 function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: boolean; admin: boolean }) {
+  const [readingSize, setReadingSize] = useNoteReadingSize();
   const [params, setParams] = useSearchParams();
   const selected = params.get("presentation") ?? "abdominal-pain";
   const section = noteSection(params.get("section"));
@@ -44,6 +46,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addingImages, setAddingImages] = useState(false);
   const sync = useSyncExternalStore(subscribeNotesSync, getNotesSyncState);
   useEffect(() => {
     if (!draft) return;
@@ -66,7 +69,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
     });
   };
   const save = async () => {
-    if (!draft) return;
+    if (!draft || addingImages) return;
     setSaving(true); setError("");
     try {
       const saved = draft.ownerId === SHARED_OWNER ? await saveSharedNote(draft) : await saveNote(draft, draft.revision || undefined);
@@ -119,9 +122,9 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
       </div>
       <datalist id="note-kinds">{[...new Set([...NOTE_KINDS, ...(notes ?? []).map((n) => n.kind)])].map((k) => <option key={k} value={k} />)}</datalist>
       <label>Title<input aria-label="Note title" type="text" autoFocus required maxLength={200} placeholder="e.g. Approach to abdominal pain" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
-      <NoteEditor key={draft.id} initial={draft.doc} onChange={(doc, text) => setDraft((d) => d ? { ...d, doc, text } : d)} />
+      <NoteEditor key={draft.id} initial={draft.doc} onBusyChange={setAddingImages} onChange={(doc, text) => setDraft((d) => d ? { ...d, doc, text } : d)} />
       <label>Source (optional)<input aria-label="Note source" type="text" placeholder="Book, lecture, or page link" value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} /></label>
-      <div className="row note-form-actions"><button className="primary" disabled={saving}>{saving ? "Saving…" : draft.ownerId === SHARED_OWNER ? "Publish shared note" : "Save note"}</button><button type="button" disabled={saving} onClick={() => { if (confirm("Discard this unfinished draft?")) finishDraft(); }}>Discard draft</button></div>
+      <div className="row note-form-actions"><button className="primary" disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : saving ? "Saving…" : draft.ownerId === SHARED_OWNER ? "Publish shared note" : "Save note"}</button><button type="button" disabled={saving || addingImages} onClick={() => { if (confirm("Discard this unfinished draft?")) finishDraft(); }}>Discard draft</button></div>
     </form>}
     <div className="notes-layout">
       <aside className="notes-sidebar" aria-label="Core presentations"><div className="notes-sidebar-heading">Core presentations</div>
@@ -137,13 +140,14 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
         <NoteSectionTabs id="presentation-sections" value={section} notes={available} onChange={(next) => { setParams({ presentation: selected, section: next }); setKind(""); }} />
         <div id="presentation-sections-panel" role="tabpanel" aria-labelledby={`presentation-sections-tab-${section}`} tabIndex={0}>
         <p className="muted">{sectionInfo.description}</p>
+        <NoteReadingControls size={readingSize} onChange={setReadingSize} />
         <div className="note-kind-pills" aria-label="Filter note types"><button aria-pressed={!kind} onClick={() => setKind("")}>All types <span>{sectionNotes.length}</span></button>{kinds.map((k) => <button key={k} aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{k}</button>)}</div>
         <div className="row spread notes-list-tools"><span className="muted">{visible.length} {trash ? "deleted " : ""}note{visible.length === 1 ? "" : "s"}</span><span className="row"><button className="small link" onClick={() => setExpanded(new Set(visible.map((n) => n.id)))}>Expand all</button><button className="small link" onClick={() => setExpanded(new Set())}>Collapse all</button></span></div>
         {notes === undefined ? <p>Loading…</p> : !visible.length ? <div className="notes-empty"><span aria-hidden="true">✎</span><h3>{q || kind ? "No matching notes" : trash ? "No deleted notes" : `No ${sectionInfo.label} notes yet`}</h3><p>{q || kind ? "Try another search or note type." : "Add a note to this section, then paste or write your content."}</p>{!trash && !q && !kind && <div className="row notes-suggestions">{["Lecture Notes", "First Aid", "Sketchy", "My Notes"].map((k) => <span key={k}>{k}</span>)}</div>}</div> : visible.map((n) => {
           const open = expanded.has(n.id);
           return <article key={n.id} className={"note-card" + (open ? " open" : "")}>
             <button className="note-toggle" aria-expanded={open} aria-controls={`note-${n.id}`} onClick={() => toggle(n.id)}><span className="note-caret">{open ? "▾" : "▸"}</span><span><span className="note-kind">{n.kind}</span><strong>{n.title}</strong></span></button>
-            {open && <div id={`note-${n.id}`} className="note-expanded"><div className="note-rich" dangerouslySetInnerHTML={{ __html: noteHtml(n.doc) }} />
+            {open && <div id={`note-${n.id}`} className="note-expanded"><NoteContent doc={n.doc} size={readingSize} />
               {n.source && <p className="muted note-source">Source: {/^https?:\/\//i.test(n.source) ? <a href={n.source} target="_blank" rel="noreferrer">Open reference</a> : n.source}</p>}
               <div className="row spread note-footer"><span className="muted">Updated {new Date(n._m).toLocaleDateString()}</span><span className="row">{(library === "private" || admin) && <>{!n.deleted && <button className="small" onClick={() => begin(n)}>Edit</button>}<button className="small link" onClick={() => { void archive(n); }}>{n.deleted ? "Restore" : "Delete"}</button></>}</span></div>
             </div>}

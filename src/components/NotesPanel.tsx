@@ -8,10 +8,11 @@ import { refreshSharedNotes, SHARED_OWNER } from "../lib/sharedNotes";
 import type { NoteSection } from "../data/types";
 import { NOTE_SECTIONS, noteSection } from "../lib/noteModel";
 import NoteSectionTabs from "./NoteSectionTabs";
-import { noteHtml } from "./NoteEditor";
+import { NoteContent, NoteReadingControls, useNoteReadingSize } from "./NoteReading";
 
 /** Stays mounted alongside marking/practice. Opening or closing it never navigates the answer page. */
 export default function NotesPanel({ onClose }: { onClose: () => void }) {
+  const [readingSize, setReadingSize] = useNoteReadingSize();
   const { pathname } = useLocation();
   const session = useSession();
   const [presentation, setPresentation] = useState("abdominal-pain");
@@ -43,11 +44,12 @@ export default function NotesPanel({ onClose }: { onClose: () => void }) {
     <p className="muted">Move the separate window to your second screen. Your answer stays here.</p>
     <label htmlFor="reference-presentation">Presentation</label><select id="reference-presentation" value={presentation} onChange={(e) => { setPresentation(e.target.value); setFollow(false); }}>{PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
     <label className="check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow the current question</label>
+    <NoteReadingControls size={readingSize} onChange={setReadingSize} />
     <NoteSectionTabs id="reference-sections" value={section} notes={notes ?? []} onChange={setSection} />
     <div id="reference-sections-panel" role="tabpanel" aria-labelledby={`reference-sections-tab-${section}`} tabIndex={0}>
     <input type="search" aria-label="Search reference notes" placeholder="Search this section…" value={search} onChange={(e) => setSearch(e.target.value)} />
     <div className="notes-dock-list">
-      {visible.map((n) => <details key={n.id} className="note-card"><summary><span className="note-kind">{n.kind}{n.ownerId === SHARED_OWNER ? " · Shared" : " · Private"}</span><strong>{n.title}</strong></summary><div className="note-expanded"><div className="note-rich" dangerouslySetInnerHTML={{ __html: noteHtml(n.doc) }} />{n.source && <p className="muted note-source">Source: {/^https?:\/\//i.test(n.source) ? <a href={n.source} target="_blank" rel="noreferrer">Open reference</a> : n.source}</p>}<a className="muted" href={url} target="_blank" rel="noreferrer">Edit in Notes ↗</a></div></details>)}
+      {visible.map((n) => <details key={n.id} className="note-card"><summary><span className="note-kind">{n.kind}{n.ownerId === SHARED_OWNER ? " · Shared" : " · Private"}</span><strong>{n.title}</strong></summary><div className="note-expanded"><NoteContent doc={n.doc} size={readingSize} />{n.source && <p className="muted note-source">Source: {/^https?:\/\//i.test(n.source) ? <a href={n.source} target="_blank" rel="noreferrer">Open reference</a> : n.source}</p>}<a className="muted" href={url} target="_blank" rel="noreferrer">Edit in Notes ↗</a></div></details>)}
       {notes !== undefined && !visible.length && <div className="notes-empty"><h3>{search ? "No matching notes" : `No ${NOTE_SECTIONS.find((s) => s.id === section)!.label} notes yet`}</h3><a href={url} target="_blank" rel="noreferrer">Add notes in a separate tab ↗</a></div>}
     </div>
     </div>
