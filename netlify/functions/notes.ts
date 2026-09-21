@@ -86,7 +86,7 @@ export default async (req: Request): Promise<Response> => {
     const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/.exec(src);
     if (!match) throw new Error("Use PNG, JPEG, WebP or GIF images.");
     const bytes = Buffer.from(match[2], "base64"), hash = createHash("sha256").update(bytes).digest("hex");
-    if (hosted()) await getStore({ name: "presentation-note-images", consistency: "strong" }).set(hash, bytes, { onlyIfNew: true, metadata: { mime: match[1] } });
+    if (hosted()) await getStore({ name: "presentation-note-images", consistency: "strong" }).set(hash, new Uint8Array(bytes).buffer, { onlyIfNew: true, metadata: { mime: match[1] } });
     else { const directory = join(process.cwd(), ".netlify", "dev-note-images"); mkdirSync(directory, { recursive: true }); writeFileSync(join(directory, hash), bytes); }
     return `/api/notes?image=${hash}`;
   };
