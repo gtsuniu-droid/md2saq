@@ -42,3 +42,22 @@ describe("database upgrade", () => {
     v2.close();
   });
 });
+
+it("upgrades the existing app database to notes without losing questions, answers or settings", async () => {
+  const { SaqDatabase } = await import("./db");
+  const name = `saq-notes-upgrade-${Date.now()}`;
+  const old = new Dexie(name);
+  old.version(3).stores({ sets: "id, createdAt, bankId", questions: "id, setId, order, *presentations, *tags, createdAt", attempts: "id, questionId, submittedAt, sessionId, _m", marks: "id, attemptId, questionId, markedAt, _m", settings: "id", ambossPhrases: "key, fetchedAt", ambossGroups: "eid, fetchedAt", syncDeletes: "id, at", meta: "id" });
+  await old.table("questions").put({ id: "q", text: "Keep my question" });
+  await old.table("attempts").put({ id: "a", answers: [{ text: "Keep my answer" }] });
+  await old.table("settings").put({ id: "settings", minutesPerMark: 2 });
+  old.close();
+  const upgraded = new SaqDatabase(name);
+  await upgraded.open();
+  expect(upgraded.verno).toBe(4);
+  expect((await upgraded.questions.get("q"))?.text).toBe("Keep my question");
+  expect((await upgraded.attempts.get("a"))?.answers[0].text).toBe("Keep my answer");
+  expect((await upgraded.settings.get("settings"))?.minutesPerMark).toBe(2);
+  expect(await upgraded.notes.count()).toBe(0);
+  await upgraded.delete();
+});

@@ -122,7 +122,7 @@ export default function MarkPage() {
       }
       const nextIndex = inSession.attemptIds.indexOf(attempt.id) + 1;
       if (nextIndex < inSession.questionIds.length) {
-        saveSession({ ...inSession, index: nextIndex });
+        saveSession({ ...inSession, index: nextIndex, activePart: "" });
         nav("/paper");
         return;
       }

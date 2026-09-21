@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { DBCore, DBCoreMutateRequest, DBCoreTable } from "dexie";
+import type { PresentationNote } from "./types";
 import { DEFAULT_SETTINGS, type AmbossPhraseGroup, type AmbossPhrases, type Attempt, type Mark, type Meta, type Question, type QuestionSet, type Settings, type SyncDelete } from "./types";
 
 export class SaqDatabase extends Dexie {
@@ -12,9 +13,10 @@ export class SaqDatabase extends Dexie {
   ambossGroups!: EntityTable<AmbossPhraseGroup, "eid">;
   syncDeletes!: EntityTable<SyncDelete, "id">;
   meta!: EntityTable<Meta, "id">;
+  notes!: EntityTable<PresentationNote, "id">;
 
-  constructor() {
-    super("saq-practice");
+  constructor(name = "saq-practice") {
+    super(name);
     this.version(1).stores({
       sets: "id, createdAt, bankId",
       questions: "id, setId, order, *presentations, *tags, createdAt",
@@ -32,6 +34,7 @@ export class SaqDatabase extends Dexie {
       syncDeletes: "id, at",
       meta: "id",
     });
+    this.version(4).stores({ notes: "id, presentationId, ownerId, _m" });
     this.use({ stack: "dbcore", name: "modifiedStamp", create: stampModified });
   }
 }

@@ -1,4 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
+import { loadSession } from "../lib/session";
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { db, getSettings } from "../data/db";
@@ -41,6 +42,7 @@ export default function SetPage() {
   const suggested = suggestedMinutesFor(summary, settings.minutesPerMark);
 
   const start = (mode: "practice" | "exam") => {
+    if (loadSession() && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
     const mins = minutes.trim() === "" ? suggested : Number(minutes);
     startSet(summary, mode, mins);
     nav("/paper");

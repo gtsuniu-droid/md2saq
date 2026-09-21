@@ -8,6 +8,8 @@ import { numberUnnumberedSets } from "./lib/sets";
 import HomePage from "./pages/HomePage";
 import CreatePage from "./pages/CreatePage";
 import BrowsePage from "./pages/BrowsePage";
+import NotesPage from "./pages/NotesPage";
+import NotesPanel from "./components/NotesPanel";
 import QuestionPage from "./pages/QuestionPage";
 import SetPage from "./pages/SetPage";
 import SetEditPage from "./pages/SetEditPage";
@@ -89,6 +91,9 @@ function AccountButton() {
 export default function App() {
   const { pathname } = useLocation();
   const session = useSession();
+  const [notesOpen, setNotesOpen] = useState(false);
+  const studying = /^\/(mark|paper|question|set|session)(\/|$)/.test(pathname);
+  useEffect(() => { document.querySelector("main")?.scrollTo(0, 0); }, [pathname]);
 
   // Cloud sync: follow sign-in state, sync on arrival and in the background.
   useEffect(() => {
@@ -142,16 +147,20 @@ export default function App() {
         <NavLink to="/" className="brand">SAQ</NavLink>
         <NavLink to="/" end>Home</NavLink>
         <NavLink to="/browse">Browse</NavLink>
+        <NavLink to="/notes">Notes</NavLink>
         <NavLink to="/settings">Settings</NavLink>
-        {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue progress</NavLink>}
+        {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue session</NavLink>}
         <span style={{ flex: 1 }} />
+        {studying && <button className="nav-notes" aria-expanded={notesOpen} onClick={() => setNotesOpen((open) => !open)}>{notesOpen ? "Hide reference notes" : "Reference notes"}</button>}
         <AccountButton />
       </nav>
-      <main className={full ? "page full" : "page"}>
+      <div className="study-workspace">
+      <main className={full ? "page full" : pathname.startsWith("/notes") ? "page notes-shell" : "page"}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/browse" element={<BrowsePage />} />
+          <Route path="/notes" element={<NotesPage />} />
           <Route path="/set/:id" element={<SetPage />} />
           <Route path="/set/:id/edit" element={<SetEditPage />} />
           <Route path="/question/:id" element={<QuestionPage />} />
@@ -164,6 +173,8 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
+      {notesOpen && studying && <NotesPanel onClose={() => setNotesOpen(false)} />}
+      </div>
       <AmbossPanel />
     </div>
   );

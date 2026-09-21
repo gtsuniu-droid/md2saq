@@ -6,6 +6,8 @@
 import type { FirebaseApp } from "firebase/app";
 import type { Auth, User } from "firebase/auth";
 import type { Firestore } from "firebase/firestore";
+import type { PresentationNote } from "../data/types";
+import { noteIsNewer, validateNote } from "./noteModel";
 
 export interface CloudUser {
   uid: string;
@@ -84,6 +86,28 @@ export async function currentUser(): Promise<CloudUser | null> {
 }
 
 export type CloudCollection = "attempts" | "marks" | "settings" | "deleted";
+
+export async function fetchNotes(uid: string): Promise<PresentationNote[]> {
+  const { firestore } = await services();
+  const { collection, getDocs } = await import("firebase/firestore");
+  const snapshot = await getDocs(collection(firestore, "users", uid, "notes"));
+  return snapshot.docs.map((d) => ({ ...d.data(), id: d.id, ownerId: uid }) as PresentationNote);
+}
+
+export async function reconcileNote(uid: string, note: PresentationNote): Promise<PresentationNote> {
+  validateNote(note);
+  if (note.ownerId !== uid) throw new Error("This note belongs to another account.");
+  const { firestore } = await services();
+  const { doc, runTransaction } = await import("firebase/firestore");
+  return runTransaction(firestore, async (tx) => {
+    const ref = doc(firestore, "users", uid, "notes", note.id);
+    const snap = await tx.get(ref);
+    const remote = snap.exists() ? { ...snap.data(), id: note.id, ownerId: uid } as PresentationNote : undefined;
+    if (remote && !noteIsNewer(note, remote)) return remote;
+    tx.set(ref, note);
+    return note;
+  });
+}
 
 /** Documents in users/{uid}/{collection} with _m greater than `since`. */
 export async function fetchSince(uid: string, collection: CloudCollection, since: number): Promise<Record<string, unknown>[]> {

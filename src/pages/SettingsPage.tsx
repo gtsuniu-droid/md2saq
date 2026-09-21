@@ -47,7 +47,7 @@ export default function SettingsPage() {
     try {
       const data = JSON.parse(await readFileText(file)) as ExportFile;
       const n = await importAll(data);
-      setMessage(`Imported ${n.sets} sets, ${n.questions} questions, ${n.attempts} attempts, ${n.marks} marks.`);
+      setMessage(`Imported ${n.sets} sets, ${n.questions} questions, ${n.attempts} attempts, ${n.marks} marks, ${n.notes} notes.`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     }

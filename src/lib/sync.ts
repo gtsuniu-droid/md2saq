@@ -2,6 +2,7 @@ import { db, withRemoteWrites } from "../data/db";
 import type { Attempt, Mark, Question, QuestionRef, Session, Settings } from "../data/types";
 import { cloudConfigured, currentUser, deleteMany, fetchSince, writeMany, type CloudUser } from "./firebase";
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
+import { syncNotes } from "./notes";
 
 /**
  * Offline-first sync of a signed-in person's own records: attempts (drafts
@@ -133,8 +134,11 @@ export async function syncNow(user?: CloudUser | null): Promise<SyncResult | nul
   if (running) return running;
   running = (async () => {
     try {
+      const notesResult = syncNotes(u).then(() => null, (error: unknown) => error);
       const pushed = await push(u.uid);
       const pulled = await pull(u.uid);
+      const notesError = await notesResult;
+      if (notesError) throw notesError;
       return { pushed, pulled: pulled.applied, unresolved: pulled.unresolved };
     } finally {
       running = null;

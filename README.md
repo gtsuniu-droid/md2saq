@@ -218,3 +218,57 @@ curl -X POST https://YOUR-SITE.netlify.app/api/bank \
 Every device with "Automatically import new bank sets" on (Settings, on by default) pulls
 new sets into its library the next time the app opens. Settings also has a "Check the bank
 now" button.
+
+## Presentation notes
+
+Notes in the main navigation opens a shared reference library for every core presentation.
+The Shared library tab is public and stored in Netlify Blobs (`presentation-notes`). Admin
+access uses the existing bank passcode. Each saved edit publishes immediately, without a
+website deployment. Concurrent changes are protected with conditional writes. Deleted
+notes remain restorable. Only the current presentation is fetched, and a cached copy stays
+available offline. My private notes is a separate personal library using account sync.
+Add any number of notes with a title and a note type: Lecture Notes, First Aid, Sketchy,
+Bootcamp, My Notes, or your own label. Each card opens and closes independently. The editor
+accepts formatted text, nested lists and tables; pictures can be pasted or attached. Save
+writes to this browser immediately. Unfinished drafts are kept on this device. Deleted
+notes remain in Deleted notes and can be restored.
+
+Signing in syncs saved notes to `users/{uid}/notes` in Firestore using the existing private
+user rules. Notes created before sign-in join the first account that syncs them. Notes
+already owned by another account stay separate. Reconciliation checks the remote document
+in a transaction before writing, uses modification time plus revision to resolve ties,
+and keeps deletion records so old devices cannot restore deleted notes accidentally.
+Whole-note conflicts use the newest version; an editor with a stale revision asks you to
+retain your edits before reopening. Notes over 750 KB must be split or their pictures made
+smaller to stay below Firestore's document limit. Local drafts are not cloud synced.
+
+On question, set, paper and marking screens, **Reference notes** opens a panel beside your
+work. It follows the question's presentation unless you choose another. **Open in separate
+window** lets you move the library to a second monitor without leaving your answer; an
+Open tab link is available if popups are blocked. Same-browser windows see saved changes
+through the shared local database; other devices receive them through cloud sync.
+
+Settings → Export everything includes notes for the current account and device-only notes.
+Older backups without notes still import. Importing notes assigns them to the current
+account (or the device while signed out). Notes are not included in public question-set
+exports or the shared question bank.
+
+## Individual questions or whole sets
+
+Home's New session builder offers **Individual questions** and **Whole sets**. Individual
+mode picks the requested number of questions. Whole-set mode selects complete cases and
+keeps their question order, including questions tagged with a different presentation.
+Choose random sets by count or tick specific sets. Unattempted sets means no question in
+the set has a submitted attempt. The preview is the exact selection that starts; Shuffle
+selection makes a new random choice. Suggested time uses a whole set's stated time when
+available, otherwise marks and your minutes-per-mark setting. Starting a new session while
+one is unfinished asks before replacing it.
+
+## Continue a session
+
+Home and the navigation offer **Continue session** while a paper is unfinished. Home
+shows the saved question number, answer part, and question preview. Changing question or
+focusing an answer saves the position immediately. **Save & exit** pauses the timer;
+continuing restores that question and part. Draft answers autosave to IndexedDB, with a
+synchronous recovery copy to cover closing or refreshing before the delayed save finishes.
+Starting another paper from Home or a set asks before replacing the existing session.

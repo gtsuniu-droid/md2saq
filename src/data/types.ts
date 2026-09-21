@@ -1,3 +1,20 @@
+/** One collapsible, rich-text note attached to a core presentation. */
+export interface PresentationNote {
+  id: string;
+  presentationId: string;
+  kind: string;
+  title: string;
+  doc: unknown;
+  text: string;
+  source: string;
+  /** Empty until local notes are claimed by the first signed-in account. */
+  ownerId: string;
+  createdAt: number;
+  _m: number;
+  revision: string;
+  deleted: boolean;
+}
+
 export interface QuestionSet {
   id: string;
   /** Running number, assigned by the bank when shared so every device agrees; provisional before that. */
@@ -217,6 +234,8 @@ export interface Session {
   mode: "practice" | "exam";
   questionIds: string[];
   index: number;
+  /** Last focused answer part, restored when continuing. */
+  activePart?: string;
   /** Total time for exam mode. */
   totalSec?: number;
   /** Start of the clock; moved forward on resume by the time spent away. */

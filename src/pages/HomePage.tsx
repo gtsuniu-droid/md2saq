@@ -4,11 +4,14 @@ import { useNavigate } from "react-router";
 import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import Heatmap from "../components/Heatmap";
-import { formatDuration, totalMarks } from "../lib/questions";
+import { formatDuration, truncate, stemsOf } from "../lib/questions";
 import { discardSession, startSession } from "../lib/session";
 import { remainingSec } from "../lib/sessionClock";
 import { useSession } from "../lib/useSession";
-import { answeredPerDay, compileQuestions, heatGrid, presentationProgress, summarise } from "../lib/stats";
+import { answeredPerDay, heatGrid, presentationProgress, summarise } from "../lib/stats";
+
+import { buildSessionSelection, eligibleSessionSets, seededRandom, suggestedSessionMinutes, type StudyUnit } from "../lib/sessionBuilder";
+import { setLabel } from "../lib/sets";
 
 type Range = "week" | "year" | "overall";
 const DAY_MS = 24 * 3600 * 1000;
@@ -20,6 +23,10 @@ export default function HomePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newOnly, setNewOnly] = useState(false);
   const [count, setCount] = useState("");
+  const [unit, setUnit] = useState<StudyUnit>("questions");
+  const [chooseSets, setChooseSets] = useState(false);
+  const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const [mode, setMode] = useState<"practice" | "exam">("practice");
   const [minutes, setMinutes] = useState("");
   const [search, setSearch] = useState("");
@@ -31,13 +38,14 @@ export default function HomePage() {
   }, [session?.id]);
 
   const data = useLiveQuery(async () => {
-    const [questions, attempts, marks, settings] = await Promise.all([
+    const [questions, attempts, marks, settings, sets] = await Promise.all([
       db.questions.toArray(),
       db.attempts.toArray(),
       db.marks.toArray(),
       getSettings(),
+      db.sets.toArray(),
     ]);
-    return { questions, attempts, marks, settings };
+    return { questions, attempts, marks, settings, sets };
   }, []);
 
   const view = useMemo(() => {
@@ -55,6 +63,12 @@ export default function HomePage() {
     };
   }, [data, range]);
 
+  const selectedQuestions = useMemo(() => data ? buildSessionSelection({
+    unit, sets: data.sets, questions: data.questions, attempts: data.attempts, presentations: [...selected], newOnly,
+    count: count.trim() === "" ? undefined : Number(count), setIds: unit === "sets" && chooseSets ? [...selectedSets] : undefined,
+    random: seededRandom(seed), parentOf: PARENT_OF,
+  }) : [], [data, unit, selected, newOnly, count, chooseSets, selectedSets, seed]);
+
   if (!data || !view) return null;
   const { summary, progress } = view;
 
@@ -69,18 +83,17 @@ export default function HomePage() {
   const withQuestions = visible.filter((p) => (progress.get(p.id)?.total ?? 0) > 0);
   const allSelected = withQuestions.length > 0 && withQuestions.every((p) => selected.has(p.id));
 
-  const pool = compileQuestions(data.questions, data.attempts, [...selected], { newOnly, random: () => 0.5, parentOf: PARENT_OF });
-  const n = count.trim() === "" ? pool.length : Math.min(pool.length, Number(count));
-  const suggestedMinutes = Math.max(
-    1,
-    Math.round(pool.slice(0, n).reduce((acc, q) => acc + (totalMarks(q) ?? 4) * data.settings.minutesPerMark, 0)),
-  );
-
+  const setPool = eligibleSessionSets(data.sets, data.questions, data.attempts, [...selected], newOnly, PARENT_OF);
+  const allQuestions = buildSessionSelection({ unit: "questions", sets: data.sets, questions: data.questions, attempts: data.attempts, presentations: [...selected], newOnly, random: () => 0.5, parentOf: PARENT_OF });
+  const poolCount = unit === "sets" ? setPool.length : allQuestions.length;
+  const pickedSetIds = new Set(selectedQuestions.map((q) => q.setId));
+  const suggestedMinutes = suggestedSessionMinutes(selectedQuestions, data.sets, data.settings.minutesPerMark, unit);
+  const validMinutes = minutes.trim() === "" || (Number.isFinite(Number(minutes)) && Number(minutes) >= 0);
   const start = () => {
-    const picked = compileQuestions(data.questions, data.attempts, [...selected], { newOnly, count: count.trim() === "" ? undefined : Number(count), random: Math.random, parentOf: PARENT_OF });
-    if (picked.length === 0) return;
+    if (!selectedQuestions.length || !validMinutes) return;
+    if (session && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
     const mins = minutes.trim() === "" ? suggestedMinutes : Number(minutes);
-    startSession(picked.map((q) => q.id), mode, mins > 0 ? Math.round(mins * 60) : undefined);
+    startSession(selectedQuestions.map((q) => q.id), mode, mins > 0 ? Math.round(mins * 60) : undefined);
     nav("/paper");
   };
 
@@ -96,17 +109,18 @@ export default function HomePage() {
           <div>
             <div className="resume-title">{submittedAll ? "Paper submitted, waiting to be marked" : `${session.mode === "exam" ? "Exam" : "Practice"} in progress`}</div>
             <div className="muted">
-              {total} question{total === 1 ? "" : "s"}
+              Question {session.index + 1}{session.activePart ? ` (${session.activePart})` : ""} of {total}
               {session.mode === "practice" ? `, ${done} submitted` : `, ${Math.max(done, inProgress.answered)} answered`}
               {left !== null && !submittedAll ? `, ${formatDuration(left)} left on the clock` : ""}
               {submittedAll ? "" : ", saved where you left it"}
             </div>
+            <p className="muted" style={{ margin: "0.4rem 0 0" }}>{truncate(data.questions.find((q) => q.id === session.questionIds[session.index])?.text ?? "", 130)}</p>
           </div>
           <span style={{ flex: 1 }} />
           {submittedAll ? (
             <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Mark</button>
           ) : (
-            <button className="primary" onClick={() => nav("/paper")}>Continue</button>
+            <button className="primary" onClick={() => nav("/paper")}>Continue session</button>
           )}
           <button onClick={() => void discardSession()} title={session.mode === "practice" && done > 0 ? "Submitted questions stay answered" : undefined}>Discard</button>
         </div>
@@ -132,10 +146,14 @@ export default function HomePage() {
 
       <div className="card home-card" style={{ marginTop: "1.2rem" }}>
         <h1 style={{ fontSize: "1.05rem", marginBottom: "0.8rem" }}>New session</h1>
+        <div className="session-unit-picker" role="group" aria-label="What would you like to practise?">
+          <button className={unit === "questions" ? "selected" : ""} aria-pressed={unit === "questions"} onClick={() => { setUnit("questions"); setCount(""); }}><strong>Individual questions</strong><span>Mix questions from your chosen presentations.</span></button>
+          <button className={unit === "sets" ? "selected" : ""} aria-pressed={unit === "sets"} onClick={() => { setUnit("sets"); setCount(""); }}><strong>Whole sets</strong><span>Complete cases, with every question in order.</span></button>
+        </div>
         <div className="row">
-          <input type="search" placeholder="Search presentations" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: "12rem" }} />
-          <label className="check"><input type="checkbox" checked={newOnly} onChange={(e) => setNewOnly(e.target.checked)} /> New questions only</label>
-          <select value={mode} onChange={(e) => setMode(e.target.value as "practice" | "exam")}>
+          <input aria-label="Search presentations" type="search" placeholder="Search presentations" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: "12rem" }} />
+          <label className="check"><input type="checkbox" checked={newOnly} onChange={(e) => setNewOnly(e.target.checked)} /> {unit === "sets" ? "Unattempted sets only" : "Unattempted questions only"}</label>
+          <select aria-label="Session mode" value={mode} onChange={(e) => setMode(e.target.value as "practice" | "exam")}>
             <option value="practice">Practice</option>
             <option value="exam">Exam</option>
           </select>
@@ -166,14 +184,32 @@ export default function HomePage() {
           })}
         </div>
 
-        <div className="row" style={{ marginTop: "1rem" }}>
-          <span className="muted">{selected.size ? `${pool.length} question${pool.length === 1 ? "" : "s"} available` : "Select presentations to study"}</span>
-          <span style={{ flex: 1 }} />
-          <input type="number" min={1} placeholder={String(pool.length || "")} value={count} onChange={(e) => setCount(e.target.value)} title="How many questions, random pick. Blank for all." />
-          <span className="muted">questions</span>
-          <input type="number" min={0} placeholder={String(suggestedMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value)} title="Minutes. 0 for no timer." />
-          <span className="muted">min</span>
-          <button className="primary" onClick={start} disabled={pool.length === 0}>{mode === "exam" ? "Start exam" : "Start practice"}</button>
+        {unit === "sets" && selected.size > 0 && <div className="session-set-picker">
+          <div className="row spread"><span className="muted">{setPool.length} complete sets available</span><div className="seg" role="group" aria-label="Set selection"><button className={!chooseSets ? "on" : ""} aria-pressed={!chooseSets} onClick={() => { setChooseSets(false); setCount(""); }}>Random sets</button><button className={chooseSets ? "on" : ""} aria-pressed={chooseSets} onClick={() => { setChooseSets(true); setCount(""); }}>Choose sets</button></div></div>
+          {chooseSets && <div className="session-set-list">
+            <div className="row"><button className="small link" onClick={() => setSelectedSets(new Set(setPool.map((s) => s.set.id)))}>Select all sets</button><button className="small link" onClick={() => setSelectedSets(new Set())}>Clear</button></div>
+            {setPool.map((s) => <label key={s.set.id} className="session-set-row"><input type="checkbox" checked={selectedSets.has(s.set.id)} onChange={() => setSelectedSets((prev) => { const next = new Set(prev); if (next.has(s.set.id)) next.delete(s.set.id); else next.add(s.set.id); return next; })} /><span><strong>{setLabel(s.set)}</strong><span className="muted">{truncate(stemsOf(s.questions[0])[0] || s.questions[0].text, 110)}</span></span><small>{s.questions.length} questions · {s.attempted === 0 ? "New" : `${s.attempted} attempted`}</small></label>)}
+          </div>}
+          <p className="muted">All questions in each selected set are included, even if some cover another presentation.{newOnly ? " Sets with any submitted answers are excluded." : ""}</p>
+        </div>}
+        <div className="session-start-area">
+          <div className="row">
+            {!(unit === "sets" && chooseSets) && <label className="session-inline-label">How many {unit}?<input aria-label={unit === "sets" ? "Number of sets" : "Number of questions"} type="number" min={1} max={poolCount || 1} step={1} placeholder={`All (${poolCount})`} value={count} onChange={(e) => setCount(e.target.value)} /></label>}
+            <label className="session-inline-label">Time (minutes)<input aria-label="Session time in minutes" type="number" min={0} step={1} placeholder={String(suggestedMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
+            <span className="muted">Leave blank for the suggested time. Enter 0 for no timer.</span>
+          </div>
+          <div className="session-preview" aria-live="polite">
+            <div><strong>{!selected.size ? "Select presentations to begin" : !selectedQuestions.length ? "No questions selected" : unit === "sets" ? `${pickedSetIds.size} whole ${pickedSetIds.size === 1 ? "set" : "sets"} · ${selectedQuestions.length} questions` : `${selectedQuestions.length} individual ${selectedQuestions.length === 1 ? "question" : "questions"}`}</strong>
+              {!!selectedQuestions.length && <p className="muted">{mode === "exam" ? "Exam" : "Practice"} · {minutes === "0" ? "Untimed" : `${minutes || suggestedMinutes} minutes`}</p>}
+              {!selectedQuestions.length && selected.size > 0 && <p className="muted">{unit === "sets" && chooseSets ? "Tick the sets you want to study." : "Try changing the unattempted filter or the number requested."}</p>}
+            </div>
+            <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={start} disabled={!selectedQuestions.length || !validMinutes}>{mode === "exam" ? "Start exam" : "Start practice"}</button></div>
+          </div>
+          {!!selectedQuestions.length && <details className="session-selection-preview"><summary>Preview selected {unit === "sets" ? "sets" : "questions"}</summary>{[...pickedSetIds].map((id) => {
+            const set = data.sets.find((s) => s.id === id);
+            const qs = selectedQuestions.filter((q) => q.setId === id);
+            return <div key={id}><strong>{set ? setLabel(set) : "Set"} · {qs.length} questions</strong><p className="muted">{set?.name}</p>{unit === "questions" && <ul>{qs.map((q) => <li key={q.id}>{q.text.slice(0, 150)}{q.text.length > 150 ? "…" : ""}</li>)}</ul>}</div>;
+          })}</details>}
         </div>
       </div>
     </div>

@@ -375,3 +375,104 @@ tr.selected td { background: var(--teal-soft); }
 .deck-hits { padding: 0 0.8rem 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
 .deck-hits .hit-line { padding: 0.15rem 0; cursor: pointer; }
 .deck-hits .hit-line:hover { color: var(--teal); }
+
+/* Presentation notes */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.notes-shell { max-width: 1180px; }
+.notes-heading { margin-bottom: 1rem; }
+.notes-heading h1 { margin-bottom: 0.1rem; font-size: 1.5rem; }
+.notes-search { width: 100%; margin: 0.8rem 0 1.5rem; padding: 0.7rem 0.9rem !important; }
+.notes-notice { background: var(--teal-soft); padding: 0.65rem 1rem; border-radius: 8px; font-size: 0.85rem; }
+.notes-error { color: var(--bad); padding: 0.5rem 0; }
+.notes-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 2rem; }
+.notes-sidebar { border-right: 1px solid var(--border); padding-right: 1rem; max-height: 72vh; overflow: auto; }
+.notes-sidebar-heading, .notes-eyebrow { font-size: 0.7rem; font-weight: 650; letter-spacing: 0.09em; color: var(--muted); margin-bottom: 0.7rem; }
+.notes-sidebar button { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; width: 100%; text-align: left; border: 0; padding: 0.6rem; margin-bottom: 0.15rem; font-size: 0.85rem; }
+.notes-sidebar button.selected { background: var(--teal-soft); color: var(--teal); font-weight: 600; }
+.notes-main { min-width: 0; }
+.notes-presentation-title { margin: 0 0 0.5rem; color: var(--fg); font-size: 1.35rem; text-transform: none; letter-spacing: -0.025em; }
+.note-kind-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0.8rem; }
+.note-kind-pills button { border-radius: 999px; background: var(--card); font-size: 0.8rem; padding: 0.35rem 0.8rem; }
+.note-kind-pills button[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
+.note-kind-pills span { margin-left: 0.5rem; opacity: 0.7; }
+.notes-list-tools { border-top: 1px solid var(--border); padding: 0.6rem 0; }
+.notes-empty { text-align: center; padding: 3.5rem 1.2rem; background: var(--card); border-radius: 12px; }
+.notes-empty > span { font-size: 2rem; color: var(--teal); }
+.notes-empty h3 { color: var(--fg); font-size: 1rem; }
+.notes-empty p { font-size: 0.85rem; color: var(--muted); }
+.notes-suggestions { justify-content: center; margin-top: 1.2rem; }
+.notes-suggestions span { padding: 0.2rem 0.65rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.75rem; color: var(--muted); }
+.note-card { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem; overflow: hidden; }
+.note-toggle { display: flex; align-items: center; gap: 0.8rem; width: 100%; text-align: left; border: 0; border-radius: 0; padding: 0.9rem 1rem; }
+.note-toggle strong { display: block; font-size: 1rem; font-weight: 550; }
+.note-caret { color: var(--teal); font-size: 1.1rem; }
+.note-kind { display: inline-block; font-size: 0.72rem; color: var(--teal); margin-bottom: 0.15rem; }
+.note-expanded { padding: 0 1.2rem 1rem; }
+.note-footer { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.note-rich, .note-editor .tiptap { line-height: 1.7; overflow-wrap: anywhere; overflow-x: auto; }
+.note-rich img, .note-editor img { max-width: 100%; height: auto; border-radius: 4px; }
+.note-rich h1, .note-rich h2, .note-rich h3, .note-editor .tiptap h2 { color: inherit; text-transform: none; letter-spacing: normal; margin: 1rem 0 0.5rem; }
+.note-rich td, .note-rich th, .note-editor td, .note-editor th { border: 1px solid var(--border); padding: 0.5rem; min-width: 70px; }
+.note-rich ul, .note-rich ol { padding-left: 1.5rem; }
+.note-source { margin-top: 1.2rem; overflow-wrap: anywhere; }
+.notes-trash { margin-top: 1.2rem; }
+.note-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1.5rem; }
+.note-form h2 { margin: 0; color: var(--fg); }
+.note-form input, .note-form select { display: block; width: 100%; margin-top: 0.3rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; }
+.note-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.note-editor { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-top: 1rem; }
+.note-editor .toolbar { padding: 0.4rem; border-bottom: 1px solid var(--border); gap: 0.2rem; }
+.note-editor .toolbar button { font-size: 0.8rem; padding: 0.2rem 0.5rem; border-color: transparent; }
+.note-editor .toolbar button[aria-pressed="true"] { background: var(--teal-soft); }
+.note-editor .tiptap { min-height: 250px; max-height: 65vh; overflow: auto; padding: 1rem; outline: none; }
+.note-editor-hint { padding: 0.4rem 1rem; }
+.note-form-actions { margin-top: 1rem; }
+@media (max-width: 720px) {
+  .notes-layout { grid-template-columns: 1fr; gap: 1.5rem; }
+  .notes-sidebar { max-height: 180px; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 0.5rem; }
+  .note-fields { grid-template-columns: 1fr; gap: 0; }
+  .nav { gap: 0.85rem; padding: 0.7rem 0.85rem; flex-wrap: wrap; }
+  .notes-main .primary { margin-bottom: 0.5rem; }
+}
+
+/* Notes can remain beside an answer or open on a second display. */
+.study-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; position: relative; }
+.study-workspace > .page { min-width: 0; }
+.nav .nav-notes { color: #fff; border-color: #ffffff55; font-size: 0.82rem; }
+.nav .nav-notes:hover { background: #ffffff18; }
+.notes-dock { flex: 0 0 clamp(330px, 33vw, 600px); width: 33vw; min-height: 0; overflow: auto; border-left: 1px solid var(--border); padding: 1rem; background: var(--bg); }
+.notes-dock h2 { margin: 0; text-transform: none; color: var(--fg); }
+.notes-dock-actions { margin: 0.8rem 0 0.4rem; }
+.notes-dock select, .notes-dock input[type="search"] { width: 100%; }
+.notes-dock-list { margin-top: 1rem; }
+.notes-dock summary { cursor: pointer; padding: 0.8rem; }
+.notes-dock summary strong { display: block; }
+.notes-dock summary .note-kind { margin-left: 0.3rem; }
+@media (max-width: 850px) {
+  .notes-dock { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(100%, 430px); box-shadow: -8px 0 24px #0002; }
+}
+
+/* Choose the study unit before choosing the content. */
+.session-unit-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.2rem; }
+.session-unit-picker button { text-align: left; background: var(--bg); padding: 0.9rem 1rem; border: 2px solid var(--border); border-radius: 9px; }
+.session-unit-picker button.selected { border-color: var(--teal); background: var(--teal-soft); }
+.session-unit-picker strong, .session-unit-picker span { display: block; }
+.session-unit-picker span { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
+.session-set-picker { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+.session-set-list { max-height: 300px; overflow: auto; margin: 0.8rem 0; }
+.session-set-row { display: flex; align-items: center; gap: 0.7rem; color: var(--fg); padding: 0.7rem 0.5rem; border-bottom: 1px solid var(--border); cursor: pointer; margin: 0; }
+.session-set-row > span { flex: 1; }
+.session-set-row > span > span { display: block; }
+.session-set-row small { white-space: nowrap; }
+.session-start-area { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; }
+.session-inline-label { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.session-inline-label input { width: 7rem; }
+.session-preview { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.7rem; padding: 1rem 0 0.3rem; }
+.session-selection-preview { font-size: 0.85rem; margin-top: 0.7rem; }
+.session-selection-preview summary { cursor: pointer; color: var(--teal); }
+.session-selection-preview > div { padding: 0.6rem; margin-top: 0.4rem; border-left: 2px solid var(--border); }
+@media (max-width: 550px) {
+  .session-unit-picker { grid-template-columns: 1fr; }
+  .session-set-row { flex-wrap: wrap; }
+  .session-set-row small { white-space: normal; }
+}

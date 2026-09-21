@@ -6,6 +6,7 @@ import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, pauseSession, resumeSession, saveSession } from "../lib/session";
+import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/answerDrafts";
 import { remainingSec } from "../lib/sessionClock";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
@@ -21,7 +22,7 @@ export default function PaperPage() {
   sessionRef.current = session;
   const [now, setNow] = useState(Date.now());
   const [ready, setReady] = useState(false);
-  const [activePart, setActivePart] = useState<string>("");
+  const [activePart, setActivePart] = useState<string>(() => session?.activePart ?? "");
   const elapsedRef = useRef<Map<string, number>>(new Map());
   const answersRef = useRef<Map<string, PartAnswer[]>>(new Map());
   const flushTimers = useRef<Map<string, number>>(new Map());
@@ -67,6 +68,7 @@ export default function PaperPage() {
     }
     (async () => {
       // Questions deleted since the paper was started drop out of it.
+      await recoverAnswerDrafts(session.id);
       const found = await db.questions.bulkGet(session.questionIds);
       const keep = session.questionIds.map((_, i) => !!found[i]);
       let current = session;
@@ -127,7 +129,8 @@ export default function PaperPage() {
       });
       if (current !== session || ids.join(",") !== current.attemptIds.join(",")) {
         // Keep the clock state the resume effect may have written meanwhile.
-        const next = { ...(loadSession() ?? current), ...current, attemptIds: ids };
+        const clock = loadSession();
+        const next = { ...current, startedAt: clock?.startedAt ?? current.startedAt, pausedAt: clock?.pausedAt, attemptIds: ids };
         saveSession(next);
         setSession(next);
       }
@@ -179,6 +182,7 @@ export default function PaperPage() {
     if (hl) patch.stemHighlights = hl;
     if (elapsedSec !== undefined) patch.elapsedSec = elapsedSec;
     await db.attempts.update(attemptId, patch);
+    if (answers) clearAnswerDraft(attemptId, answers);
   }, []);
 
   /** Write every cached answer, highlight and elapsed time of the paper to the database. */
@@ -251,6 +255,7 @@ export default function PaperPage() {
       ? current.map((x) => (x.label === label ? { ...x, doc, text } : x))
       : [...current, { label, doc, text }];
     answersRef.current.set(attemptId, next);
+    if (session) writeAnswerDraft(session.id, attemptId, next);
     const prev = flushTimers.current.get(attemptId);
     if (prev) clearTimeout(prev);
     flushTimers.current.set(attemptId, window.setTimeout(() => void flushAttempt(attemptId).then(() => requestSync()), 600));
@@ -263,21 +268,21 @@ export default function PaperPage() {
       ? current.map((x) => (x.label === label ? { ...x, flagged: !x.flagged } : x))
       : [...current, { label, doc: null, text: "", flagged: true }];
     answersRef.current.set(attemptId, next);
+    if (session) writeAnswerDraft(session.id, attemptId, next);
     await flushAttempt(attemptId);
     requestSync();
   };
 
   /** Make question i current (without scrolling), e.g. when one of its answer boxes gets focus. */
   const setCurrent = (i: number, label = "") => {
-    if (!session || session.index === i) {
-      setActivePart(label);
-      return;
-    }
+    if (!session) return;
+    setActivePart(label);
+    if (session.index === i && session.activePart === label) return;
     if (attempt) void flushAttempt(attempt.id);
-    const next = { ...session, index: i };
+    const next = { ...session, index: i, activePart: label };
     saveSession(next);
     setSession(next);
-    setActivePart(label);
+    requestSync();
   };
 
   /** Highlight (or un-highlight) the selected text in the stem column, stored on the current attempt. */
@@ -313,6 +318,17 @@ export default function PaperPage() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [highlightSelection]);
+
+  const restoredPosition = useRef(false);
+  useEffect(() => {
+    if (!data || restoredPosition.current) return;
+    restoredPosition.current = true;
+    const frame = requestAnimationFrame(() => {
+      const saved = sessionRef.current;
+      if (saved) document.getElementById(`part-${saved.index}-${saved.activePart || "q"}`)?.scrollIntoView({ block: "start" });
+    });
+    return () => { cancelAnimationFrame(frame); restoredPosition.current = false; };
+  }, [!!data]);
 
   const goTo = (i: number, label = "") => {
     setCurrent(i, label);
@@ -365,6 +381,7 @@ export default function PaperPage() {
           <span className={"timer" + (remaining <= 60 ? " low" : "")}>{formatDuration(remaining)}</span>
         )}
         <span style={{ flex: 1 }} />
+        <button onClick={() => nav("/")}>Save & exit</button>
         {session.mode === "practice" ? (
           unsubmitted === 0 ? (
             <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish</button>
