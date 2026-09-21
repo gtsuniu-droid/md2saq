@@ -1,3 +1,5 @@
+import AttemptHistory from "../components/AttemptHistory";
+import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
@@ -23,7 +25,7 @@ export default function HomePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newOnly, setNewOnly] = useState(false);
   const [count, setCount] = useState("");
-  const [unit, setUnit] = useState<StudyUnit>("questions");
+  const [unit, setUnit] = useState<StudyUnit>("sets");
   const [chooseSets, setChooseSets] = useState(false);
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
@@ -45,7 +47,8 @@ export default function HomePage() {
       getSettings(),
       db.sets.toArray(),
     ]);
-    return { questions, attempts, marks, settings, sets };
+    const ownerId = settings.cloudUser?.uid ?? "";
+    return { questions, attempts: attempts.filter((a) => belongsToAccount(a, ownerId)), marks: marks.filter((m) => belongsToAccount(m, ownerId)), settings, sets };
   }, []);
 
   const view = useMemo(() => {
@@ -93,7 +96,7 @@ export default function HomePage() {
     if (!selectedQuestions.length || !validMinutes) return;
     if (session && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
     const mins = minutes.trim() === "" ? suggestedMinutes : Number(minutes);
-    startSession(selectedQuestions.map((q) => q.id), mode, mins > 0 ? Math.round(mins * 60) : undefined);
+    startSession(selectedQuestions.map((q) => q.id), mode, mins > 0 ? Math.round(mins * 60) : undefined, unit);
     nav("/paper");
   };
 
@@ -104,6 +107,7 @@ export default function HomePage() {
 
   return (
     <div>
+      <div className="home-shortcuts"><a href="#history">History ↓</a></div>
       {session && inProgress && (
         <div className="card home-card resume">
           <div>
@@ -111,7 +115,7 @@ export default function HomePage() {
             <div className="muted">
               Question {session.index + 1}{session.activePart ? ` (${session.activePart})` : ""} of {total}
               {session.mode === "practice" ? `, ${done} submitted` : `, ${Math.max(done, inProgress.answered)} answered`}
-              {left !== null && !submittedAll ? `, ${formatDuration(left)} left on the clock` : ""}
+              {left !== null && !submittedAll ? session.mode === "practice" && left === 0 ? ", suggested time reached" : `, ${formatDuration(left)} left on the clock` : ""}
               {submittedAll ? "" : ", saved where you left it"}
             </div>
             <p className="muted" style={{ margin: "0.4rem 0 0" }}>{truncate(data.questions.find((q) => q.id === session.questionIds[session.index])?.text ?? "", 130)}</p>
@@ -212,6 +216,7 @@ export default function HomePage() {
           })}</details>}
         </div>
       </div>
+      <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
     </div>
   );
 }

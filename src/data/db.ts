@@ -37,6 +37,16 @@ export class SaqDatabase extends Dexie {
     });
     this.version(4).stores({ notes: "id, presentationId, ownerId, _m" });
     this.version(5).stores({ deviceLogins: "id" });
+    this.version(6).stores({
+      attempts: "id, questionId, submittedAt, sessionId, _m, ownerId",
+      marks: "id, attemptId, questionId, markedAt, _m, ownerId",
+      syncDeletes: "id, at, ownerId",
+    }).upgrade(async (tx) => {
+      const ownerId = (await tx.table("settings").get("settings"))?.cloudUser?.uid ?? "";
+      for (const name of ["attempts", "marks", "syncDeletes"]) {
+        await tx.table(name).toCollection().modify((row) => { row.ownerId ??= ownerId; });
+      }
+    });
     this.use({ stack: "dbcore", name: "modifiedStamp", create: stampModified });
   }
 }

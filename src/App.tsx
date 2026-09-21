@@ -1,7 +1,8 @@
+import { setProgressAccount } from "./lib/progressAccount";
 import { useEffect } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
-import { db, getSettings, patchSettings } from "./data/db";
-import { loadSession, subscribeSession } from "./lib/session";
+import { db, getSettings } from "./data/db";
+import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
 import { useSession } from "./lib/useSession";
 import { syncFromBank } from "./lib/bank";
 import { numberUnnumberedSets } from "./lib/sets";
@@ -66,7 +67,7 @@ function AccountButton() {
             <button role="menuitem" onClick={async () => {
               setOpen(false);
               await signOutCloud();
-              await patchSettings({ cloudUser: undefined });
+              await setProgressAccount(null);
             }}>Sign out</button>
           </div>
         )}
@@ -78,7 +79,7 @@ function AccountButton() {
       setBusy(true);
       try {
         const user = await signInWithGoogle();
-        await patchSettings({ cloudUser: user });
+        await setProgressAccount(user);
         await resetCursors();
         void syncNow(user).catch(() => undefined);
       } catch {
@@ -92,6 +93,7 @@ function AccountButton() {
 
 export default function App() {
   const { pathname } = useLocation();
+  const account = useLiveQuery(getSettings, []);
   const session = useSession();
   const [notesOpen, setNotesOpen] = useState(false);
   const studying = /^\/(mark|paper|question|set|session)(\/|$)/.test(pathname);
@@ -112,12 +114,8 @@ export default function App() {
     const stopSession = subscribeSession(() => requestSync());
     let unsub: (() => void) | undefined;
     void onCloudUser(async (u) => {
+      await setProgressAccount(u);
       user = u;
-      const settings = await getSettings();
-      const stored = settings.cloudUser;
-      const changed = !stored || stored.uid !== u?.uid || stored.photo !== u?.photo || stored.name !== u?.name || stored.email !== u?.email;
-      if (u && changed) await patchSettings({ cloudUser: u });
-      if (!u && settings.cloudUser) await patchSettings({ cloudUser: undefined });
       if (u) void syncNow(u).catch(() => undefined);
     }).then((fn) => { unsub = fn; });
     return () => {
@@ -131,7 +129,8 @@ export default function App() {
   useEffect(() => {
     const current = loadSession()?.id;
     void (async () => {
-      const orphans = (await db.attempts.filter((a) => a.submittedAt === undefined && a.sessionId !== current).primaryKeys()) as string[];
+      const ownerId = (await getSettings()).cloudUser?.uid ?? "";
+      const orphans = (await db.attempts.filter((a) => (a.ownerId ?? "") === ownerId && a.submittedAt === undefined && a.sessionId !== current).primaryKeys()) as string[];
       if (orphans.length === 0) return;
       await db.attempts.bulkDelete(orphans);
       await recordDeletes("attempts", orphans);
@@ -165,7 +164,7 @@ export default function App() {
       </nav>
       <div className="study-workspace">
       <main className={full ? "page full" : pathname.startsWith("/notes") ? "page notes-shell" : "page"}>
-        <Routes>
+        <Routes key={`${account?.cloudUser?.uid ?? ""}:${sessionOwner()}`}>
           <Route path="/" element={<HomePage />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/browse" element={<BrowsePage />} />
@@ -173,7 +172,7 @@ export default function App() {
           <Route path="/set/:id" element={<SetPage />} />
           <Route path="/set/:id/edit" element={<SetEditPage />} />
           <Route path="/question/:id" element={<QuestionPage />} />
-          <Route path="/paper" element={<PaperPage />} />
+          <Route path="/paper" element={<PaperPage key={session?.id} />} />
           <Route path="/mark/:attemptId" element={<MarkPage />} />
           <Route path="/session/:id" element={<SessionReviewPage />} />
           <Route path="/admin" element={<Navigate to="/settings#admin" replace />} />

@@ -1,4 +1,5 @@
-import { db } from "../data/db";
+import { belongsToAccount } from "./progressAccount";
+import { db, getSettings } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 import { totalMarks } from "./questions";
 import { startSession } from "./session";
@@ -92,7 +93,8 @@ export async function loadSummaries(): Promise<SetSummary[]> {
     db.attempts.toArray(),
     db.marks.toArray(),
   ]);
-  return summarise(sets, questions, attempts, marks);
+  const ownerId = (await getSettings()).cloudUser?.uid ?? "";
+  return summarise(sets, questions, attempts.filter((a) => belongsToAccount(a, ownerId)), marks.filter((m) => belongsToAccount(m, ownerId)));
 }
 
 /** Default timer for a set: the paper's own suggestion, else marks times minutes per mark. */
@@ -107,6 +109,7 @@ export function startSet(summary: SetSummary, mode: "practice" | "exam", minutes
     summary.questions.map((q) => q.id),
     mode,
     minutes && minutes > 0 ? Math.round(minutes * 60) : undefined,
+    "sets",
   );
 }
 

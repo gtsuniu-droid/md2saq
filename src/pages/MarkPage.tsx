@@ -1,10 +1,10 @@
+import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { db, newId } from "../data/db";
 import { ERROR_TAGS, type ErrorTag, type Mark, type PartMark } from "../data/types";
 import AnswerHtml from "../components/AnswerHtml";
-import { hitTerms, markingPoints } from "../lib/marking";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
 import AmbossText from "../components/AmbossText";
@@ -15,25 +15,31 @@ import { questionRef, requestSync } from "../lib/sync";
 import AutoTextarea from "../components/AutoTextarea";
 import ModelAnswerContent from "../components/ModelAnswerContent";
 import { hasModelAnswer, richAnswerDocument } from "../lib/modelAnswer";
+import { sessionAtQuestion } from "../lib/sessionNavigation";
 
 export default function MarkPage() {
   const { attemptId = "" } = useParams();
   const nav = useNavigate();
   const data = useLiveQuery(async () => {
+    const ownerId = (await getSettings()).cloudUser?.uid ?? "";
     const attempt = await db.attempts.get(attemptId);
-    if (!attempt) return null;
+    if (!attempt || !belongsToAccount(attempt, ownerId)) return null;
     const question = await db.questions.get(attempt.questionId);
     if (!question) return null;
     const set = await db.sets.get(question.setId);
-    const existing = await db.marks.where("attemptId").equals(attemptId).first();
+    const existing = await db.marks.where("attemptId").equals(attemptId).filter((m) => belongsToAccount(m, ownerId)).first();
     const attemptsBefore = (await db.attempts.where("questionId").equals(question.id).toArray())
-      .filter((a) => a.submittedAt !== undefined && a.id !== attemptId)
+      .filter((a) => belongsToAccount(a, ownerId) && a.submittedAt !== undefined && a.id !== attemptId)
       .sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0));
     const previous = attemptsBefore[0];
-    const previousMark = previous ? await db.marks.where("attemptId").equals(previous.id).first() : undefined;
-    const sessionAttempts = attempt.sessionId ? await db.attempts.where("sessionId").equals(attempt.sessionId).toArray() : [attempt];
+    const previousMark = previous ? await db.marks.where("attemptId").equals(previous.id).filter((m) => belongsToAccount(m, ownerId)).first() : undefined;
+    const sessionAttempts = attempt.sessionId ? await db.attempts.where("sessionId").equals(attempt.sessionId).filter((a) => belongsToAccount(a, ownerId)).toArray() : [attempt];
     const stemHighlights = sessionAttempts.flatMap((a) => a.stemHighlights ?? []);
-    return { attempt, question, existing, previous, previousMark, stemHighlights, set };
+    const session = loadSession(ownerId);
+    const position = session?.attemptIds.indexOf(attemptId) ?? -1;
+    const nextId = position >= 0 ? session?.questionIds[position + 1] : undefined;
+    const nextQuestion = nextId ? await db.questions.get(nextId) : undefined;
+    return { attempt, question, existing, previous, previousMark, stemHighlights, set, nextQuestion };
   }, [attemptId]);
 
   const [confidence, setConfidence] = useState<number | undefined>();
@@ -42,22 +48,20 @@ export default function MarkPage() {
   const [reflection, setReflection] = useState("");
   const [learningPoint, setLearningPoint] = useState("");
   const [notes, setNotes] = useState("");
-  const [seeded, setSeeded] = useState(false);
+  const [seeded, setSeeded] = useState("");
   const [editing, setEditing] = useState(false);
   const admin = useLiveQuery(async () => isAdmin(await getSettings()), []) ?? false;
 
   const partsInfo = useMemo(() => {
     if (!data) return [];
     return answerParts(data.question).map((p) => {
-      const model = p.modelAnswer ?? (data.question.parts.length === 0 ? data.question.modelAnswer : undefined);
-      const points = model ? markingPoints(model) : [];
       const answer = data.attempt.answers.find((a) => a.label === p.label);
-      return { part: p, model, points, answer, hits: hitTerms(answer?.text ?? "", points) };
+      return { part: p, answer };
     });
   }, [data]);
 
   useEffect(() => {
-    if (!data || seeded) return;
+    if (!data || data.attempt.id !== attemptId || seeded === attemptId) return;
     setConfidence(data.attempt.confidence);
     if (data.existing) {
       setParts(data.existing.parts);
@@ -66,33 +70,23 @@ export default function MarkPage() {
       setLearningPoint(data.existing.learningPoint ?? "");
       setNotes(data.existing.notes ?? "");
     } else {
-      setParts(partsInfo.map((pi) => ({ label: pi.part.label, score: 0, maxScore: pi.part.marks ?? pi.points.length, pointsHit: [] })));
+      setErrorTags([]); setReflection(""); setLearningPoint(""); setNotes("");
+      setParts(partsInfo.map((pi) => ({ label: pi.part.label, score: 0, maxScore: pi.part.marks ?? 0, pointsHit: [] })));
     }
-    setSeeded(true);
-  }, [data, partsInfo, seeded]);
+    setSeeded(attemptId);
+  }, [data, partsInfo, seeded, attemptId]);
 
   if (data === undefined) return null;
   if (data === null) return <p>Attempt not found.</p>;
   const { attempt, question, existing } = data;
 
-  const hasModel = partsInfo.some((pi) => pi.points.length > 0);
-  const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((p) => p.text), ...partsInfo.flatMap((pi) => pi.points)];
+  const hasModel = hasModelAnswer(question) || partsInfo.some((pi) => hasModelAnswer(pi.part));
+  const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((p) => p.text), ...partsInfo.map((pi) => pi.part.modelAnswer ?? "")];
   const needsConfidence = hasModel && confidence === undefined && !existing;
   const wholeModel = question.parts.length > 0 && hasModelAnswer(question) && (richAnswerDocument(question) || !question.parts.some(hasModelAnswer));
 
   const setPart = (label: string, patch: Partial<PartMark>) =>
     setParts((ps) => ps.map((p) => (p.label === label ? { ...p, ...patch } : p)));
-
-  const togglePoint = (label: string, idx: number, totalPoints: number) => {
-    const pm = parts.find((p) => p.label === label);
-    if (!pm) return;
-    const hit = pm.pointsHit.includes(idx) ? pm.pointsHit.filter((i) => i !== idx) : [...pm.pointsHit, idx];
-    let score = pm.score;
-    if (pm.maxScore > 0 && totalPoints > 0) {
-      score = totalPoints <= pm.maxScore ? Math.min(pm.maxScore, hit.length) : Math.round((hit.length / totalPoints) * pm.maxScore);
-    }
-    setPart(label, { pointsHit: hit, score });
-  };
 
   const total = parts.reduce((a, p) => a + p.score, 0);
   const max = parts.reduce((a, p) => a + p.maxScore, 0);
@@ -104,6 +98,7 @@ export default function MarkPage() {
     const mark: Mark = {
       id: existing?.id ?? newId(),
       attemptId: attempt.id,
+      ownerId: attempt.ownerId ?? "",
       questionId: question.id,
       qref: existing?.qref ?? (await questionRef(question)),
       score: total,
@@ -124,8 +119,10 @@ export default function MarkPage() {
       }
       const nextIndex = inSession.attemptIds.indexOf(attempt.id) + 1;
       if (nextIndex < inSession.questionIds.length) {
-        saveSession({ ...inSession, index: nextIndex, activePart: "" });
-        nav("/paper");
+        const questions = (await db.questions.bulkGet(inSession.questionIds)).filter((q) => q !== undefined);
+        saveSession(sessionAtQuestion(inSession, questions, nextIndex));
+        const nextAttempt = await db.attempts.get(inSession.attemptIds[nextIndex]);
+        nav(nextAttempt?.submittedAt !== undefined ? `/mark/${nextAttempt.id}` : "/paper");
         return;
       }
       nav(`/session/${inSession.id}`);
@@ -217,7 +214,7 @@ export default function MarkPage() {
             <div className="two-col">
               <div>
                 <h3>Your answer</h3>
-                <AnswerHtml doc={pi.answer?.doc} hits={pi.hits} />
+                <AnswerHtml doc={pi.answer?.doc} />
                 {data.previous && (
                   <details style={{ marginTop: "0.5rem" }}>
                     <summary className="muted" style={{ cursor: "pointer" }}>
@@ -228,26 +225,13 @@ export default function MarkPage() {
                 )}
               </div>
               <div>
-                <h3>{richAnswerDocument(pi.part) || !pi.points.length ? "Model answer" : "Marking points"}</h3>
-                {hasModelAnswer(pi.part) && richAnswerDocument(pi.part) && <ModelAnswerContent answer={pi.part} />}
-                {richAnswerDocument(pi.part) && pi.points.length > 0 && <h3>Marking checklist</h3>}
-                {pi.points.length > 0 ? (
-                  <div className="points">
-                    {pi.points.map((pt, idx) => (
-                      <label key={idx}>
-                        <input type="checkbox" checked={pm.pointsHit.includes(idx)} onChange={() => togglePoint(pi.part.label, idx, pi.points.length)} />
-                        <AmbossText cacheKey={question.id} texts={ambossTexts} text={pt} className="" />
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="muted">{hasModelAnswer(pi.part) ? "Use the model answer above to score this part." : "No model answer for this part. Score it yourself."}</p>
-                )}
+                <h3>Marking guide</h3>
+                {hasModelAnswer(pi.part) ? <ModelAnswerContent answer={pi.part} /> : <p className="muted">{wholeModel ? "Refer to the model answer above and enter your score below." : "No model answer for this part. Enter your score below."}</p>}
                 <div className="row" style={{ marginTop: "0.6rem" }}>
                   <label style={{ margin: 0 }}>Score</label>
-                  <input type="number" min={0} max={pm.maxScore || undefined} value={pm.score} onChange={(e) => setPart(pi.part.label, { score: Number(e.target.value) })} />
+                  <input aria-label={`Score${pi.part.label ? ` for part ${pi.part.label}` : ""}`} type="number" min={0} max={pm.maxScore || undefined} value={pm.score} onChange={(e) => setPart(pi.part.label, { score: Number(e.target.value) })} />
                   <span>/</span>
-                  <input type="number" min={0} value={pm.maxScore} onChange={(e) => setPart(pi.part.label, { maxScore: Number(e.target.value) })} />
+                  <input aria-label={`Maximum score${pi.part.label ? ` for part ${pi.part.label}` : ""}`} type="number" min={0} value={pm.maxScore} onChange={(e) => setPart(pi.part.label, { maxScore: Number(e.target.value) })} />
                 </div>
               </div>
             </div>
@@ -289,7 +273,7 @@ export default function MarkPage() {
         <div className="row">
           <button className="primary" onClick={save}>
             {inSession?.mode === "practice"
-              ? inSession.attemptIds.indexOf(attempt.id) < inSession.questionIds.length - 1 ? "Save and next question" : "Save and finish"
+              ? inSession.attemptIds.indexOf(attempt.id) < inSession.questionIds.length - 1 ? inSession.studyUnit === "sets" && data.nextQuestion?.setId !== question.setId ? "Save and next set" : "Save and next question" : "Save and finish"
               : "Save mark"}
           </button>
         </div>

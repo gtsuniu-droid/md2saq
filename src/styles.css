@@ -177,6 +177,33 @@ mark.hit { background: var(--hit); }
 .paper-side button.current { background: var(--teal); color: #fff; }
 .paper-side button.done:not(.current) { background: var(--teal-soft); color: var(--teal); }
 .paper-side button .flag { float: right; }
+.session-sidebar { flex: 0 0 190px; padding: 1.3rem 1rem; background: var(--teal-soft); border-right: 1px solid var(--border); overflow-y: auto; }
+.session-progress { display: grid; gap: 0.3rem; color: var(--teal); margin-bottom: 1.2rem; }
+.session-progress strong { font-size: 2rem; line-height: 1.1; color: var(--fg); }
+.session-progress span { font-size: 0.78rem; line-height: 1.4; }
+.session-progress progress { width: 100%; height: 5px; margin-top: 0.4rem; accent-color: var(--teal); }
+.session-summary-button { width: 100%; border-radius: 2rem; border: 0; background: var(--bg); margin-bottom: 1.2rem; }
+.session-summary-button.selected { background: var(--teal); color: white; }
+.session-nav-heading { font-size: 0.75rem; font-weight: 600; color: var(--teal); margin: 0.7rem 0; }
+.session-nav-heading span { display: block; font-size: 0.7rem; font-weight: 400; margin-top: 0.25rem; }
+.session-set-numbers, .session-question-numbers { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.session-set-numbers button { border: 0; border-radius: 50%; width: 2.8rem; height: 2.8rem; padding: 0; background: transparent; font-weight: 600; }
+.session-question-numbers button { min-width: 2.5rem; padding: 0.5rem; border-color: transparent; background: transparent; }
+.session-sidebar button.current { background: var(--teal); color: white; }
+.session-sidebar button.done:not(.current) { color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+.session-sidebar button.draft:not(.current) { text-decoration: underline; text-underline-offset: 0.25rem; }
+.session-current-set { margin: 0.9rem 0 1.2rem; font-size: 0.8rem; line-height: 1.45; overflow-wrap: anywhere; }
+.session-flag-label { display: block; font-size: 0.6rem; font-weight: 600; }
+.set-submitted-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--border); background: var(--teal-soft); }
+.set-submitted-actions > div { flex: 1; min-width: 12rem; }
+.set-submitted-actions span { display: block; font-size: 0.8rem; margin-top: 0.15rem; }
+.paper-summary { flex: 1; min-width: 0; overflow-y: auto; padding: 1.5rem 2rem; }
+.session-summary-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.session-summary-row p { margin: 0.35rem 0; }
+.paper-summary > .row { margin-top: 1.2rem; }
+.sortable-heading { padding: 0.3rem 0; border: 0; background: transparent; color: inherit; font-size: inherit; text-align: left; white-space: nowrap; }
+.sort-direction { display: block; font-size: 0.65rem; color: var(--teal); }
+.admin-table-scroll { overflow-x: auto; }
 .paper-stem { overflow-y: auto; padding: 1.2rem 2rem; line-height: 1.65; flex: 0 0 50%; min-width: 0; background: var(--card); }
 .paper-stem .qnum { font-weight: 600; color: var(--muted); margin-bottom: 0.6rem; }
 .paper-answers { overflow-y: auto; padding: 1.2rem 2rem; flex: 1; min-width: 0; }
@@ -186,6 +213,18 @@ mark.hit { background: var(--hit); }
 .part-head .text { flex: 1; white-space: pre-wrap; }
 .part-head .marks { font-weight: 600; white-space: nowrap; }
 @media (max-width: 900px) {
+  .paper-top { flex-wrap: wrap; gap: 0.5rem; }
+  .paper-top > .muted { flex: 1 1 60%; }
+  .session-sidebar { flex: 0 0 auto; overflow: visible; border-right: 0; border-bottom: 1px solid var(--border); padding: 0.65rem 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+  .session-progress { margin: 0; display: flex; align-items: center; gap: 0.4rem; }
+  .session-progress strong { font-size: 1.4rem; }
+  .session-progress span { max-width: 7rem; }
+  .session-progress progress { display: none; }
+  .session-summary-button { width: auto; margin: 0; }
+  .session-nav-heading { margin: 0; }
+  .session-current-set { display: none; }
+  .session-set-numbers button { width: 2.4rem; height: 2.4rem; }
+  .paper-summary { overflow: visible; padding: 1rem; }
   .paper { flex-direction: column; overflow: auto; }
   .paper-split { flex-direction: column; overflow: visible; }
   .paper-handle { display: none; }
@@ -595,3 +634,22 @@ button.amboss-note-term:hover, button.amboss-note-term:focus-visible { backgroun
 
 .amboss-login-form { max-width: 520px; }
 .amboss-login-form label:not(.check) input { display: block; width: 100%; margin-top: .25rem; }
+
+.home-shortcuts { display: flex; justify-content: flex-end; margin-bottom: .65rem; font-size: .85rem; }
+.history-card { margin-top: 1.2rem; scroll-margin-top: 1rem; }
+.history-card h2 { margin: 0; color: var(--fg); font-size: 1.1rem; text-transform: none; letter-spacing: normal; }
+.history-card p { margin: .25rem 0; }
+.history-sync { padding-bottom: .7rem; }
+.history-filters { padding-bottom: .7rem; }
+.history-filters input { flex: 1; min-width: 12rem; }
+.history-list { list-style: none; padding: 0; margin: 0; }
+.history-list li { display: flex; align-items: center; gap: 1rem; padding: 1rem 0; border-top: 1px solid var(--border); }
+.history-question { flex: 1; min-width: 0; }
+.history-question > strong, .history-question > span { display: block; }
+.history-question p { overflow-wrap: anywhere; }
+.history-result { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: .35rem; font-size: .85rem; }
+.history-score { font-weight: 650; font-size: 1rem; }
+.history-more { padding-top: .65rem; border-top: 1px solid var(--border); }
+.history-empty { padding: 1rem 0; color: var(--muted); }
+.practice-time-notice { padding: .45rem 1rem; background: var(--teal-soft); color: var(--fg); font-size: .85rem; }
+@media (max-width: 540px) { .history-list li { flex-direction: column; align-items: stretch; gap: .5rem; } .history-result { flex-direction: row; justify-content: space-between; } }

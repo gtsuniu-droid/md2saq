@@ -1,8 +1,9 @@
-import { db, withRemoteWrites } from "../data/db";
+import { db, getSettings, withRemoteWrites } from "../data/db";
 import type { Attempt, Mark, Question, QuestionRef, Session, Settings } from "../data/types";
 import { cloudConfigured, currentUser, deleteMany, fetchSince, writeMany, type CloudUser } from "./firebase";
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
 import { syncNotes } from "./notes";
+import { belongsToAccount } from "./progressAccount";
 
 /**
  * Offline-first sync of a signed-in person's own records: attempts (drafts
@@ -95,25 +96,26 @@ export function remoteWins(localM: number | undefined, remoteM: number | undefin
   return (remoteM ?? 0) > (localM ?? 0);
 }
 
-async function cursor(id: string): Promise<number> {
-  const row = await db.meta.get(id);
+async function cursor(uid: string, id: string): Promise<number> {
+  const row = await db.meta.get(`${id}:${uid}`);
   return typeof row?.value === "number" ? row.value : 0;
 }
-async function setCursor(id: string, value: number): Promise<void> {
-  await db.meta.put({ id, value });
+async function setCursor(uid: string, id: string, value: number): Promise<void> {
+  await db.meta.put({ id: `${id}:${uid}`, value });
 }
 
 /** Remember local deletions so the cloud copy goes too. Call from every delete path. */
 export async function recordDeletes(table: "attempts" | "marks", ids: string[]): Promise<void> {
   if (ids.length === 0 || !cloudConfigured()) return;
   const at = Date.now();
-  await db.syncDeletes.bulkPut(ids.map((id) => ({ id, table, at })));
+  const ownerId = (await getSettings()).cloudUser?.uid ?? "";
+  await db.syncDeletes.bulkPut(ids.map((id) => ({ id, table, at, ownerId })));
 }
 
 /** Question reference for a record being created, so other devices can place it. */
 export async function questionRef(question: Question): Promise<QuestionRef> {
   const set = await db.sets.get(question.setId);
-  return { setId: question.setId, bankId: set?.bankId, order: question.order };
+  return { setId: question.setId, bankId: set?.bankId, order: question.order, text: (question.text || question.parts[0]?.text || "").slice(0, 200), setName: set?.name, setNumber: set?.number };
 }
 
 export interface SyncResult {
@@ -122,46 +124,60 @@ export interface SyncResult {
   unresolved: number;
 }
 
-let running: Promise<SyncResult> | null = null;
+const running = new Map<string, Promise<SyncResult>>();
+let syncQueue: Promise<unknown> = Promise.resolve();
+export type ProgressSyncState = { uid?: string; status: "idle" | "syncing" | "synced" | "error"; at?: number; message?: string };
+let syncState: ProgressSyncState = { status: "idle" };
+const syncListeners = new Set<() => void>();
+export const getProgressSyncState = () => syncState;
+export function subscribeProgressSync(fn: () => void) { syncListeners.add(fn); return () => { syncListeners.delete(fn); }; }
+function reportSync(state: ProgressSyncState) { syncState = state; syncListeners.forEach((fn) => fn()); }
 
 /** Push local changes, then pull remote ones. Safe to call often; concurrent calls share one run. */
 export async function syncNow(user?: CloudUser | null): Promise<SyncResult | null> {
   const u = user ?? (await currentUser());
   if (!u) return null;
-  if (running) return running;
-  running = (async () => {
+  const active = running.get(u.uid);
+  if (active) return active;
+  // Serialize accounts as well: remote-write timestamp suppression is shared.
+  const job = syncQueue.catch(() => undefined).then(async () => {
+    reportSync({ uid: u.uid, status: "syncing" });
     try {
       const notesResult = syncNotes(u).then(() => null, (error: unknown) => error);
       const pushed = await push(u.uid);
       const pulled = await pull(u.uid);
       const notesError = await notesResult;
       if (notesError) throw notesError;
+      reportSync({ uid: u.uid, status: "synced", at: Date.now() });
       return { pushed, pulled: pulled.applied, unresolved: pulled.unresolved };
-    } finally {
-      running = null;
+    } catch (error) {
+      reportSync({ uid: u.uid, status: "error", message: error instanceof Error ? error.message : "Could not sync history." });
+      throw error;
     }
-  })();
-  return running;
+  });
+  syncQueue = job;
+  running.set(u.uid, job);
+  try { return await job; } finally { running.delete(u.uid); }
 }
 
 async function push(uid: string): Promise<number> {
-  const since = await cursor(CURSOR_PUSH);
+  const since = await cursor(uid, CURSOR_PUSH);
   const started = Date.now();
   const [attempts, marks, settings, deletes] = await Promise.all([
-    db.attempts.where("_m").above(since).toArray(),
-    db.marks.where("_m").above(since).toArray(),
+    db.attempts.where("_m").above(since).filter((a) => belongsToAccount(a, uid)).toArray(),
+    db.marks.where("_m").above(since).filter((m) => belongsToAccount(m, uid)).toArray(),
     db.settings.get("settings"),
-    db.syncDeletes.toArray(),
+    db.syncDeletes.filter((d) => belongsToAccount(d, uid)).toArray(),
   ]);
   const attemptDocs = attempts.map((a) => stripUndefined(a) as unknown as Record<string, unknown>);
   const markDocs = marks.map((m) => stripUndefined(m) as unknown as Record<string, unknown>);
   await writeMany(uid, "attempts", attemptDocs);
   await writeMany(uid, "marks", markDocs);
-  if (settings && (settings._m ?? 0) > since) {
+  if (settings?.cloudUser?.uid === uid && (settings._m ?? 0) > since) {
     await writeMany(uid, "settings", [stripUndefined(settingsForCloud(settings)) as unknown as Record<string, unknown>]);
   }
-  const env = loadSessionEnvelope();
-  if (env._m > 0 && env._m !== (await cursor(SESSION_PUSHED))) {
+  const env = loadSessionEnvelope(uid);
+  if (env._m > 0 && env._m !== (await cursor(uid, SESSION_PUSHED))) {
     const qrefs: QuestionRef[] = [];
     for (const qid of env.session?.questionIds ?? []) {
       const q = await db.questions.get(qid);
@@ -169,7 +185,7 @@ async function push(uid: string): Promise<number> {
     }
     const doc: CloudSession = { id: "session", _m: env._m, session: env.session, qrefs };
     await writeMany(uid, "settings", [stripUndefined(doc) as unknown as Record<string, unknown>]);
-    await setCursor(SESSION_PUSHED, env._m);
+    await setCursor(uid, SESSION_PUSHED, env._m);
   }
   if (deletes.length) {
     const byTable = { attempts: deletes.filter((d) => d.table === "attempts"), marks: deletes.filter((d) => d.table === "marks") };
@@ -178,12 +194,12 @@ async function push(uid: string): Promise<number> {
     await writeMany(uid, "deleted", deletes.map((d) => ({ id: d.id, table: d.table, _m: d.at })));
     await db.syncDeletes.bulkDelete(deletes.map((d) => d.id));
   }
-  await setCursor(CURSOR_PUSH, started);
+  await setCursor(uid, CURSOR_PUSH, started);
   return attemptDocs.length + markDocs.length;
 }
 
 async function pull(uid: string): Promise<{ applied: number; unresolved: number }> {
-  const since = await cursor(CURSOR_PULL);
+  const since = await cursor(uid, CURSOR_PULL);
   const started = Date.now();
   const [attempts, marks, settingsDocs, deleted] = await Promise.all([
     fetchSince(uid, "attempts", since),
@@ -207,56 +223,58 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
     await db.transaction("rw", db.attempts, db.marks, db.settings, async () => {
       for (const raw of attempts as unknown as Attempt[]) {
         const qid = resolveQuestionId(raw.questionId, raw.qref, byId, byBankAndOrder);
-        if (!qid) {
-          unresolved++;
-          continue;
-        }
+        if (!qid) unresolved++;
         const local = await db.attempts.get(raw.id);
-        if (local && !remoteWins(local._m, raw._m)) continue;
-        await db.attempts.put({ ...raw, questionId: qid });
+        if (local && (!belongsToAccount(local, uid) || (!remoteWins(local._m, raw._m) && (!qid || local.questionId === qid)))) continue;
+        const latest = local && !remoteWins(local._m, raw._m) ? local : raw;
+        await db.attempts.put({ ...latest, ownerId: uid, questionId: qid ?? raw.questionId });
         applied++;
       }
       for (const raw of marks as unknown as Mark[]) {
         const qid = resolveQuestionId(raw.questionId, raw.qref, byId, byBankAndOrder);
-        if (!qid) {
-          unresolved++;
-          continue;
-        }
+        if (!qid) unresolved++;
         const local = await db.marks.get(raw.id);
-        if (local && !remoteWins(local._m, raw._m)) continue;
-        await db.marks.put({ ...raw, questionId: qid });
+        if (local && (!belongsToAccount(local, uid) || (!remoteWins(local._m, raw._m) && (!qid || local.questionId === qid)))) continue;
+        const latest = local && !remoteWins(local._m, raw._m) ? local : raw;
+        await db.marks.put({ ...latest, ownerId: uid, questionId: qid ?? raw.questionId });
         applied++;
       }
       const remoteSettings = settingsDocs.find((d) => d.id === "settings") as (Partial<Settings> & { _m?: number }) | undefined;
       if (remoteSettings) {
         const local = await db.settings.get("settings");
-        if (!local || remoteWins(local._m, remoteSettings._m)) {
+        if (local?.cloudUser?.uid === uid && remoteWins(local._m, remoteSettings._m)) {
           const merged = { ...(local ?? {}), ...settingsForCloud(remoteSettings as Settings), id: "settings" as const };
           await db.settings.put(merged as Settings);
           applied++;
         }
       }
       for (const d of deleted as { id: string; table: "attempts" | "marks" }[]) {
-        if (d.table === "attempts") await db.attempts.delete(d.id);
-        else await db.marks.delete(d.id);
+        const table = d.table === "attempts" ? db.attempts : d.table === "marks" ? db.marks : null;
+        const local = await table?.get(d.id);
+        if (local && belongsToAccount(local, uid)) await table?.delete(d.id);
       }
     });
   });
   // The paper in progress follows the account: a newer one from another device replaces this device's.
   const remoteSession = settingsDocs.find((d) => d.id === "session") as CloudSession | undefined;
-  if (remoteSession && remoteWins(loadSessionEnvelope()._m, remoteSession._m)) {
+  if (remoteSession && remoteWins(loadSessionEnvelope(uid)._m, remoteSession._m)) {
     const adopted = adoptSession(remoteSession, byId, byBankAndOrder);
-    saveSessionEnvelope({ session: adopted, _m: remoteSession._m });
-    await setCursor(SESSION_PUSHED, remoteSession._m);
-    applied++;
+    if (remoteSession.session && !adopted) unresolved++;
+    else {
+      saveSessionEnvelope({ session: adopted ? { ...adopted, ownerId: uid } : null, _m: remoteSession._m }, uid);
+      await setCursor(uid, SESSION_PUSHED, remoteSession._m);
+      applied++;
+    }
   }
-  await setCursor(CURSOR_PULL, started);
+  // Retry unresolved references after this device downloads the relevant question set.
+  if (!unresolved) await setCursor(uid, CURSOR_PULL, started);
   return { applied, unresolved };
 }
 
 /** Forget the cursors, so the next sync compares everything again (used after sign-in on a device with history). */
 export async function resetCursors(): Promise<void> {
-  await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED]);
+  const uid = (await getSettings()).cloudUser?.uid;
+  if (uid) await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED].map((key) => `${key}:${uid}`));
 }
 
 let requested: number | undefined;

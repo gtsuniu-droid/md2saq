@@ -27,3 +27,13 @@ export function remainingSec(s: Session, now: number): number | null {
   const at = s.pausedAt ?? now;
   return Math.max(0, Math.ceil((s.startedAt + s.totalSec * 1000 - at) / 1000));
 }
+
+/** Practice timers are guidance; only exam deadlines submit and lock answers. */
+export function shouldAutoSubmit(s: Session, now: number): boolean {
+  return s.mode === "exam" && remainingSec(s, now) === 0;
+}
+
+export function overtimeSec(s: Session, now: number): number {
+  if (!s.totalSec) return 0;
+  return Math.max(0, Math.floor(((s.pausedAt ?? now) - s.startedAt) / 1000) - s.totalSec);
+}

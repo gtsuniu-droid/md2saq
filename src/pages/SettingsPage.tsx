@@ -1,3 +1,4 @@
+import { setProgressAccount } from "../lib/progressAccount";
 import AmbossSettings from "../components/AmbossSettings";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
@@ -106,7 +107,7 @@ export default function SettingsPage() {
               }}>Sync now</button>
               <button className="small" disabled={cloudBusy} onClick={async () => {
                 await signOutCloud();
-                await patchSettings({ cloudUser: undefined });
+                await setProgressAccount(null);
                 setCloudMsg("Signed out. Your data stays on this device.");
               }}>Sign out</button>
             </span>
@@ -118,7 +119,7 @@ export default function SettingsPage() {
               setCloudMsg(null);
               try {
                 const u = await signInWithGoogle();
-                await patchSettings({ cloudUser: u });
+                await setProgressAccount(u);
                 await resetCursors();
                 const r = await syncNow(u);
                 const moved = r && (r.pushed || r.pulled) ? ` ${[r.pushed ? `${r.pushed} sent` : "", r.pulled ? `${r.pulled} received` : ""].filter(Boolean).join(", ")}.` : "";

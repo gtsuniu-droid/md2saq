@@ -36,6 +36,11 @@ function MasterContents() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [bulkTag, setBulkTag] = useState("");
+  const [sort, setSort] = useState<{ key: "set" | "questions" | "status" | "added" | "updated"; direction: "asc" | "desc" }>({ key: "set", direction: "asc" });
+  const bankById = useMemo(() => new Map((bank ?? []).map((e) => [e.id, e])), [bank]);
+  const statusOf = (s: NonNullable<typeof summaries>[number]) => !s.set.bankId ? "not published" : !bank ? "" : !bankById.has(s.set.bankId) ? "not found on the server" : s.set.dirty ? "edits not published" : "published";
+  const addedAt = (s: NonNullable<typeof summaries>[number]) => bankById.get(s.set.bankId ?? "")?.uploadedAt ?? (!s.set.bankId ? s.set.createdAt : undefined);
+  const updatedAt = (s: NonNullable<typeof summaries>[number]) => Math.max(bankById.get(s.set.bankId ?? "")?.updatedAt ?? 0, s.set.updatedAt ?? 0) || s.set.createdAt;
 
   const refreshBank = async () => {
     try {
@@ -59,11 +64,18 @@ function MasterContents() {
     const q = filter.trim().toLowerCase();
     return [...summaries]
       .filter((s) => !q || [fullLabel(s), s.set.source ?? "", ...(s.set.tags ?? [])].join(" ").toLowerCase().includes(q))
-      .sort((a, b) => fullLabel(a).localeCompare(fullLabel(b), undefined, { numeric: true }));
-  }, [summaries, filter]);
+      .sort((a, b) => {
+        const value = (s: NonNullable<typeof summaries>[number]): string | number | undefined => sort.key === "questions" ? s.questions.length : sort.key === "status" ? statusOf(s) : sort.key === "added" ? addedAt(s) : sort.key === "updated" ? updatedAt(s) : fullLabel(s);
+        const av = value(a), bv = value(b);
+        if (av === undefined || bv === undefined) return av === bv ? 0 : av === undefined ? 1 : -1;
+        const result = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), undefined, { numeric: true });
+        return (sort.direction === "asc" ? result : -result) || a.set.id.localeCompare(b.set.id);
+      });
+  }, [summaries, filter, sort, bankById, bank]);
 
   if (!summaries) return null;
-  const bankById = new Map((bank ?? []).map((e) => [e.id, e]));
+  const sortColumn = (key: typeof sort.key) => setSort((s) => ({ key, direction: s.key === key ? s.direction === "asc" ? "desc" : "asc" : key === "added" || key === "updated" ? "desc" : "asc" }));
+  const heading = (key: typeof sort.key, label: string) => <th aria-sort={sort.key === key ? sort.direction === "asc" ? "ascending" : "descending" : "none"}><button className="sortable-heading" onClick={() => sortColumn(key)}>{label}{sort.key === key && <span className="sort-direction">{key === "added" || key === "updated" ? sort.direction === "asc" ? "Oldest first" : "Newest first" : sort.direction === "asc" ? "Ascending" : "Descending"}</span>}</button></th>;
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.set.id));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.set.id)));
   const toggle = (id: string) =>
@@ -200,6 +212,7 @@ function MasterContents() {
         <summary><h2>Sets</h2></summary>
         <div className="row" style={{ margin: "0.4rem 0 0.6rem" }}>
           <input type="search" placeholder="Filter sets" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <button className="small" onClick={() => setSort({ key: "added", direction: "desc" })}>Recently added</button>
           <span className="muted">{selected.size ? `${selected.size} selected` : `${rows.length} sets`}</span>
           <span style={{ flex: 1 }} />
           {selected.size > 0 ? (
@@ -216,11 +229,12 @@ function MasterContents() {
             <button className="small" onClick={pushAll} disabled={busy !== null || !bank}>Publish local changes</button>
           )}
         </div>
-        <table>
+        <p className="muted">Click a column heading to change the order. Added shows when a set was first published, or created locally if unpublished.</p>
+        <div className="admin-table-scroll"><table aria-label="Admin question sets">
           <thead>
             <tr>
               <th style={{ width: "1.6rem" }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all shown" /></th>
-              <th>Set</th><th>Questions</th><th>Status</th><th>Updated</th><th></th>
+              {heading("set", "Set")}{heading("questions", "Questions")}{heading("status", "Status")}{heading("added", "Added")}{heading("updated", "Updated")}<th></th>
             </tr>
           </thead>
           <tbody>
@@ -236,7 +250,8 @@ function MasterContents() {
                   </td>
                   <td>{s.questions.length}</td>
                   <td className="muted">{status}</td>
-                  <td className="muted">{formatDate(s.set.updatedAt ?? s.set.createdAt)}</td>
+                  <td className="muted" title={addedAt(s) !== undefined ? new Date(addedAt(s)!).toLocaleString() : "Connect to the bank to see the original publish date"}>{addedAt(s) !== undefined ? formatDate(addedAt(s)!) : "—"}</td>
+                  <td className="muted" title={new Date(updatedAt(s)).toLocaleString()}>{formatDate(updatedAt(s))}</td>
                   <td className="row" style={{ justifyContent: "flex-end" }}>
                     <button className="small" onClick={() => nav(`/set/${s.set.id}/edit`)}>Edit</button>
                     <button className="small danger" onClick={() => remove(s.set.id)} disabled={busy !== null}>Delete</button>
@@ -245,7 +260,7 @@ function MasterContents() {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
         {rows.length === 0 && summaries.length > 0 && <p className="muted">Nothing matches the filter.</p>}
       </details>
       {summaries.length === 0 && <p className="muted">No sets yet. Drop a folder or paste a paper above.</p>}

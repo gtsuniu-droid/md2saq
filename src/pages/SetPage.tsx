@@ -1,3 +1,4 @@
+import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { loadSession } from "../lib/session";
 import { useState } from "react";
@@ -25,8 +26,8 @@ export default function SetPage() {
     const summary = summaries.find((s) => s.set.id === id) ?? null;
     if (!summary) return null;
     const settings = await getSettings();
-    const marks = await db.marks.where("questionId").anyOf(summary.questions.map((q) => q.id)).toArray();
-    const attempts = await db.attempts.where("questionId").anyOf(summary.questions.map((q) => q.id)).toArray();
+    const marks = await db.marks.where("questionId").anyOf(summary.questions.map((q) => q.id)).filter((m) => belongsToAccount(m, settings.cloudUser?.uid ?? "")).toArray();
+    const attempts = await db.attempts.where("questionId").anyOf(summary.questions.map((q) => q.id)).filter((a) => belongsToAccount(a, settings.cloudUser?.uid ?? "")).toArray();
     const lastByQuestion = new Map<string, { score: number; max: number }>();
     for (const m of [...marks].sort((a, b) => a.markedAt - b.markedAt)) lastByQuestion.set(m.questionId, { score: m.score, max: m.maxScore });
     const doneByQuestion = new Map<string, number>();

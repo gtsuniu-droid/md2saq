@@ -30,3 +30,18 @@ describe("session clock", () => {
     expect(remainingSec(base, base.startedAt + 601_000)).toBe(0);
   });
 });
+
+it("auto-submits only timed exams, including when reopened after expiry", async () => {
+  const { shouldAutoSubmit, overtimeSec } = await import("./sessionClock");
+  const after = base.startedAt + 630_000;
+  expect(shouldAutoSubmit(base, after)).toBe(true);
+  expect(shouldAutoSubmit(base, base.startedAt + 599_000)).toBe(false);
+  expect(shouldAutoSubmit({ ...base, totalSec: undefined }, after)).toBe(false);
+  const practice = { ...base, mode: "practice" as const };
+  expect(remainingSec(practice, after)).toBe(0);
+  expect(shouldAutoSubmit(practice, after)).toBe(false);
+  expect(overtimeSec(practice, after)).toBe(30);
+  const paused = pausedSession(practice, after);
+  expect(overtimeSec(paused, after + 60_000)).toBe(30);
+  expect(shouldAutoSubmit(resumedSession(paused, after + 60_000), after + 61_000)).toBe(false);
+});

@@ -1,3 +1,52 @@
+# Multi-set sessions and admin sorting QA — 21 September 2026
+
+final result: passed
+
+## Scope and visual targets
+
+The requested change is the example's progressive left-hand set navigation, adapted to the existing SAQ case/answer split, plus sortable admin columns. This is an existing product change, not a replacement of the SAQ editor with the reference's multiple-choice page.
+
+- Sidebar source: `/var/folders/99/8fwqbbm14219_3ws98j9wzsh0000gp/T/TemporaryItems/NSIRD_screencaptureui_F7rpiJ/Screenshot 2026-09-21 at 5.09.34 pm.png` (2346 × 1794 pixels). Normalized 2:1 to 1173 × 897 at `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/set-sidebar-reference.png`.
+- Admin source: `/var/folders/99/8fwqbbm14219_3ws98j9wzsh0000gp/T/TemporaryItems/NSIRD_screencaptureui_uDGKWg/Screenshot 2026-09-21 at 5.12.51 pm.png` (1878 × 766 pixels). Normalized to 1173 × 478 at `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/admin-sorting-reference.png`; this source is a table-region crop, not a full viewport.
+- Desktop implementation: `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/set-sidebar-desktop.png` (1173 × 897 pixels; CSS viewport 1173 × 897, effective density 1).
+- Admin implementation: `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/admin-sorting.png` (same viewport and density).
+- Mobile implementation: `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/set-sidebar-mobile.png` (390 × 844 pixels and CSS viewport, effective density 1).
+- Source and implementation were opened together in each comparison tool input. The sidebar comparison shows set 2 active, with sets 1 and 2 opened; the admin comparison shows the existing table with the added date and sort controls. Sample content was used to protect actual user answers. Full-frame text and controls were readable, so a separate focused crop was unnecessary.
+
+## Findings and fidelity checks
+
+No actionable P0/P1/P2 visual findings remain.
+
+- Typography: existing product font and editor text sizing retained; progress, set labels, question numbers, and sort direction remain legible. The references guide hierarchy rather than replacing product typography.
+- Layout: pale left rail, Summary action, circular numbered set controls, and active-set emphasis follow the example. A 190px rail deliberately preserves room for the existing two-column SAQ editor, rather than using the example's wider MCQ sidebar. Mobile navigation wraps above the case and answers; document width and scroll width are both 390px.
+- Colors: existing teal, soft-teal, navy, border, and dark-mode tokens used consistently. This intentionally retains the application's palette instead of introducing the unrelated reference's bright cyan.
+- Assets: no new raster artwork is required. Numbered controls are actual buttons and progress uses a native progress element; no reference artwork is substituted with drawings. Existing editor imagery is retained.
+- Copy: submission counts distinguish submitted answers from saved drafts. Set numbers and question numbers are separate. After submission, both Mark this set and Continue to next set are available. Added means the original bank publish date, or local creation date for unpublished sets; unavailable bank dates remain unknown.
+- Admin table: Set, Questions, Status, Added, and Updated headings are keyboard-operable buttons with aria-sort. Original row content, selection, edit/publish controls, and filtering remain available. Recently added selects descending Added order. Updates use the latest known local or bank edit time.
+
+## Comparison and verification history
+
+- Initial interaction inspection found duplicate mark counts and global question numbers beside within-set navigation. Both were corrected before the recorded desktop/mobile visual comparisons; the screenshots show a single mark count and consistent question numbering.
+- A new-session transition exposed a stale-paper race during stress testing. The paper now remounts for a different session and waits for aligned question/attempt data. A fresh browser run repeated same-page session replacement, skipping sets, marking the final set, and returning to an earlier draft; the saved text survived and the fresh console contained no errors.
+- Browser checks passed: first set only at startup; Next appends another numbered set; earlier sets remain accessible; rapid answer entry survives navigation; reload restores the active set and answers; Submit offers mark-now or continue; marking advances through a set then opens the next; Summary allows deferred marking; unfinished earlier sets survive finishing the last set; three-second exam submits all five selected questions, including unopened sets.
+- Admin checks passed: Updated descending/ascending, Added newest-first shortcut, Questions ascending/descending, and Status sorting. Sample bank calls were read-only.
+- Automated checks: all 153 tests pass, including set grouping/reveal progression, identical/empty stems across different sets, older sessions, exam navigation, and cloud round-trip preservation of opened-set state. Production build and whitespace checks pass.
+
+## Implementation checklist
+
+- [x] Progressive set navigation with saved answers and persisted opened-set state.
+- [x] Choice of marking now or continuing, with later access through Summary.
+- [x] Account history and practice/exam timer behavior preserved.
+- [x] Admin addition dates and sortable columns, using existing bank metadata.
+- [x] Desktop/mobile captures and interaction verification.
+- [x] Temporary fixture removed; no publish or deployment.
+
+## Follow-up polish
+
+None required for this scope. The admin view is a chronological view of existing sets, not an audit archive of previously deleted bank entries.
+
+---
+
 # AMBOSS hover preview QA — 21 September 2026
 
 final result: passed

@@ -1,3 +1,4 @@
+import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router";
 import { db, getSettings } from "../data/db";
@@ -22,10 +23,11 @@ export default function QuestionPage() {
     const q = await db.questions.get(id);
     if (!q) return null;
     const set = await db.sets.get(q.setId);
+    const ownerId = (await getSettings()).cloudUser?.uid ?? "";
     const attempts = (await db.attempts.where("questionId").equals(id).toArray())
-      .filter((a) => a.submittedAt !== undefined)
+      .filter((a) => belongsToAccount(a, ownerId) && a.submittedAt !== undefined)
       .sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0));
-    const marks = await db.marks.where("questionId").equals(id).toArray();
+    const marks = await db.marks.where("questionId").equals(id).filter((m) => belongsToAccount(m, ownerId)).toArray();
     return { q, set, attempts, marks: new Map(marks.map((m) => [m.attemptId, m])), admin: isAdmin(await getSettings()) };
   }, [id]);
 

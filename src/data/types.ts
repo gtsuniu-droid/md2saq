@@ -119,10 +119,16 @@ export interface QuestionRef {
   setId: string;
   bankId?: string;
   order: number;
+  /** Small history label available before the question bank downloads on a new device. */
+  text?: string;
+  setName?: string;
+  setNumber?: number;
 }
 
 export interface Attempt {
   id: string;
+  /** Account that owns this attempt; empty string means device-only guest work. */
+  ownerId?: string;
   questionId: string;
   qref?: QuestionRef;
   /** Last local modification, stamped by the database layer; drives cloud sync. */
@@ -150,6 +156,7 @@ export interface PartMark {
 
 export interface Mark {
   id: string;
+  ownerId?: string;
   attemptId: string;
   questionId: string;
   qref?: QuestionRef;
@@ -201,6 +208,7 @@ export interface RememberedAmbossLogin {
 /** A local deletion waiting to reach the cloud. */
 export interface SyncDelete {
   id: string;
+  ownerId?: string;
   table: "attempts" | "marks";
   at: number;
 }
@@ -251,8 +259,12 @@ export const DEFAULT_SETTINGS: Settings = { id: "settings", minutesPerMark: 1.5,
 /** A practice or exam session, kept in localStorage until submitted and reviewed, or discarded. */
 export interface Session {
   id: string;
+  ownerId?: string;
   mode: "practice" | "exam";
   questionIds: string[];
+  /** Whole-set sessions reveal the next bank set as the student advances. */
+  studyUnit?: "questions" | "sets";
+  openedSetCount?: number;
   index: number;
   /** Last focused answer part, restored when continuing. */
   activePart?: string;

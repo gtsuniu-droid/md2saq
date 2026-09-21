@@ -11,6 +11,7 @@ import { recordDeletes } from "./sync";
  * a change stamp and remembers that a paper ended.
  */
 const KEY = "saq-session-v2";
+const OWNER_KEY = "saq-session-owner";
 const LEGACY_KEYS = ["saq-session"];
 
 export interface SessionEnvelope {
@@ -20,20 +21,57 @@ export interface SessionEnvelope {
 }
 
 const listeners = new Set<() => void>();
+let cachedOwner: string | undefined;
 let cachedRaw: string | null | undefined;
 let cachedEnvelope: SessionEnvelope = { session: null, _m: 0 };
 
-function readRaw(): string | null {
+export function sessionOwner(): string {
+  try { return localStorage.getItem(OWNER_KEY) ?? ""; } catch { return ""; }
+}
+function storageKey(ownerId: string): string { return `${KEY}:${encodeURIComponent(ownerId)}`; }
+
+/** Separate unfinished papers when accounts share a browser. */
+export function switchSessionAccount(previous: string, next: string): void {
   try {
-    const raw = localStorage.getItem(KEY);
+    // Before this change, one global paper belonged to the last signed-in account.
+    if (localStorage.getItem(OWNER_KEY) === null && previous) {
+      const legacy = readRaw("");
+      if (legacy && !localStorage.getItem(storageKey(previous))) localStorage.setItem(storageKey(previous), legacy);
+      localStorage.removeItem(storageKey(""));
+    }
+    if (!previous && next) {
+      const guest = loadSessionEnvelope("");
+      const account = loadSessionEnvelope(next);
+      if (guest.session && !account.session) {
+        localStorage.setItem(storageKey(next), JSON.stringify({ ...guest, session: { ...guest.session, ownerId: next }, _m: Date.now() }));
+        localStorage.removeItem(storageKey(""));
+      }
+    }
+    localStorage.setItem(OWNER_KEY, next);
+  } catch { /* Remain usable when persistent storage is unavailable. */ }
+  cachedOwner = undefined;
+  notify();
+}
+
+function readRaw(ownerId: string): string | null {
+  try {
+    const raw = localStorage.getItem(storageKey(ownerId));
     if (raw !== null) return raw;
+    // Adopt the old global envelope once, before account-specific storage existed.
+    const global = localStorage.getItem(KEY);
+    if (global !== null && localStorage.getItem(OWNER_KEY) === null) {
+      localStorage.setItem(storageKey(ownerId), global);
+      localStorage.removeItem(KEY);
+      return global;
+    }
+    if (localStorage.getItem(OWNER_KEY) !== null) return null;
     // Papers started before sessions were kept across tabs, or before the envelope.
     for (const store of [localStorage, sessionStorage]) {
       for (const k of LEGACY_KEYS) {
         const legacy = store.getItem(k);
         if (legacy === null) continue;
         const migrated = JSON.stringify({ session: JSON.parse(legacy), _m: Date.now() });
-        localStorage.setItem(KEY, migrated);
+        localStorage.setItem(storageKey(ownerId), migrated);
         store.removeItem(k);
         return migrated;
       }
@@ -45,13 +83,14 @@ function readRaw(): string | null {
 }
 
 /** The stored envelope, referentially stable while unchanged. */
-export function loadSessionEnvelope(): SessionEnvelope {
-  const raw = readRaw();
-  if (raw === cachedRaw) return cachedEnvelope;
+export function loadSessionEnvelope(ownerId = sessionOwner()): SessionEnvelope {
+  const raw = readRaw(ownerId);
+  if (ownerId === cachedOwner && raw === cachedRaw) return cachedEnvelope;
   cachedRaw = raw;
+  cachedOwner = ownerId;
   try {
     const parsed = raw ? (JSON.parse(raw) as Partial<SessionEnvelope>) : null;
-    cachedEnvelope = { session: parsed?.session ?? null, _m: typeof parsed?._m === "number" ? parsed._m : 0 };
+    cachedEnvelope = { session: parsed?.session ? { ...parsed.session, ownerId } : null, _m: typeof parsed?._m === "number" ? parsed._m : 0 };
   } catch {
     cachedEnvelope = { session: null, _m: 0 };
   }
@@ -59,21 +98,21 @@ export function loadSessionEnvelope(): SessionEnvelope {
 }
 
 /** The current session, referentially stable while unchanged (safe for useSyncExternalStore). */
-export function loadSession(): Session | null {
-  return loadSessionEnvelope().session;
+export function loadSession(ownerId = sessionOwner()): Session | null {
+  return loadSessionEnvelope(ownerId).session;
 }
 
-export function saveSessionEnvelope(env: SessionEnvelope): void {
+export function saveSessionEnvelope(env: SessionEnvelope, ownerId = sessionOwner()): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(env));
+    localStorage.setItem(storageKey(ownerId), JSON.stringify(env));
   } catch {
     /* storage unavailable; session is simply not persisted */
   }
   notify();
 }
 
-export function saveSession(s: Session | null): void {
-  saveSessionEnvelope({ session: s, _m: Date.now() });
+export function saveSession(s: Session | null, ownerId = s?.ownerId ?? sessionOwner()): void {
+  saveSessionEnvelope({ session: s ? { ...s, ownerId } : null, _m: Date.now() }, ownerId);
 }
 
 function notify(): void {
@@ -84,7 +123,7 @@ function notify(): void {
 export function subscribeSession(cb: () => void): () => void {
   listeners.add(cb);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === null || e.key === KEY) cb();
+    if (e.key === null || e.key === OWNER_KEY || e.key === storageKey(sessionOwner())) cb();
   };
   window.addEventListener("storage", onStorage);
   return () => {
@@ -93,13 +132,16 @@ export function subscribeSession(cb: () => void): () => void {
   };
 }
 
-export function startSession(questionIds: string[], mode: "practice" | "exam", totalSec?: number): Session {
+export function startSession(questionIds: string[], mode: "practice" | "exam", totalSec?: number, studyUnit: "questions" | "sets" = "questions"): Session {
   const previous = loadSession();
   if (previous) void dropUnsubmitted(previous.id);
   const s: Session = {
     id: crypto.randomUUID(),
+    ownerId: sessionOwner(),
     mode,
     questionIds,
+    studyUnit,
+    ...(studyUnit === "sets" ? { openedSetCount: 1 } : {}),
     index: 0,
     totalSec,
     startedAt: Date.now(),
@@ -110,15 +152,15 @@ export function startSession(questionIds: string[], mode: "practice" | "exam", t
 }
 
 /** Stop the exam clock: called whenever the paper is left. Idempotent. */
-export function pauseSession(): void {
-  const s = loadSession();
+export function pauseSession(ownerId = sessionOwner()): void {
+  const s = loadSession(ownerId);
   if (!s || s.pausedAt !== undefined) return;
   saveSession(pausedSession(s, Date.now()));
 }
 
 /** Restart the clock on coming back; returns the session to show. */
-export function resumeSession(): Session | null {
-  const s = loadSession();
+export function resumeSession(ownerId = sessionOwner()): Session | null {
+  const s = loadSession(ownerId);
   if (!s) return null;
   if (s.pausedAt === undefined) return s;
   const next = resumedSession(s, Date.now());

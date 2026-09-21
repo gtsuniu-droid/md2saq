@@ -1,3 +1,4 @@
+import { belongsToAccount } from "./progressAccount";
 import { db, newId, patchSettings, getSettings } from "../data/db";
 import { validateNote } from "./noteModel";
 import { nextSetNumber } from "./sets";
@@ -28,8 +29,8 @@ export async function exportAll(): Promise<ExportFile> {
   const [sets, questions, attempts, marks, notes] = await Promise.all([
     db.sets.toArray(),
     db.questions.toArray(),
-    db.attempts.toArray(),
-    db.marks.toArray(),
+    db.attempts.filter((a) => belongsToAccount(a, owner)).toArray(),
+    db.marks.filter((m) => belongsToAccount(m, owner)).toArray(),
     db.notes.filter((n) => n.ownerId === owner || n.ownerId === "").toArray(),
   ]);
   await patchSettings({ lastExportAt: Date.now() });
@@ -44,8 +45,18 @@ export async function importAll(data: ExportFile): Promise<{ sets: number; quest
   await db.transaction("rw", [db.sets, db.questions, db.attempts, db.marks, db.notes], async () => {
     await db.sets.bulkPut(data.sets);
     await db.questions.bulkPut(data.questions);
-    await db.attempts.bulkPut(data.attempts);
-    await db.marks.bulkPut(data.marks);
+    const attemptIds = new Map<string, string>();
+    for (const attempt of data.attempts) {
+      const existing = await db.attempts.get(attempt.id);
+      const id = existing && !belongsToAccount(existing, owner) ? newId() : attempt.id;
+      attemptIds.set(attempt.id, id);
+      await db.attempts.put({ ...attempt, id, ownerId: owner });
+    }
+    for (const mark of data.marks) {
+      const existing = await db.marks.get(mark.id);
+      const id = existing && !belongsToAccount(existing, owner) ? newId() : mark.id;
+      await db.marks.put({ ...mark, id, attemptId: attemptIds.get(mark.attemptId) ?? mark.attemptId, ownerId: owner });
+    }
     for (const note of notes) {
       const existing = await db.notes.get(note.id);
       await db.notes.put(existing && existing.ownerId !== owner ? { ...note, id: newId() } : note);
@@ -84,7 +95,8 @@ function tsvCell(s: string): string {
 
 /** Learning points as Anki-importable TSV: front = question, back = learning point. */
 export async function exportLearningPointsTsv(): Promise<string> {
-  const marks = (await db.marks.toArray()).filter((m) => m.learningPoint && m.learningPoint.trim());
+  const owner = (await getSettings()).cloudUser?.uid ?? "";
+  const marks = (await db.marks.toArray()).filter((m) => belongsToAccount(m, owner) && m.learningPoint && m.learningPoint.trim());
   const rows: string[] = [];
   for (const m of marks) {
     const q = await db.questions.get(m.questionId);
