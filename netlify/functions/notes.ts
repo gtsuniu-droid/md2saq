@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 import type { Config } from "@netlify/functions";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { validateNote } from "../../src/lib/noteModel";
+import { MAX_SHARED_NOTE_BYTES, validateNote } from "../../src/lib/noteModel";
 import { PRESENTATION_BY_ID } from "../../src/data/presentations";
 import type { PresentationNote } from "../../src/data/types";
 
@@ -29,7 +30,7 @@ function openStore(): NoteStore {
   };
 }
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
-export async function handleNotes(req: Request, store: NoteStore, passcode: string | undefined): Promise<Response> {
+export async function handleNotes(req: Request, store: NoteStore, passcode: string | undefined, saveImage?: (src: string) => Promise<string>): Promise<Response> {
   const presentation = new URL(req.url).searchParams.get("presentation") ?? "";
   if (!PRESENTATION_BY_ID.has(presentation)) return json({ error: "Choose a valid presentation." }, 400);
   if (req.method === "GET") {
@@ -42,19 +43,53 @@ export async function handleNotes(req: Request, store: NoteStore, passcode: stri
   let note: PresentationNote, baseRevision: string | undefined;
   try {
     const raw = await req.text();
-    if (new TextEncoder().encode(raw).length > 800_000) return json({ error: "Note too large." }, 413);
+    if (new TextEncoder().encode(raw).length > MAX_SHARED_NOTE_BYTES + 1000) return json({ error: "Note too large." }, 413);
     const body = JSON.parse(raw);
     note = body.note; baseRevision = body.baseRevision;
-    validateNote(note);
+    validateNote(note, MAX_SHARED_NOTE_BYTES);
     if (note.ownerId !== "@shared" || !/^shared-[a-zA-Z0-9-]+$/.test(note.id) || note.presentationId !== presentation) throw new Error("Invalid shared note.");
   } catch (e) { return json({ error: e instanceof Error ? e.message : "Invalid note." }, 400); }
   const key = `${presentation}/${note.id}`;
   const previous = await store.getWithMetadata(key, { type: "json" });
   if ((previous?.data.revision ?? undefined) !== (baseRevision || undefined)) return json({ error: "This shared note changed. Copy your edits, refresh the library, then reopen it." }, 409);
-  const next = { ...note, ownerId: "@shared", createdAt: previous?.data.createdAt ?? Date.now(), _m: Date.now(), revision: crypto.randomUUID() };
+  if (saveImage) {
+    try { note = { ...note, doc: await persistNoteImages(note.doc, saveImage) }; validateNote(note); }
+    catch (e) { return json({ error: e instanceof Error ? e.message : "Could not save note images." }, 400); }
+  }
+  const next = { ...note, ownerId: "@shared", createdAt: previous?.data.createdAt ?? Date.now(), _m: Math.max(Date.now(), (previous?.data._m ?? 0) + 1), revision: crypto.randomUUID() };
   const result = await store.setJSON(key, next, previous ? { onlyIfMatch: previous.etag } : { onlyIfNew: true });
   if (!result.modified) return json({ error: "Another editor just saved this note. Refresh before trying again." }, 409);
   return json({ note: next });
 }
-export default (req: Request) => handleNotes(req, openStore(), process.env.BANK_PASSCODE ?? (hosted() ? undefined : "dev"));
+/** Replace inline pictures with permanent, deduplicated Blob URLs before saving the note. */
+export async function persistNoteImages(doc: unknown, save: (src: string) => Promise<string>): Promise<unknown> {
+  if (!doc || typeof doc !== "object") return doc;
+  if (Array.isArray(doc)) return Promise.all(doc.map((n) => persistNoteImages(n, save)));
+  const node = doc as { type?: string; attrs?: { src?: string }; content?: unknown[] };
+  if (node.type === "image" && typeof node.attrs?.src === "string" && node.attrs.src.startsWith("data:")) {
+    return { ...node, attrs: { ...node.attrs, src: await save(node.attrs.src) } };
+  }
+  return node.content ? { ...node, content: await persistNoteImages(node.content, save) } : node;
+}
+export default async (req: Request): Promise<Response> => {
+  const url = new URL(req.url), image = url.searchParams.get("image");
+  if (image !== null) {
+    if (req.method !== "GET" || !/^[a-f0-9]{64}$/.test(image)) return new Response("Not found", { status: 404 });
+    if (!hosted()) {
+      try { return new Response(readFileSync(join(process.cwd(), ".netlify", "dev-note-images", image)), { headers: { "content-type": "image/png" } }); }
+      catch { return new Response("Not found", { status: 404 }); }
+    }
+    const result = await getStore({ name: "presentation-note-images", consistency: "strong" }).getWithMetadata(image, { type: "arrayBuffer" });
+    return result ? new Response(result.data, { headers: { "content-type": String(result.metadata.mime ?? "image/png"), "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" } }) : new Response("Not found", { status: 404 });
+  }
+  const saveImage = async (src: string): Promise<string> => {
+    const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/.exec(src);
+    if (!match) throw new Error("Use PNG, JPEG, WebP or GIF images.");
+    const bytes = Buffer.from(match[2], "base64"), hash = createHash("sha256").update(bytes).digest("hex");
+    if (hosted()) await getStore({ name: "presentation-note-images", consistency: "strong" }).set(hash, bytes, { onlyIfNew: true, metadata: { mime: match[1] } });
+    else { const directory = join(process.cwd(), ".netlify", "dev-note-images"); mkdirSync(directory, { recursive: true }); writeFileSync(join(directory, hash), bytes); }
+    return `/api/notes?image=${hash}`;
+  };
+  return handleNotes(req, openStore(), process.env.BANK_PASSCODE ?? (hosted() ? undefined : "dev"), saveImage);
+};
 export const config: Config = { path: "/api/notes" };

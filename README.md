@@ -226,7 +226,9 @@ The Shared library tab is public and stored in Netlify Blobs (`presentation-note
 access uses the existing bank passcode. Each saved edit publishes immediately, without a
 website deployment. Concurrent changes are protected with conditional writes. Deleted
 notes remain restorable. Only the current presentation is fetched, and a cached copy stays
-available offline. My private notes is a separate personal library using account sync.
+available offline. Inline shared images are saved separately in `presentation-note-images`
+and replaced with permanent URLs. Shared uploads can be up to 5.5 MB; private account
+notes keep the 750 KB limit. My private notes is a separate personal library using account sync.
 Add any number of notes with a title and a note type: Lecture Notes, First Aid, Sketchy,
 Bootcamp, My Notes, or your own label. Each card opens and closes independently. The editor
 accepts formatted text, nested lists and tables; pictures can be pasted or attached. Save

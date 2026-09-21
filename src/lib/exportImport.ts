@@ -40,7 +40,7 @@ export async function importAll(data: ExportFile): Promise<{ sets: number; quest
   if (data.format !== "saq-practice") throw new Error("Not an SAQ Practice export file.");
   const owner = (await getSettings()).cloudUser?.uid ?? "";
   const notes = (data.notes ?? []).map((n) => ({ ...n, ownerId: owner, _m: Date.now(), revision: newId() }));
-  notes.forEach(validateNote);
+  notes.forEach((note) => validateNote(note));
   await db.transaction("rw", [db.sets, db.questions, db.attempts, db.marks, db.notes], async () => {
     await db.sets.bulkPut(data.sets);
     await db.questions.bulkPut(data.questions);

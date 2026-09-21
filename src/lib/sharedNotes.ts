@@ -1,6 +1,6 @@
 import { db, getSettings } from "../data/db";
 import type { PresentationNote } from "../data/types";
-import { noteIsNewer, validateNote } from "./noteModel";
+import { MAX_SHARED_NOTE_BYTES, noteIsNewer, validateNote } from "./noteModel";
 export const SHARED_OWNER = "@shared";
 async function responseJson(response: Response) {
   if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("Shared library is unavailable. Your saved copy is still available.");
@@ -21,7 +21,7 @@ export async function refreshSharedNotes(presentation: string): Promise<void> {
   });
 }
 export async function saveSharedNote(note: PresentationNote): Promise<PresentationNote> {
-  validateNote(note);
+  validateNote(note, MAX_SHARED_NOTE_BYTES);
   const passcode = (await getSettings()).bankPasscode;
   if (!passcode) throw new Error("Unlock Admin in Settings to edit shared notes.");
   const body = await responseJson(await fetch(`/api/notes?presentation=${encodeURIComponent(note.presentationId)}`, {

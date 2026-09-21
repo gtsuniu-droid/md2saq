@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleNotes } from "../../netlify/functions/notes";
+import { handleNotes, persistNoteImages } from "../../netlify/functions/notes";
 import type { PresentationNote } from "../data/types";
 const note: PresentationNote = { id: "shared-test", presentationId: "abdominal-pain", kind: "Core presentation", title: "Example", doc: { type: "doc", content: [] }, text: "Example", source: "", ownerId: "@shared", createdAt: 1, _m: 1, revision: "", deleted: false };
 function setup() {
@@ -13,6 +13,12 @@ function setup() {
   return { store, send };
 }
 describe("shared website notes", () => {
+  it("replaces inline pictures inside tables with permanent image URLs", async () => {
+    const doc = { type: "doc", content: [{ type: "table", content: [{ type: "image", attrs: { src: "data:image/png;base64,YQ==", alt: "Source figure" } }] }] };
+    const saved = await persistNoteImages(doc, async () => "/api/notes?image=hash");
+    expect(saved).toEqual({ type: "doc", content: [{ type: "table", content: [{ type: "image", attrs: { src: "/api/notes?image=hash", alt: "Source figure" } }] }] });
+    expect(doc.content[0].content[0].attrs.src).toContain("data:");
+  });
   it("requires admin access for writes but allows public reading", async () => {
     const { store, send } = setup();
     expect((await send(note, "wrong")).status).toBe(403);
