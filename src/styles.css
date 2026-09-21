@@ -476,3 +476,11 @@ tr.selected td { background: var(--teal-soft); }
   .session-set-row { flex-wrap: wrap; }
   .session-set-row small { white-space: normal; }
 }
+
+/* Clinical sections are independent of the source/type of a note. */
+.note-section-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin: 18px 0 12px; padding-bottom: 4px; }
+.note-section-tabs button { border: 0; border-radius: 6px 6px 0 0; background: transparent; padding: 10px 12px; border-bottom: 3px solid transparent; font-weight: 600; }
+.note-section-tabs button[aria-selected="true"] { color: var(--accent, #315acf); background: var(--bg, #f2f5fc); border-bottom-color: currentColor; }
+.note-section-tabs button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.note-section-count { margin-left: 6px; font-size: .75em; opacity: .65; }
+.notes-dock .note-section-tabs button { padding: 8px; font-size: .85rem; }

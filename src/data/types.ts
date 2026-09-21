@@ -1,8 +1,12 @@
+export type NoteSection = "overview" | "ddx" | "hx-exam" | "ix" | "mx" | "extras";
+
 /** One collapsible, rich-text note attached to a core presentation. */
 export interface PresentationNote {
   id: string;
   presentationId: string;
   kind: string;
+  /** Older notes without a section appear in Overview. */
+  section?: NoteSection;
   title: string;
   doc: unknown;
   text: string;

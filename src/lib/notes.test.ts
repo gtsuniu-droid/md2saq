@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../data/db";
 import type { PresentationNote } from "../data/types";
-import { noteIsNewer, validateNote } from "./noteModel";
+import { noteIsNewer, noteSection, validateNote } from "./noteModel";
 import { saveNote, syncNotes } from "./notes";
 import { fetchNotes, reconcileNote } from "./firebase";
 import { exportAll, importAll } from "./exportImport";
@@ -14,6 +14,17 @@ beforeEach(async () => {
   vi.mocked(reconcileNote).mockReset().mockImplementation(async (_uid, n) => n);
 });
 describe("presentation notes", () => {
+  it("keeps legacy notes in Overview and preserves clinical sections through backup", async () => {
+    expect(noteSection(note().section)).toBe("overview");
+    expect(noteSection("invalid-link")).toBe("overview");
+    expect(() => validateNote(note({ section: "other" as never }))).toThrow();
+    const saved = await saveNote(note({ ownerId: "", section: "ddx" }));
+    const backup = await exportAll();
+    expect(backup.notes?.[0].section).toBe("ddx");
+    await db.notes.delete(saved.id);
+    await importAll(backup);
+    expect((await db.notes.get(saved.id))?.section).toBe("ddx");
+  });
   it("saves rich content and rejects a stale editor without discarding its data", async () => {
     const saved = await saveNote(note({ ownerId: "" }));
     expect((await db.notes.get("n1"))?.title).toBe("Approach");
