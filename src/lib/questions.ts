@@ -3,7 +3,7 @@ import type { Question, SubPart } from "../data/types";
 /** Answerable parts of a question: its sub-parts, or one implicit part for the stem. */
 export function answerParts(q: Question): SubPart[] {
   if (q.parts.length > 0) return q.parts;
-  return [{ label: "", text: "", marks: q.marks, modelAnswer: q.modelAnswer }];
+  return [{ label: "", text: "", marks: q.marks, modelAnswer: q.modelAnswer, modelAnswerDoc: q.modelAnswerDoc }];
 }
 
 export function partLabel(label: string): string {

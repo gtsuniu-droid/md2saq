@@ -415,7 +415,7 @@ function stripRepeatedPrompt(answer: string, prompt: string): string {
 }
 
 /** Attach answer text per question number to question-like objects (parsed or stored), splitting across parts. */
-export function applyAnswers<Q extends { text: string; parts: SubPart[]; modelAnswer?: string }>(questions: Q[], byQuestion: Map<number, string>): number {
+export function applyAnswers<Q extends { text: string; parts: SubPart[]; modelAnswer?: string; modelAnswerDoc?: unknown }>(questions: Q[], byQuestion: Map<number, string>): number {
   let n = 0;
   questions.forEach((q, i) => {
     const text = byQuestion.get(i + 1);
@@ -425,6 +425,7 @@ export function applyAnswers<Q extends { text: string; parts: SubPart[]; modelAn
     if (draft.parts.length === 0) draft.modelAnswer = stripRepeatedPrompt(draft.modelAnswer ?? "", q.text.split("\n")[0]) || draft.modelAnswer;
     for (const p of draft.parts) if (p.modelAnswer) p.modelAnswer = stripRepeatedPrompt(p.modelAnswer, p.text) || p.modelAnswer;
     q.modelAnswer = draft.modelAnswer;
+    q.modelAnswerDoc = undefined;
     q.parts = draft.parts;
     n++;
   });

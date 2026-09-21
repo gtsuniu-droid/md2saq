@@ -13,6 +13,8 @@ import { isAdmin } from "../lib/admin";
 import { getSettings } from "../data/db";
 import { questionRef, requestSync } from "../lib/sync";
 import AutoTextarea from "../components/AutoTextarea";
+import ModelAnswerContent from "../components/ModelAnswerContent";
+import { hasModelAnswer, richAnswerDocument } from "../lib/modelAnswer";
 
 export default function MarkPage() {
   const { attemptId = "" } = useParams();
@@ -76,7 +78,7 @@ export default function MarkPage() {
   const hasModel = partsInfo.some((pi) => pi.points.length > 0);
   const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((p) => p.text), ...partsInfo.flatMap((pi) => pi.points)];
   const needsConfidence = hasModel && confidence === undefined && !existing;
-  const wholeModel = question.parts.length > 0 && question.modelAnswer && !question.parts.some((p) => p.modelAnswer);
+  const wholeModel = question.parts.length > 0 && hasModelAnswer(question) && (richAnswerDocument(question) || !question.parts.some(hasModelAnswer));
 
   const setPart = (label: string, patch: Partial<PartMark>) =>
     setParts((ps) => ps.map((p) => (p.label === label ? { ...p, ...patch } : p)));
@@ -196,7 +198,7 @@ export default function MarkPage() {
       {wholeModel && (
         <div className="card" style={{ marginBottom: "0.8rem" }}>
           <strong>Model answer</strong>
-          <div className="pre">{question.modelAnswer}</div>
+          <ModelAnswerContent answer={question} />
         </div>
       )}
 
@@ -226,7 +228,9 @@ export default function MarkPage() {
                 )}
               </div>
               <div>
-                <h3>{pi.points.length ? "Marking points" : "Model answer"}</h3>
+                <h3>{richAnswerDocument(pi.part) || !pi.points.length ? "Model answer" : "Marking points"}</h3>
+                {hasModelAnswer(pi.part) && richAnswerDocument(pi.part) && <ModelAnswerContent answer={pi.part} />}
+                {richAnswerDocument(pi.part) && pi.points.length > 0 && <h3>Marking checklist</h3>}
                 {pi.points.length > 0 ? (
                   <div className="points">
                     {pi.points.map((pt, idx) => (
@@ -237,7 +241,7 @@ export default function MarkPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="muted">No model answer for this part. Score it yourself.</p>
+                  <p className="muted">{hasModelAnswer(pi.part) ? "Use the model answer above to score this part." : "No model answer for this part. Score it yourself."}</p>
                 )}
                 <div className="row" style={{ marginTop: "0.6rem" }}>
                   <label style={{ margin: 0 }}>Score</label>

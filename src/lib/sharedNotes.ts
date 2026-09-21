@@ -1,5 +1,6 @@
 import { db, getSettings } from "../data/db";
 import type { PresentationNote } from "../data/types";
+import { PRESENTATION_BY_ID } from "../data/presentations";
 import { MAX_SHARED_NOTE_BYTES, noteIsNewer, validateNote } from "./noteModel";
 export const SHARED_OWNER = "@shared";
 async function responseJson(response: Response) {
@@ -8,8 +9,25 @@ async function responseJson(response: Response) {
   if (!response.ok) throw new Error(body.error || "Could not reach the shared library.");
   return body;
 }
+const INDEX_KEY = "sharedNotes.index";
+export async function getSharedNotesIndex(): Promise<string[]> {
+  const value = (await db.meta.get(INDEX_KEY))?.value;
+  if (typeof value !== "string") return [];
+  try { const ids = JSON.parse(value); return Array.isArray(ids) ? ids.filter((id) => typeof id === "string" && PRESENTATION_BY_ID.has(id)) : []; } catch { return []; }
+}
+let indexRefresh: Promise<void> | null = null;
+/** A small availability index, fetched on entry or manual refresh, never on a timer. */
+export function refreshSharedNotesIndex(): Promise<void> {
+  if (indexRefresh) return indexRefresh;
+  indexRefresh = (async () => {
+    const body = await responseJson(await fetch("/api/notes?index=1", { cache: "no-store" }));
+    if (!Array.isArray(body.presentations) || body.presentations.some((id: unknown) => typeof id !== "string" || !PRESENTATION_BY_ID.has(id))) throw new Error("Could not load the shared library index. Your saved notes are still available.");
+    await db.meta.put({ id: INDEX_KEY, value: JSON.stringify([...new Set(body.presentations)]) });
+  })().finally(() => { indexRefresh = null; });
+  return indexRefresh;
+}
 export async function refreshSharedNotes(presentation: string): Promise<void> {
-  const body = await responseJson(await fetch(`/api/notes?presentation=${encodeURIComponent(presentation)}`));
+  const body = await responseJson(await fetch(`/api/notes?presentation=${encodeURIComponent(presentation)}`, { cache: "no-store" }));
   if (!Array.isArray(body.notes)) throw new Error("Invalid shared library response.");
   const notes: PresentationNote[] = body.notes;
   for (const n of notes) { validateNote(n); if (n.ownerId !== SHARED_OWNER || n.presentationId !== presentation || !n.id.startsWith("shared-")) throw new Error("Invalid shared note."); }

@@ -1,15 +1,14 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { db, getSettings, patchSettings } from "../data/db";
+import { db, patchSettings } from "../data/db";
 import PasscodeGate from "../components/PasscodeGate";
 import { CreateTools } from "./CreatePage";
-import { BankPasscodeError, deleteBankSet, listBank, syncFromBank, type BankEntry } from "../lib/bank";
+import { BankPasscodeError, listBank, syncFromBank, type BankEntry } from "../lib/bank";
 import { formatDate } from "../lib/questions";
 import { loadSummaries } from "../lib/sets";
 import { fullLabel } from "../lib/tree";
-import { bankErrorMessage, pushToBank } from "../lib/share";
-import { recordDeletes } from "../lib/sync";
+import { bankErrorMessage, deleteSetEverywhere, pushToBank, savedPasscode } from "../lib/share";
 import { moveSetToPresentation } from "../lib/movePresentation";
 import { presentationName } from "../data/presentations";
 import PresentationSelect from "../components/PresentationSelect";
@@ -105,21 +104,7 @@ function MasterContents() {
     if (!confirm(`Delete ${what} for everyone, with every attempt and mark on this device?`)) return;
     setBusy("delete");
     try {
-      const code = (await getSettings()).bankPasscode ?? "";
-      for (const s of targets) {
-        if (s.set.bankId && bankById.has(s.set.bankId)) await deleteBankSet(s.set.bankId, code);
-        const qids = s.questions.map((q) => q.id);
-        const goneAttempts = (await db.attempts.where("questionId").anyOf(qids).primaryKeys()) as string[];
-        const goneMarks = (await db.marks.where("questionId").anyOf(qids).primaryKeys()) as string[];
-        await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
-          await db.marks.where("questionId").anyOf(qids).delete();
-          await db.attempts.where("questionId").anyOf(qids).delete();
-          await db.questions.bulkDelete(qids);
-          await db.sets.delete(s.set.id);
-        });
-        await recordDeletes("attempts", goneAttempts);
-        await recordDeletes("marks", goneMarks);
-      }
+      for (const s of targets) await deleteSetEverywhere(s.set.id);
       setSelected(new Set());
       await refreshBank();
     } catch (e) {
@@ -148,12 +133,29 @@ function MasterContents() {
     }
   };
 
+  /** Publish every selected set after a bulk change; says what happened. */
+  const publishAfter = async (did: string): Promise<void> => {
+    const n = selected.size;
+    const what = `${did} ${n} set${n === 1 ? "" : "s"}`;
+    if (!(await savedPasscode())) {
+      setMessage(`${what}. Publish to share the change.`);
+      return;
+    }
+    try {
+      for (const id of selected) await pushToBank(id);
+      setMessage(`${what} and published.`);
+      await refreshBank();
+    } catch (e) {
+      setMessage(`${what} here, not published: ${bankErrorMessage(e)}`);
+    }
+  };
+
   const moveSelected = async (presentationId: string) => {
     if (!presentationId || selected.size === 0) return;
     setBusy("move");
     try {
       for (const id of selected) await moveSetToPresentation(id, presentationId);
-      setMessage(`Moved ${selected.size} set${selected.size === 1 ? "" : "s"} to ${presentationName(presentationId)}. Publish to share the change.`);
+      await publishAfter(`Moved to ${presentationName(presentationId)}:`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -174,7 +176,7 @@ function MasterContents() {
         await db.sets.update(id, { tags: merged, updatedAt: Date.now(), dirty: true });
       }
       setBulkTag("");
-      setMessage(`Tagged ${selected.size} set${selected.size === 1 ? "" : "s"}. Publish to share the change.`);
+      await publishAfter("Tagged");
     } finally {
       setBusy(null);
     }

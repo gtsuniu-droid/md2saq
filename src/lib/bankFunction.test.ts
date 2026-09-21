@@ -58,6 +58,16 @@ describe("bank function", () => {
     expect(list.sets).toHaveLength(1);
   });
 
+  it("publishes and retrieves rich model answers without dropping pictures or text styles", async () => {
+    const doc = { type: "doc", content: [{ type: "image", attrs: { src: "data:image/png;base64,aW1hZ2U=", width: 250, height: 150 } }] };
+    const res = await post({ format: "saq-practice-set", version: 1, set: { id: "rich", name: "Rich answers", createdAt: 1 }, questions: [{ id: "q", text: "Question", parts: [{ label: "a", text: "Part", modelAnswerDoc: doc }], modelAnswerDoc: doc, presentations: [] }] });
+    expect(res.status).toBe(201);
+    const entry = await res.json() as { id: string };
+    const pack = await (await get(`?id=${entry.id}`)).json() as { questions: { modelAnswerDoc: unknown; parts: { modelAnswerDoc: unknown }[] }[] };
+    expect(pack.questions[0].modelAnswerDoc).toEqual(doc);
+    expect(pack.questions[0].parts[0].modelAnswerDoc).toEqual(doc);
+  });
+
   it("refuses text with no parsable questions", async () => {
     const res = await post({ format: "saq-practice-text", name: "a", text: "   " });
     expect(res.status).toBe(400);

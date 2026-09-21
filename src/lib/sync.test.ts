@@ -13,7 +13,9 @@ describe("sync helpers", () => {
     const s: Settings = { id: "settings", _m: 5, minutesPerMark: 2, autoImportBank: true, ambossHighlights: true, ambossOnPaper: false, bankPasscode: "secret", ambossToken: "tok", lastExportAt: 9 };
     const cloud = settingsForCloud(s) as Record<string, unknown>;
     expect(cloud.minutesPerMark).toBe(2);
-    expect(cloud.ambossToken).toBe("tok");
+    expect(cloud.ambossToken).toBeUndefined();
+    expect(cloud.ambossUser).toBeUndefined();
+    expect(cloud.ambossAccess).toBeUndefined();
     expect(cloud.bankPasscode).toBeUndefined();
     expect(cloud.lastExportAt).toBeUndefined();
     expect(cloud._m).toBe(5);

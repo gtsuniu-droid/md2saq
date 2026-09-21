@@ -1,3 +1,4 @@
+import AmbossSettings from "../components/AmbossSettings";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
 import { db, patchSettings, getSettings } from "../data/db";
@@ -8,7 +9,7 @@ import { syncFromBank } from "../lib/bank";
 import MasterPage from "./MasterPage";
 import { useEffect } from "react";
 import { useLocation } from "react-router";
-import { AmbossAuthError, ambossCheck, ambossLogin, ambossLogout } from "../lib/amboss";
+import { ambossLogout } from "../lib/amboss";
 import { cloudConfigured, signInWithGoogle, signOutCloud } from "../lib/firebase";
 import { isAdmin } from "../lib/admin";
 import { recordDeletes, resetCursors, syncNow } from "../lib/sync";
@@ -17,10 +18,6 @@ export default function SettingsPage() {
   const settings = useLiveQuery(async () => await getSettings(), []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [ambossUser, setAmbossUser] = useState("");
-  const [ambossPass, setAmbossPass] = useState("");
-  const [ambossBusy, setAmbossBusy] = useState(false);
-  const [ambossMsg, setAmbossMsg] = useState<string | null>(null);
   const [cloudMsg, setCloudMsg] = useState<string | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
 
@@ -64,7 +61,8 @@ export default function SettingsPage() {
       await recordDeletes("marks", goneMarks);
       await syncNow().catch(() => undefined);
     }
-    setMessage("Deleted.");
+    await ambossLogout();
+    setMessage("Deleted. Saved AMBOSS login removed from this device.");
   };
 
   return (
@@ -137,52 +135,7 @@ export default function SettingsPage() {
         {cloudMsg && <p style={{ margin: 0 }}>{cloudMsg}</p>}
       </div>
 
-      <h2>AMBOSS</h2>
-      <div className="card stack">
-        {settings.ambossToken ? (
-          <>
-            <div className="row spread">
-              <span>Logged in{settings.ambossUser?.firstName ? ` as ${settings.ambossUser.firstName}` : ""}{settings.ambossAccess ? `, ${settings.ambossAccess.replace("_", " ")}` : ""}</span>
-              <span className="row">
-                <button className="small" onClick={async () => { setAmbossMsg((await ambossCheck()) ? "AMBOSS session is valid." : "AMBOSS rejected the session; log in again."); }}>Check</button>
-                <button className="small" onClick={async () => { await ambossLogout(); setAmbossMsg("Logged out of AMBOSS."); }}>Log out</button>
-              </span>
-            </div>
-            <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
-              <input type="checkbox" checked={settings.ambossHighlights} onChange={(e) => patchSettings({ ambossHighlights: e.target.checked })} />
-              Underline AMBOSS terms on questions and marking (click a term for its definition)
-            </label>
-            <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
-              <input type="checkbox" checked={settings.ambossOnPaper} onChange={(e) => patchSettings({ ambossOnPaper: e.target.checked })} />
-              Also while sitting a paper
-            </label>
-          </>
-        ) : (
-          <>
-            <p className="muted" style={{ margin: 0 }}>
-              Underline medical terms and open their AMBOSS definitions, as the AMBOSS Anki add-on does. Your password is sent to AMBOSS and not kept; only the returned token stays on this device.
-            </p>
-            <div className="row">
-              <input type="text" placeholder="AMBOSS email" autoComplete="username" value={ambossUser} onChange={(e) => setAmbossUser(e.target.value)} />
-              <input type="password" placeholder="AMBOSS password" autoComplete="current-password" value={ambossPass} onChange={(e) => setAmbossPass(e.target.value)} />
-              <button className="primary" disabled={!ambossUser || !ambossPass || ambossBusy} onClick={async () => {
-                setAmbossBusy(true);
-                setAmbossMsg(null);
-                try {
-                  const u = await ambossLogin(ambossUser.trim(), ambossPass);
-                  setAmbossMsg(`Logged in${u.firstName ? ` as ${u.firstName}` : ""}.`);
-                  setAmbossPass("");
-                } catch (e) {
-                  setAmbossMsg(e instanceof AmbossAuthError ? e.message : `Login failed: ${e instanceof Error ? e.message : String(e)}`);
-                } finally {
-                  setAmbossBusy(false);
-                }
-              }}>Log in</button>
-            </div>
-          </>
-        )}
-        {ambossMsg && <p style={{ margin: 0 }}>{ambossMsg}</p>}
-      </div>
+      <AmbossSettings settings={settings} />
 
       <h2>Question library</h2>
       <div className="card stack">

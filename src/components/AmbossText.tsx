@@ -60,15 +60,17 @@ export default function AmbossText({ cacheKey, texts, text, disabled = false, cl
       {segments.map((s, i) => {
         const inner = s.hl ? <mark className="user-hl">{s.text}</mark> : s.text;
         return s.pgId ? (
-          <span
+          <button
+            type="button"
             key={i}
-            className="amboss-marker"
+            className="amboss-marker amboss-note-term"
+            aria-label={`${s.term}: open AMBOSS reference`}
             data-phrase-id={s.pgId}
             data-phrase-term={s.term}
             onClick={() => openAmbossPanel({ pgId: s.pgId!, term: s.term! })}
           >
             {inner}
-          </span>
+          </button>
         ) : (
           <span key={i}>{inner}</span>
         );

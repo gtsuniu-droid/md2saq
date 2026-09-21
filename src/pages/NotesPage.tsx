@@ -5,10 +5,11 @@ import { db, getSettings, newId } from "../data/db";
 import type { PresentationNote } from "../data/types";
 import { PRESENTATIONS, PRESENTATION_BY_ID } from "../data/presentations";
 import { isAdmin } from "../lib/admin";
-import { refreshSharedNotes, saveSharedNote, SHARED_OWNER } from "../lib/sharedNotes";
+import { getSharedNotesIndex, refreshSharedNotesIndex, refreshSharedNotes, saveSharedNote, SHARED_OWNER } from "../lib/sharedNotes";
 import { cloudConfigured } from "../lib/firebase";
 import { NOTE_KINDS, NOTE_SECTIONS, noteSection } from "../lib/noteModel";
 import { getNotesSyncState, saveNote, subscribeNotesSync, syncNotes } from "../lib/notes";
+import { AmbossNotesStatus } from "../components/AmbossNotes";
 import NoteEditor from "../components/NoteEditor";
 
 import { NoteContent, NoteReadingControls, useNoteReadingSize } from "../components/NoteReading";
@@ -33,8 +34,13 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
   const presentation = PRESENTATION_BY_ID.get(selected);
   const [library, setLibrary] = useState<"shared" | "private">("shared");
   const [sharedError, setSharedError] = useState("");
-  const refresh = () => { setSharedError(""); void refreshSharedNotes(selected).catch((e) => setSharedError(e.message)); };
-  useEffect(() => { refresh(); const onFocus = () => refresh(); window.addEventListener("focus", onFocus); return () => window.removeEventListener("focus", onFocus); }, [selected]);
+  const sharedIndex = useLiveQuery(getSharedNotesIndex, []);
+  const [indexError, setIndexError] = useState("");
+  const refreshIndex = () => { setIndexError(""); void refreshSharedNotesIndex().catch((e) => setIndexError(e.message)); };
+  const refreshPresentation = () => { setSharedError(""); void refreshSharedNotes(selected).catch((e) => setSharedError(e.message)); };
+  const refresh = () => { refreshIndex(); refreshPresentation(); };
+  useEffect(() => { refreshIndex(); }, []);
+  useEffect(() => { refreshPresentation(); }, [selected]);
   const notes = useLiveQuery(() => db.notes.filter((n) => (library === "shared" ? n.ownerId === SHARED_OWNER : n.ownerId === owner || n.ownerId === "")).toArray(), [owner, library]);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -106,13 +112,14 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
     </div>
     <div className="seg" role="group" aria-label="Notes library"><button className={library === "shared" ? "on" : ""} onClick={() => { setLibrary("shared"); setKind(""); setTrash(false); }}>Shared library</button><button className={library === "private" ? "on" : ""} onClick={() => { setLibrary("private"); setKind(""); setTrash(false); }}>My private notes</button></div>
     {library === "shared" && <p className="notes-notice">Shared with everyone using this website. {admin ? "Your saved edits publish to the library." : "An admin can add and edit notes."} <button className="small" onClick={refresh}>Refresh library</button></p>}
-    {library === "shared" && sharedError && <p role="alert">{sharedError}</p>}
+    {library === "shared" && (sharedError || indexError) && <p role="alert">{sharedError || indexError}</p>}
     {library === "private" && !signedIn && <p className="notes-notice"><Link to="/settings">Sign in in Settings</Link> {cloudConfigured() ? "to sync your notes between devices." : "when cloud sync is configured to keep your notes across devices."} Your notes stay private.</p>}
     {sync.status === "error" && signedIn && <p role="alert" className="notes-notice">Saved notes are still on this device. Cloud sync failed: {sync.message}</p>}
     <label className="sr-only" htmlFor="notes-search">Search presentations and notes</label>
     <input id="notes-search" type="search" className="notes-search" placeholder="Search presentations and notes…" value={search} onChange={(e) => setSearch(e.target.value)} />
-    {error && <p role="alert" className="notes-error">{error}</p>}
+    {error && !draft && <p role="alert" className="notes-error">{error}</p>}
     {message && <p role="status" className="muted">{message}</p>}
+    {draft?.ownerId === SHARED_OWNER && draft.revision && notes?.some((n) => n.id === draft.id && n.revision !== draft.revision) && <p role="alert" className="notes-notice">This note was updated elsewhere. Your draft is safe here; copy your changes before reopening the latest version.</p>}
     {draft && <form className="note-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <div className="row spread"><h2>{draft.revision ? "Edit note" : "New note"}</h2><span className="muted">{draft.ownerId === SHARED_OWNER ? "Shared note · saved edits are public" : "Private draft kept on this device"}</span></div>
       <div className="note-fields">
@@ -124,13 +131,15 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
       <label>Title<input aria-label="Note title" type="text" autoFocus required maxLength={200} placeholder="e.g. Approach to abdominal pain" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
       <NoteEditor key={draft.id} initial={draft.doc} onBusyChange={setAddingImages} onChange={(doc, text) => setDraft((d) => d ? { ...d, doc, text } : d)} />
       <label>Source (optional)<input aria-label="Note source" type="text" placeholder="Book, lecture, or page link" value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} /></label>
+      {error && <p role="alert" className="notes-error">{error} Your draft has been kept.</p>}
       <div className="row note-form-actions"><button className="primary" disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : saving ? "Saving…" : draft.ownerId === SHARED_OWNER ? "Publish shared note" : "Save note"}</button><button type="button" disabled={saving || addingImages} onClick={() => { if (confirm("Discard this unfinished draft?")) finishDraft(); }}>Discard draft</button></div>
     </form>}
     <div className="notes-layout">
       <aside className="notes-sidebar" aria-label="Core presentations"><div className="notes-sidebar-heading">Core presentations</div>
         {filteredPresentations.map((p) => {
           const count = (notes ?? []).filter((n) => n.presentationId === p.id && !n.deleted).length;
-          return <button key={p.id} className={p.id === selected ? "selected" : ""} aria-current={p.id === selected ? "page" : undefined} onClick={() => { setParams({ presentation: p.id, section }); setKind(""); setTrash(false); }}><span>{p.emoji} {p.name}</span><small>{count || "—"}</small></button>;
+          const savedInCloud = library === "shared" && (sharedIndex?.includes(p.id) || (notes ?? []).some((n) => n.presentationId === p.id));
+          return <button key={p.id} className={p.id === selected ? "selected" : ""} aria-current={p.id === selected ? "page" : undefined} onClick={() => { setParams({ presentation: p.id, section }); setKind(""); setTrash(false); }}><span>{p.emoji} {p.name}</span><small title={savedInCloud ? "Notes saved in the shared library. Open this presentation to view them." : undefined}>{savedInCloud ? "Saved" : count || "—"}</small></button>;
         })}
         {!filteredPresentations.length && <p className="muted">No matching presentations.</p>}
       </aside>
@@ -141,6 +150,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
         <div id="presentation-sections-panel" role="tabpanel" aria-labelledby={`presentation-sections-tab-${section}`} tabIndex={0}>
         <p className="muted">{sectionInfo.description}</p>
         <NoteReadingControls size={readingSize} onChange={setReadingSize} />
+        <AmbossNotesStatus />
         <div className="note-kind-pills" aria-label="Filter note types"><button aria-pressed={!kind} onClick={() => setKind("")}>All types <span>{sectionNotes.length}</span></button>{kinds.map((k) => <button key={k} aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{k}</button>)}</div>
         <div className="row spread notes-list-tools"><span className="muted">{visible.length} {trash ? "deleted " : ""}note{visible.length === 1 ? "" : "s"}</span><span className="row"><button className="small link" onClick={() => setExpanded(new Set(visible.map((n) => n.id)))}>Expand all</button><button className="small link" onClick={() => setExpanded(new Set())}>Collapse all</button></span></div>
         {notes === undefined ? <p>Loading…</p> : !visible.length ? <div className="notes-empty"><span aria-hidden="true">✎</span><h3>{q || kind ? "No matching notes" : trash ? "No deleted notes" : `No ${sectionInfo.label} notes yet`}</h3><p>{q || kind ? "Try another search or note type." : "Add a note to this section, then paste or write your content."}</p>{!trash && !q && !kind && <div className="row notes-suggestions">{["Lecture Notes", "First Aid", "Sketchy", "My Notes"].map((k) => <span key={k}>{k}</span>)}</div>}</div> : visible.map((n) => {

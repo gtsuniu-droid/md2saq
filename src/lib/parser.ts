@@ -7,6 +7,7 @@ export interface ParsedQuestion {
   text: string;
   marks?: number;
   modelAnswer?: string;
+  modelAnswerDoc?: unknown;
   parts: SubPart[];
 }
 
@@ -327,6 +328,7 @@ export function attachModelAnswer(q: ParsedQuestion, modelAnswer: string): void 
   const text = modelAnswer.trim();
   if (!text) return;
   q.modelAnswer = text;
+  q.modelAnswerDoc = undefined;
   if (q.parts.length > 0) distributeModelAnswer(text, q.parts);
 }
 
@@ -348,7 +350,10 @@ function distributeModelAnswer(modelAnswer: string, parts: SubPart[]): void {
   if (sections.size < Math.min(2, parts.length)) return;
   for (const part of parts) {
     const sec = sections.get(part.label);
-    if (sec) part.modelAnswer = sec.join("\n").trim() || undefined;
+    if (sec) {
+      part.modelAnswer = sec.join("\n").trim() || undefined;
+      part.modelAnswerDoc = undefined;
+    }
   }
 }
 

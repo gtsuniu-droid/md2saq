@@ -14,6 +14,7 @@ import { isAdmin } from "../lib/admin";
 import { bankErrorMessage, pushToBank } from "../lib/share";
 import { recordDeletes } from "../lib/sync";
 import AutoTextarea from "../components/AutoTextarea";
+import ModelAnswerEditor, { useModelAnswerImages } from "../components/ModelAnswerEditor";
 
 interface DraftQuestion extends Question {
   key: string;
@@ -36,6 +37,7 @@ export default function SetEditPage() {
   const known = useLiveQuery(async () => knownTags((await loadSummaries()).flatMap((s) => s.set.tags ?? [])), []) ?? [];
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { addingImages, onBusyChange } = useModelAnswerImages();
   const [seeded, setSeeded] = useState(false);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
@@ -144,6 +146,7 @@ export default function SetEditPage() {
   };
 
   const save = async () => {
+    if (addingImages || busy) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -222,7 +225,7 @@ export default function SetEditPage() {
               <span className="row">
                 <label style={{ margin: 0 }}>Marks</label>
                 <input type="number" min={0} value={q.marks ?? ""} onChange={(e) => patchQ(q.key, { marks: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                <button className="small danger" onClick={() => removeQ(q.key)}>Remove</button>
+                <button className="small danger" disabled={addingImages} onClick={() => removeQ(q.key)}>Remove</button>
               </span>
             </div>
             {(q.stems ?? []).map((st, si) => (
@@ -261,16 +264,16 @@ export default function SetEditPage() {
                   <span style={{ flex: 1 }} />
                   <label style={{ margin: 0 }}>Marks</label>
                   <input type="number" min={0} value={p.marks ?? ""} onChange={(e) => patchPart(q.key, pi, { marks: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                  <button className="small danger" onClick={() => removePart(q.key, pi)}>Remove part</button>
+                  <button className="small danger" disabled={addingImages} onClick={() => removePart(q.key, pi)}>Remove part</button>
                 </div>
                 <AutoTextarea value={p.text} style={{ minHeight: "3rem", marginTop: "0.4rem" }} onChange={(e) => patchPart(q.key, pi, { text: e.target.value })} />
                 <label>Model answer for this part</label>
-                <AutoTextarea value={p.modelAnswer ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchPart(q.key, pi, { modelAnswer: e.target.value || undefined })} />
+                <ModelAnswerEditor answer={p} label={`Model answer for question ${i + 1}, part ${p.label}`} onChange={(value) => patchPart(q.key, pi, value)} onBusyChange={(value) => onBusyChange(`${q.key}:part:${pi}`, value)} />
               </div>
             ))}
             <button className="small link" style={{ marginTop: "0.4rem" }} onClick={() => addPart(q.key)}>+ Add part</button>
             <label>{q.parts.length ? "Model answer for the whole question (optional)" : "Model answer, one marking point per line"}</label>
-            <AutoTextarea value={q.modelAnswer ?? ""} style={{ minHeight: "3rem" }} onChange={(e) => patchQ(q.key, { modelAnswer: e.target.value || undefined })} />
+            <ModelAnswerEditor answer={q} label={`Model answer for question ${i + 1}`} onChange={(value) => patchQ(q.key, value)} onBusyChange={(value) => onBusyChange(`${q.key}:whole`, value)} />
             <label>Presentations</label>
             <PresentationPicker selected={q.presentations} onChange={(ids) => patchQ(q.key, { presentations: ids })} />
           </div>
@@ -282,7 +285,7 @@ export default function SetEditPage() {
       </div>
 
       <div className="row" style={{ marginTop: "1.5rem" }}>
-        <button className="primary" onClick={save} disabled={busy}>{data.canPush ? "Save and publish" : "Save"}</button>
+        <button className="primary" onClick={save} disabled={busy || addingImages}>{addingImages ? "Adding pictures…" : data.canPush ? "Save and publish" : "Save"}</button>
         <Link to={`/set/${set.id}`}>Discard changes</Link>
         {message && <span style={{ color: "var(--bad)" }}>{message}</span>}
       </div>

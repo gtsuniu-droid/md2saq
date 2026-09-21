@@ -5,7 +5,7 @@ import { NoteImage } from "../lib/noteImage";
 import { TableKit } from "@tiptap/extension-table";
 import { TextStyle, Color, FontSize } from "@tiptap/extension-text-style";
 import DOMPurify from "dompurify";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { compressImage } from "../lib/images";
 import type { Transaction } from "@tiptap/pm/state";
 
@@ -14,7 +14,7 @@ export function noteHtml(doc: unknown): string {
   try { return DOMPurify.sanitize(generateHTML(doc as JSONContent, NOTE_EXTENSIONS)); } catch { return ""; }
 }
 
-export default function NoteEditor({ initial, onChange, onBusyChange }: { initial: unknown; onChange: (doc: unknown, text: string) => void; onBusyChange?: (busy: boolean) => void }) {
+export default function NoteEditor({ initial, onChange, onBusyChange, label = "Note content", syncContent = false }: { initial: unknown; onChange: (doc: unknown, text: string) => void; onBusyChange?: (busy: boolean) => void; label?: string; syncContent?: boolean }) {
   const imageInput = useRef<HTMLInputElement>(null);
   const colourInput = useRef<HTMLInputElement>(null);
   const colourMenu = useRef<HTMLDetailsElement>(null);
@@ -26,7 +26,7 @@ export default function NoteEditor({ initial, onChange, onBusyChange }: { initia
     extensions: NOTE_EXTENSIONS,
     content: noteHtml(initial),
     editorProps: {
-      attributes: { "aria-label": "Note content", role: "textbox", "aria-multiline": "true" },
+      attributes: { "aria-label": label, role: "textbox", "aria-multiline": "true" },
       transformPastedHTML: (html) => DOMPurify.sanitize(html),
       handlePaste: (_view, event) => {
         const files = [...(event.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
@@ -47,6 +47,11 @@ export default function NoteEditor({ initial, onChange, onBusyChange }: { initia
     },
     onUpdate: ({ editor }) => onChange(editor.getJSON(), editor.getText()),
   });
+  useEffect(() => {
+    if (syncContent && editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(initial)) {
+      editor.commands.setContent(noteHtml(initial), { emitUpdate: false });
+    }
+  }, [editor, initial, syncContent]);
   const active = useEditorState({ editor, selector: ({ editor }) => ({ bold: editor.isActive("bold"), italic: editor.isActive("italic"), highlight: editor.isActive("highlight"), table: editor.isActive("table"), image: editor.isActive("image"), colour: editor.getAttributes("textStyle").color as string | undefined, fontSize: editor.getAttributes("textStyle").fontSize as string | undefined }) });
   async function addImages(files: File[], dropPosition?: number) {
     if (!editor || !files.length) return;
@@ -78,10 +83,11 @@ export default function NoteEditor({ initial, onChange, onBusyChange }: { initia
     if (colourMenu.current) colourMenu.current.open = false;
   };
   if (!editor) return null;
-  return <div className={`note-editor${draggingImages ? " image-drop-target" : ""}`} onDragOver={(e) => {
+  return <div className={`note-editor${draggingImages ? " image-drop-target" : ""}`} onDragStart={(e) => e.stopPropagation()} onDragOver={(e) => {
+    e.stopPropagation();
     if ([...e.dataTransfer.items].some((item) => item.kind === "file" && item.type.startsWith("image/"))) { e.preventDefault(); setDraggingImages(true); }
-  }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingImages(false); }} onDrop={() => setDraggingImages(false)}>
-    <div className="toolbar row" aria-label="Note formatting">
+  }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingImages(false); }} onDrop={(e) => { e.stopPropagation(); setDraggingImages(false); }}>
+    <div className="toolbar row" aria-label={`${label} formatting`}>
       <button type="button" aria-label="Bold" aria-pressed={active?.bold} onClick={() => editor.chain().focus().toggleBold().run()}><b>B</b></button>
       <button type="button" aria-label="Italic" aria-pressed={active?.italic} onClick={() => editor.chain().focus().toggleItalic().run()}><i>I</i></button>
       <button type="button" aria-label="Highlight" aria-pressed={active?.highlight} onClick={() => editor.chain().focus().toggleHighlight().run()}><mark>H</mark></button>

@@ -8,9 +8,8 @@ import { formatDate, formatDuration, partLabel, totalMarks, truncate } from "../
 import { loadSummaries, setLabel, startSet, suggestedMinutesFor } from "../lib/sets";
 import { fullLabel } from "../lib/tree";
 import { isAdmin } from "../lib/admin";
-import { recordDeletes } from "../lib/sync";
 import { moveSetToPresentation } from "../lib/movePresentation";
-import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
+import { bankErrorMessage, deleteSetEverywhere, pushToBank, savedPasscode } from "../lib/share";
 import PresentationSelect from "../components/PresentationSelect";
 
 export default function SetPage() {
@@ -72,19 +71,14 @@ export default function SetPage() {
   };
 
   const remove = async () => {
-    if (!confirm(`Delete ${setLabel(set)} with its ${questions.length} questions and every attempt?`)) return;
-    const qids = questions.map((q) => q.id);
-    const goneAttempts = (await db.attempts.where("questionId").anyOf(qids).primaryKeys()) as string[];
-    const goneMarks = (await db.marks.where("questionId").anyOf(qids).primaryKeys()) as string[];
-    await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
-      await db.marks.where("questionId").anyOf(qids).delete();
-      await db.attempts.where("questionId").anyOf(qids).delete();
-      await db.questions.bulkDelete(qids);
-      await db.sets.delete(set.id);
-    });
-    await recordDeletes("attempts", goneAttempts);
-    await recordDeletes("marks", goneMarks);
-    nav("/browse");
+    const everyone = !!set.bankId && unlocked;
+    if (!confirm(`Delete ${setLabel(set)}${everyone ? " for everyone" : ""}, with its ${questions.length} questions and every attempt on this device?`)) return;
+    try {
+      await deleteSetEverywhere(set.id);
+      nav("/browse");
+    } catch (e) {
+      setMoveMessage(`Not deleted: ${bankErrorMessage(e)}`);
+    }
   };
 
   return (
@@ -127,7 +121,7 @@ export default function SetPage() {
         <span className="muted">min{set.suggestedMinutes ? ", as the paper suggests" : ""}. 0 for no timer.</span>
         <span style={{ flex: 1 }} />
         {unlocked && <Link to={`/set/${set.id}/edit`}><button className="small">Edit</button></Link>}
-        <button className="small danger" onClick={remove}>Delete</button>
+        {(!set.bankId || unlocked) && <button className="small danger" onClick={remove} title={set.bankId ? "Removes the set from the library for everyone" : undefined}>Delete</button>}
       </div>
       <p className="muted">Practice marks each question as you go. Exam reveals nothing until the whole paper is submitted.</p>
 

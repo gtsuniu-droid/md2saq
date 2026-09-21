@@ -1,5 +1,6 @@
 import { db, patchSettings, getSettings } from "../data/db";
-import { BankPasscodeError, updateBankSet, uploadBankSet } from "./bank";
+import { BankPasscodeError, deleteBankSet, updateBankSet, uploadBankSet } from "./bank";
+import { recordDeletes } from "./sync";
 import { exportSet } from "./exportImport";
 
 export { BankPasscodeError as PasscodeError };
@@ -54,4 +55,39 @@ export function bankErrorMessage(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/blobs|environment|fetch|network|500|502|503|504/i.test(msg)) return "the server is not reachable from here right now.";
   return msg;
+}
+
+/**
+ * Delete a set here and, when it is published and the admin passcode is on
+ * this device, from the library too, so it does not come back on the next
+ * sync. Returns where it was removed from.
+ */
+export async function deleteSetEverywhere(setId: string): Promise<{ local: boolean; published: boolean }> {
+  const set = await db.sets.get(setId);
+  if (!set) return { local: false, published: false };
+  let published = false;
+  if (set.bankId) {
+    const passcode = await savedPasscode();
+    if (passcode) {
+      try {
+        await deleteBankSet(set.bankId, passcode);
+        published = true;
+      } catch (e) {
+        // Already gone from the library: nothing to remove there.
+        if (!(e instanceof Error && /not found/i.test(e.message))) throw e;
+      }
+    }
+  }
+  const qids = (await db.questions.where("setId").equals(setId).primaryKeys()) as string[];
+  const goneAttempts = qids.length ? ((await db.attempts.where("questionId").anyOf(qids).primaryKeys()) as string[]) : [];
+  const goneMarks = qids.length ? ((await db.marks.where("questionId").anyOf(qids).primaryKeys()) as string[]) : [];
+  await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
+    await db.marks.bulkDelete(goneMarks);
+    await db.attempts.bulkDelete(goneAttempts);
+    await db.questions.bulkDelete(qids);
+    await db.sets.delete(setId);
+  });
+  await recordDeletes("attempts", goneAttempts);
+  await recordDeletes("marks", goneMarks);
+  return { local: true, published };
 }

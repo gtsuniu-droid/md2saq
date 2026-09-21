@@ -22,6 +22,8 @@ import { knownTags, suggestConditionTags } from "../lib/tags";
 import TagEditor from "../components/TagEditor";
 import { FORMAT_GUIDE } from "../data/formatGuide";
 import AutoTextarea from "../components/AutoTextarea";
+import ModelAnswerEditor, { useModelAnswerImages } from "../components/ModelAnswerEditor";
+import { mergeModelAnswers } from "../lib/modelAnswer";
 
 interface Draft extends ParsedQuestion {
   key: string;
@@ -98,6 +100,7 @@ async function saveDrafts(name: string, source: string, drafts: Draft[], meta: P
     text: d.text,
     marks: d.marks,
     modelAnswer: d.modelAnswer,
+    modelAnswerDoc: d.modelAnswerDoc,
     parts: d.parts,
     presentations: d.presentations,
     tags: [],
@@ -147,6 +150,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const summaries = useLiveQuery(loadSummaries, []) ?? [];
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
+  const { addingImages, onBusyChange } = useModelAnswerImages();
   const [notice, setNotice] = useState<{ text: string; setId?: string; error?: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -193,7 +197,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
         text: [prev.text, cur.text].filter(Boolean).join("\n"),
         parts: [...prev.parts, ...cur.parts],
         marks: prev.marks !== undefined || cur.marks !== undefined ? (prev.marks ?? 0) + (cur.marks ?? 0) : undefined,
-        modelAnswer: [prev.modelAnswer, cur.modelAnswer].filter(Boolean).join("\n") || undefined,
+        ...mergeModelAnswers(prev, cur),
         presentations: [...new Set([...prev.presentations, ...cur.presentations])],
       };
       return [...ds.slice(0, i - 1), merged, ...ds.slice(i + 1)];
@@ -239,7 +243,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const typedTags = (): string[] | undefined => (tags.length ? tags : undefined);
 
   const savePaste = async () => {
-    if (drafts.length === 0) return;
+    if (drafts.length === 0 || addingImages || saving) return;
     setSaving(true);
     setNotice(null);
     const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags() });
@@ -500,7 +504,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
         Or paste below. Formats: numbered (1. / Q1 / Question 1), blank-line separated, sub-parts as (a) or 1),
         marks as (4 marks) or [4], and model answers after a line starting with "Answer:" or "Model answer:".
       </p>
-      <AutoTextarea value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste here" style={{ minHeight: "12rem" }} />
+      <AutoTextarea value={raw} disabled={addingImages} onChange={(e) => setRaw(e.target.value)} placeholder="Paste here" style={{ minHeight: "12rem" }} />
 
       {drafts.length > 0 && (
         <>
@@ -514,7 +518,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
             <TagEditor value={tags} onChange={setTags} suggestions={pasteSuggestions} known={known} />
           </div>
           <div className="row" style={{ marginTop: "0.6rem" }}>
-            <button className="primary" onClick={savePaste} disabled={saving}>Save {drafts.length} questions</button>
+            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} questions`}</button>
           </div>
           <div className="card" style={{ marginTop: "0.8rem" }}>
             <div className="row spread">
@@ -534,8 +538,8 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                   <span className="row">
                     <label style={{ margin: 0 }}>Marks</label>
                     <input type="number" min={0} value={d.marks ?? ""} onChange={(e) => update(d.key, { marks: e.target.value === "" ? undefined : Number(e.target.value) })} />
-                    {i > 0 && <button className="small" onClick={() => mergeUp(d.key)} title="Join to the previous question">Merge ↑</button>}
-                    <button className="small danger" onClick={() => remove(d.key)}>Remove</button>
+                    {i > 0 && <button className="small" disabled={addingImages} onClick={() => mergeUp(d.key)} title="Join to the previous question">Merge ↑</button>}
+                    <button className="small danger" disabled={addingImages} onClick={() => remove(d.key)}>Remove</button>
                   </span>
                 </div>
                 {d.stems.map((st, si) => {
@@ -560,7 +564,8 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                 <label>Question</label>
                 <AutoTextarea value={d.text} onChange={(e) => update(d.key, { text: e.target.value })} style={{ minHeight: "4rem" }} />
                 {d.parts.map((p, pi) => (
-                  <div key={pi} className="row" style={{ marginTop: "0.3rem", alignItems: "flex-start" }}>
+                  <div key={pi} className="card" style={{ marginTop: "0.6rem" }}>
+                    <div className="row" style={{ alignItems: "flex-start" }}>
                     <span style={{ minWidth: "2.2rem", fontWeight: 600 }}>{partLabel(p.label)}</span>
                     <AutoTextarea
                       value={p.text}
@@ -569,17 +574,20 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
                     />
                     <input type="number" min={0} placeholder="marks" value={p.marks ?? ""}
                       onChange={(e) => update(d.key, { parts: d.parts.map((x, xi) => (xi === pi ? { ...x, marks: e.target.value === "" ? undefined : Number(e.target.value) } : x)) })} />
+                    </div>
+                    <label>Model answer for this part</label>
+                    <ModelAnswerEditor answer={p} label={`Model answer for question ${i + 1}, part ${p.label}`} onChange={(value) => update(d.key, { parts: d.parts.map((x, xi) => xi === pi ? { ...x, ...value } : x) })} onBusyChange={(value) => onBusyChange(`${d.key}:part:${pi}`, value)} />
                   </div>
                 ))}
                 <label>Model answer (optional, one marking point per line)</label>
-                <AutoTextarea value={d.modelAnswer ?? ""} onChange={(e) => update(d.key, { modelAnswer: e.target.value || undefined })} style={{ minHeight: "3rem" }} />
+                <ModelAnswerEditor answer={d} label={`Model answer for question ${i + 1}`} onChange={(value) => update(d.key, value)} onBusyChange={(value) => onBusyChange(`${d.key}:whole`, value)} />
                 <label>Presentations</label>
                 <PresentationPicker selected={d.presentations} suggested={d.suggested} onChange={(ids) => update(d.key, { presentations: ids })} />
               </div>
             ))}
           </div>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <button className="primary" onClick={savePaste} disabled={saving}>Save {drafts.length} questions</button>
+            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} questions`}</button>
           </div>
         </>
       )}

@@ -18,6 +18,8 @@ import MarkPage from "./pages/MarkPage";
 import SessionReviewPage from "./pages/SessionReviewPage";
 import SettingsPage from "./pages/SettingsPage";
 import AmbossPanel from "./components/AmbossPanel";
+import AmbossHover from "./components/AmbossHover";
+import { restoreAmbossSession } from "./lib/amboss";
 import { cloudConfigured, onCloudUser, signInWithGoogle, signOutCloud, type CloudUser } from "./lib/firebase";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
@@ -94,6 +96,13 @@ export default function App() {
   const [notesOpen, setNotesOpen] = useState(false);
   const studying = /^\/(mark|paper|question|set|session)(\/|$)/.test(pathname);
   useEffect(() => { document.querySelector("main")?.scrollTo(0, 0); }, [pathname]);
+
+  useEffect(() => {
+    const reconnect = () => { if (navigator.onLine) void restoreAmbossSession().catch(() => undefined); };
+    reconnect();
+    window.addEventListener("online", reconnect);
+    return () => window.removeEventListener("online", reconnect);
+  }, []);
 
   // Cloud sync: follow sign-in state, sync on arrival and in the background.
   useEffect(() => {
@@ -176,6 +185,7 @@ export default function App() {
       {notesOpen && studying && <NotesPanel onClose={() => setNotesOpen(false)} />}
       </div>
       <AmbossPanel />
+      <AmbossHover />
     </div>
   );
 }

@@ -31,7 +31,18 @@ function openStore(): NoteStore {
 }
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 export async function handleNotes(req: Request, store: NoteStore, passcode: string | undefined, saveImage?: (src: string) => Promise<string>): Promise<Response> {
-  const presentation = new URL(req.url).searchParams.get("presentation") ?? "";
+  const params = new URL(req.url).searchParams;
+  if (req.method === "GET" && params.has("index")) {
+    // Discover saved presentations without downloading any note bodies or images.
+    // This includes recoverable deleted notes, so it is availability, not a count.
+    const { blobs } = await store.list({ prefix: "" });
+    const presentations = [...new Set(blobs.flatMap(({ key }) => {
+      const [presentation, id, extra] = key.split("/");
+      return !extra && PRESENTATION_BY_ID.has(presentation) && /^shared-[a-zA-Z0-9-]+$/.test(id ?? "") ? [presentation] : [];
+    }))].sort();
+    return json({ presentations });
+  }
+  const presentation = params.get("presentation") ?? "";
   if (!PRESENTATION_BY_ID.has(presentation)) return json({ error: "Choose a valid presentation." }, 400);
   if (req.method === "GET") {
     const { blobs } = await store.list({ prefix: presentation + "/" });

@@ -142,7 +142,9 @@ model answer.
 
 ## Admin
 
-Admin, at the bottom of Settings behind the passcode, is the one place the shared library is built: drop a folder or paste
+Every change an admin makes anywhere, on a set page, a question page, while sitting a paper or in Admin, publishes straight
+away when the passcode is on the device: edits, tags, moves and deletes. Deleting a published set removes it from the library
+for everyone, so it does not come back on the next sync. Admin, at the bottom of Settings behind the passcode, is the one place the shared library is built: drop a folder or paste
 a paper to add sets, Edit any set, Delete a set everywhere. Whatever is saved there is
 published straight away when the site can reach it, and everyone's
 library follows on their next open, matched by question position so attempts and marks

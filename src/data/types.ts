@@ -62,6 +62,8 @@ export interface SubPart {
   marks?: number;
   /** Model answer for this part, when the pasted answer was sectioned by part. */
   modelAnswer?: string;
+  /** Rich model answer; the plain text remains available for marking and search. */
+  modelAnswerDoc?: unknown;
 }
 
 export interface Question {
@@ -76,6 +78,7 @@ export interface Question {
   marks?: number;
   /** Raw model answer as pasted. Marking points are derived from it. */
   modelAnswer?: string;
+  modelAnswerDoc?: unknown;
   parts: SubPart[];
   presentations: string[];
   tags: string[];
@@ -169,7 +172,7 @@ export interface Settings {
   bankPasscode?: string;
   /** Pull any bank set not yet in the library whenever the app opens. */
   autoImportBank: boolean;
-  /** AMBOSS long-lived token from the add-on login mutation. */
+  /** Device-only AMBOSS token from the add-on login mutation. */
   ambossToken?: string;
   ambossUser?: { eid: string; firstName?: string };
   /** "platform_article" | "public_article" | "no_article" */
@@ -180,6 +183,19 @@ export interface Settings {
   ambossOnPaper: boolean;
   /** Signed-in cloud account, for display. */
   cloudUser?: { uid: string; email?: string; name?: string; photo?: string };
+}
+
+/** Device-only credential record. Never included in settings, sync or backups. */
+export interface RememberedAmbossLogin {
+  id: "amboss";
+  revision: string;
+  username: string;
+  userId: string;
+  key: CryptoKey;
+  iv: Uint8Array<ArrayBuffer>;
+  ciphertext: ArrayBuffer;
+  blocked?: boolean;
+  retryAfter?: number;
 }
 
 /** A local deletion waiting to reach the cloud. */

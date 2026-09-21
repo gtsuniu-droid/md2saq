@@ -1,3 +1,4 @@
+import { AmbossNotesStatus } from "./AmbossNotes";
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useLocation } from "react-router";
@@ -45,6 +46,7 @@ export default function NotesPanel({ onClose }: { onClose: () => void }) {
     <label htmlFor="reference-presentation">Presentation</label><select id="reference-presentation" value={presentation} onChange={(e) => { setPresentation(e.target.value); setFollow(false); }}>{PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
     <label className="check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow the current question</label>
     <NoteReadingControls size={readingSize} onChange={setReadingSize} />
+    <AmbossNotesStatus />
     <NoteSectionTabs id="reference-sections" value={section} notes={notes ?? []} onChange={setSection} />
     <div id="reference-sections-panel" role="tabpanel" aria-labelledby={`reference-sections-tab-${section}`} tabIndex={0}>
     <input type="search" aria-label="Search reference notes" placeholder="Search this section…" value={search} onChange={(e) => setSearch(e.target.value)} />

@@ -20,9 +20,6 @@ const SESSION_PUSHED = "sync.sessionPushedM";
 const SETTINGS_SYNCED: (keyof Settings)[] = [
   "minutesPerMark",
   "autoImportBank",
-  "ambossToken",
-  "ambossUser",
-  "ambossAccess",
   "ambossHighlights",
   "ambossOnPaper",
 ];
@@ -234,7 +231,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
       if (remoteSettings) {
         const local = await db.settings.get("settings");
         if (!local || remoteWins(local._m, remoteSettings._m)) {
-          const merged = { ...(local ?? {}), ...remoteSettings, id: "settings" as const };
+          const merged = { ...(local ?? {}), ...settingsForCloud(remoteSettings as Settings), id: "settings" as const };
           await db.settings.put(merged as Settings);
           applied++;
         }

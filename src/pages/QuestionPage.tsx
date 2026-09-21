@@ -1,17 +1,23 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router";
-import { db } from "../data/db";
+import { db, getSettings } from "../data/db";
+import { isAdmin } from "../lib/admin";
+import { deleteQuestion } from "../lib/deleteQuestion";
+import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
+import { useState } from "react";
 import { ERROR_TAGS } from "../data/types";
 import PresentationPicker from "../components/PresentationPicker";
 import AnswerHtml from "../components/AnswerHtml";
 import { answerParts, formatDate, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { setLabel } from "../lib/sets";
 import AmbossText from "../components/AmbossText";
-import { recordDeletes } from "../lib/sync";
+import ModelAnswerContent from "../components/ModelAnswerContent";
+import { hasModelAnswer, richAnswerDocument } from "../lib/modelAnswer";
 
 export default function QuestionPage() {
   const { id = "" } = useParams();
   const nav = useNavigate();
+  const [message, setMessage] = useState<string | null>(null);
   const data = useLiveQuery(async () => {
     const q = await db.questions.get(id);
     if (!q) return null;
@@ -20,34 +26,37 @@ export default function QuestionPage() {
       .filter((a) => a.submittedAt !== undefined)
       .sort((a, b) => (a.submittedAt ?? 0) - (b.submittedAt ?? 0));
     const marks = await db.marks.where("questionId").equals(id).toArray();
-    return { q, set, attempts, marks: new Map(marks.map((m) => [m.attemptId, m])) };
+    return { q, set, attempts, marks: new Map(marks.map((m) => [m.attemptId, m])), admin: isAdmin(await getSettings()) };
   }, [id]);
 
   if (data === undefined) return null;
   if (data === null) return <p>Question not found.</p>;
-  const { q, set, attempts, marks } = data;
+  const { q, set, attempts, marks, admin } = data;
   const qTexts = [...stemsOf(q), q.text, ...q.parts.map((p) => p.text)];
 
   const remove = async () => {
-    if (!confirm("Delete this question and its attempts?")) return;
-    const goneAttempts = (await db.attempts.where("questionId").equals(id).primaryKeys()) as string[];
-    const goneMarks = (await db.marks.where("questionId").equals(id).primaryKeys()) as string[];
-    await db.transaction("rw", db.questions, db.attempts, db.marks, async () => {
-      await db.marks.where("questionId").equals(id).delete();
-      await db.attempts.where("questionId").equals(id).delete();
-      await db.questions.delete(id);
-    });
-    await recordDeletes("attempts", goneAttempts);
-    await recordDeletes("marks", goneMarks);
-    nav("/browse");
+    const everyone = !!set?.bankId && admin;
+    if (!confirm(`Delete this question${everyone ? " from the set for everyone" : ""}, with its attempts?`)) return;
+    const setId = q.setId;
+    await deleteQuestion(id);
+    if (await savedPasscode()) {
+      try {
+        await pushToBank(setId);
+      } catch (e) {
+        setMessage(`Deleted here, not published: ${bankErrorMessage(e)}`);
+        return;
+      }
+    }
+    nav(`/set/${setId}`);
   };
 
   return (
     <div>
       <div className="row spread">
         <div className="muted"><Link to={`/set/${q.setId}`}>{set ? setLabel(set) : "Set"}</Link>, question {q.order + 1}</div>
-        <button className="danger small" onClick={remove}>Delete question</button>
+        {(!set?.bankId || admin) && <button className="danger small" onClick={remove}>Delete question</button>}
       </div>
+      {message && <p style={{ color: "var(--warn)" }}>{message}</p>}
       <div className="card" style={{ marginTop: "0.8rem" }}>
         {stemsOf(q).map((st, si) => (
           <div key={si} className="stem-block">
@@ -71,14 +80,14 @@ export default function QuestionPage() {
       <label>Presentations</label>
       <PresentationPicker selected={q.presentations} onChange={(ids) => db.questions.update(q.id, { presentations: ids })} />
 
-      {(q.modelAnswer || q.parts.some((p) => p.modelAnswer)) && (
+      {(hasModelAnswer(q) || q.parts.some(hasModelAnswer)) && (
         <details style={{ marginTop: "1rem" }}>
           <summary style={{ cursor: "pointer" }}>Model answer</summary>
           <div className="card stack" style={{ marginTop: "0.5rem" }}>
-            {q.parts.filter((p) => p.modelAnswer).map((p) => (
-              <div key={p.label}><strong>{partLabel(p.label)}</strong><div className="pre">{p.modelAnswer}</div></div>
+            {q.parts.filter(hasModelAnswer).map((p) => (
+              <div key={p.label}><strong>{partLabel(p.label)}</strong><ModelAnswerContent answer={p} /></div>
             ))}
-            {q.modelAnswer && !q.parts.some((p) => p.modelAnswer) && <div className="pre">{q.modelAnswer}</div>}
+            {hasModelAnswer(q) && (richAnswerDocument(q) || !q.parts.some(hasModelAnswer)) && <ModelAnswerContent answer={q} />}
           </div>
         </details>
       )}

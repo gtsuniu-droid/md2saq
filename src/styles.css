@@ -512,8 +512,86 @@ tr.selected td { background: var(--teal-soft); }
 .note-reading-controls { gap: 0.25rem; margin: 0.75rem 0; }
 .note-reading-controls > span { font-size: 0.8rem; color: var(--muted); margin-right: 0.5rem; }
 .note-rich p { font-size: inherit; }
+.model-answer-editor .note-editor { margin-top: 0.4rem; }
+.model-answer-editor .tiptap { min-height: 130px; }
+.model-answer-content { min-width: 0; margin-top: 0.5rem; }
+.model-answer-content .note-reading-controls { justify-content: flex-end; margin-bottom: 0.4rem; }
+.two-col > div { min-width: 0; }
 
 .note-rich h1, .note-editor .tiptap h1 { font-size: 1.75em; }
 .note-rich h2, .note-editor .tiptap h2 { font-size: 1.35em; }
 .note-rich h3, .note-editor .tiptap h3 { font-size: 1.15em; }
 .note-rich th, .note-editor .tiptap th { font-size: inherit; }
+
+/* AMBOSS references stay beside the active notes on wider screens. */
+.amboss-reference { top: 51px; width: min(520px, 100%); }
+.app:has(.amboss-reference) .study-workspace { margin-right: 520px; }
+.amboss-logo { display: block; width: 130px; height: auto; flex-shrink: 0; }
+.amboss-wordmark { display: inline-flex; align-items: center; gap: .65rem; }
+.amboss-wordmark small { color: var(--muted); font-weight: 400; }
+.amboss-settings-heading .amboss-logo { width: 145px; }
+.amboss-reference-heading { padding: 1rem 1.2rem; border-bottom: 1px solid var(--border); }
+.amboss-reference-heading h2 { margin: 0 0 .4rem; text-transform: none; letter-spacing: 0; color: var(--fg); font-size: 1.3rem; }
+.amboss-article-link { color: var(--teal); font-weight: 600; }
+.amboss-reference-tabs { display: flex; padding: .4rem .8rem 0; gap: .4rem; border-bottom: 1px solid var(--border); }
+.amboss-reference-tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; font-size: .85rem; }
+.amboss-reference-tabs button[aria-pressed="true"] { border-bottom-color: var(--teal); color: var(--teal); }
+.amboss-reference-source { margin-top: 1.5rem; padding-top: .8rem; border-top: 1px solid var(--border); font-size: .8rem; }
+.amboss-article-sections { display: grid; gap: .6rem; }
+.amboss-article-sections a { padding: .7rem; border: 1px solid var(--border); border-radius: 6px; display: flex; justify-content: space-between; gap: 1rem; }
+.amboss-reference-image { margin: 0 0 1.5rem; }
+.amboss-reference-image img { max-width: 100%; height: auto; }
+.amboss-image-preview { display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; color: var(--muted); }
+.amboss-image-preview:hover { background: transparent; }
+.amboss-image-preview img { display: block; width: 100%; max-height: 300px; object-fit: contain; border-radius: 5px; }
+.amboss-image-preview span { display: block; font-size: .8rem; padding: .45rem 0; }
+.amboss-reference-image figcaption { font-size: .9rem; margin-top: .25rem; }
+.amboss-image-credit { font-size: .7rem; margin-top: .35rem; overflow-wrap: anywhere; }
+.amboss-image-error { padding: 1rem; border: 1px solid var(--border); border-radius: 6px; }
+.amboss-view-images { margin: -1rem 0 1rem; }
+.amboss-image-viewer { width: min(1100px, calc(100vw - 2rem)); max-width: none; max-height: calc(100dvh - 2rem); padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--fg); box-shadow: 0 20px 80px #0006; overscroll-behavior: contain; }
+.amboss-image-viewer::backdrop { background: #101827bb; }
+.amboss-image-viewer-content { padding: 1rem; }
+.amboss-image-viewer header { margin-bottom: .8rem; }
+.amboss-image-viewer header strong { font-size: 1.1rem; }
+.amboss-image-viewer .amboss-reference-image { margin: 0; }
+.amboss-image-viewer .amboss-reference-image > img { display: block; width: 100%; max-height: 72dvh; object-fit: contain; }
+.amboss-image-viewer nav { margin-top: 1rem; }
+@font-face { font-family: "Amboss Lato"; src: url("./assets/amboss-ui/lato-400.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Amboss Lato"; src: url("./assets/amboss-ui/lato-700.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+.amboss-hover { position: fixed; z-index: 70; box-sizing: border-box; color: #506773; background: #fff; border-radius: 7px; box-shadow: 0 10px 40px #17233133; font-family: "Amboss Lato", Lato, sans-serif; font-size: 16px; line-height: 1.45; text-align: left; }
+.amboss-hover-scroll { max-height: var(--hover-max-height); overflow-y: auto; overscroll-behavior: contain; border-radius: inherit; }
+.amboss-hover-pointer { position: absolute; width: 40px; height: 40px; left: var(--hover-arrow-left); top: var(--hover-arrow-top); bottom: var(--hover-arrow-bottom); transform: translateX(-50%) rotate(var(--hover-arrow-turn)); filter: brightness(0) invert(1); pointer-events: none; }
+.amboss-hover-content { padding: 32px 20px 22px; }
+.amboss-hover header { margin-bottom: 23px; }
+.amboss-hover header strong { display: block; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -.4px; color: #30373b; }
+.amboss-hover .amboss-hover-subtitle { font-size: 18px; line-height: 1.35; color: #608a9e; margin: 10px 0 0; }
+.amboss-hover p { font-family: inherit; font-size: inherit; line-height: inherit; }
+.amboss-hover .amboss-image-preview img { max-height: 260px; }
+.amboss-hover .amboss-reference-image { margin-bottom: 20px; }
+.amboss-hover .amboss-reference-image figcaption { color: #506773; }
+.amboss-hover-definition { overflow-wrap: anywhere; }
+.amboss-hover-definition > :first-child { margin-top: 0; }
+.amboss-hover-definition > :last-child { margin-bottom: 0; }
+.amboss-hover-links { border-top: 1px solid #d5e0e6; }
+.amboss-hover-links a { display: flex; align-items: center; gap: 12px; padding: 20px 16px; color: #30373b; text-decoration: none; line-height: 1.3; }
+.amboss-hover-links a + a { border-top: 1px solid #d5e0e6; }
+.amboss-hover-links a:hover { background: #f4f8fa; }
+.amboss-hover-links a span { flex: 1; }
+.amboss-hover-icon { width: 28px; height: 28px; flex-shrink: 0; filter: invert(71%) sepia(14%) saturate(404%) hue-rotate(156deg) brightness(95%) contrast(88%); }
+.amboss-hover-link-arrow { width: 24px; height: 24px; }
+.amboss-hover footer { padding: 20px; border-top: 1px solid #d5e0e6; gap: 12px; }
+.amboss-hover footer a { color: #94adbd; font-size: 13px; font-weight: 700; text-decoration: underline; }
+.amboss-hover .amboss-logo { width: 100px; }
+.amboss-recent { padding: .5rem 1rem; border-top: 1px solid var(--border); }
+.amboss-recent select { width: 100%; }
+.amboss-notes-status { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; margin: .5rem 0; }
+.amboss-notes-status .amboss-logo { width: 92px; }
+button.amboss-note-term { display: inline; font: inherit; color: inherit; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; text-align: inherit; line-height: inherit; text-decoration: underline dotted #0c9aa4; text-underline-offset: 3px; cursor: pointer; }
+button.amboss-note-term:hover, button.amboss-note-term:focus-visible { background: var(--teal-soft); }
+@media (min-width: 850px) and (max-width: 1150px) { .app:has(.amboss-reference) .study-workspace { margin-right: 45vw; } .amboss-reference { width: 45vw; } }
+@media (max-width: 1450px) { .app:has(.amboss-reference) .notes-layout { grid-template-columns: 1fr; } .app:has(.amboss-reference) .notes-sidebar { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--border); } }
+@media (max-width: 849px) { .app:has(.amboss-reference) .study-workspace { margin-right: 0; } .amboss-reference { width: min(480px, 100%); } }
+
+.amboss-login-form { max-width: 520px; }
+.amboss-login-form label:not(.check) input { display: block; width: 100%; margin-top: .25rem; }
