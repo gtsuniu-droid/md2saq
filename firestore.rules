@@ -1,6 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Shared community posts never grant access to another user's progress or notes.
+    match /questionCommunity/{bankId}/questions/{questionId}/{channel}/{postId} {
+      function signedIn() { return request.auth != null; }
+      function moderator() {
+        return signedIn() && request.auth.token.email_verified == true
+          && request.auth.token.email == 'gtsuniu@gmail.com';
+      }
+      function validLocation() {
+        return channel in ['suggestions', 'discussion']
+          && bankId.matches('^[a-zA-Z0-9_-]{1,200}$')
+          && questionId.matches('^[a-zA-Z0-9_-]{1,200}$')
+          && postId.matches('^[a-zA-Z0-9_-]{1,200}$');
+      }
+      function validPost() {
+        let d = request.resource.data;
+        return d.keys().hasAll(['authorId', 'authorName', 'body', 'kind', 'resolved', 'createdAt'])
+          && d.keys().hasOnly(['authorId', 'authorName', 'body', 'kind', 'resolved', 'createdAt'])
+          && d.authorId is string && d.authorName is string && d.authorName.size() > 0 && d.authorName.size() <= 80
+          && d.body is string && d.body.size() > 0 && d.body.size() <= 4000
+          && d.resolved is bool && d.createdAt is timestamp
+          && ((channel == 'discussion' && d.kind == 'comment')
+            || (channel == 'suggestions' && d.kind in ['answer', 'problem']));
+      }
+      allow get: if signedIn() && validLocation();
+      allow list: if signedIn() && channel in ['suggestions', 'discussion']
+        && request.query.limit != null && request.query.limit <= 25;
+      allow create: if signedIn() && validLocation() && validPost()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.resolved == false;
+      // Only the moderator may change a suggestion's status; content and identity are immutable.
+      allow update: if moderator() && validLocation() && channel == 'suggestions' && validPost()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolved']);
+      allow delete: if signedIn() && validLocation()
+        && (resource.data.authorId == request.auth.uid || moderator());
+    }
     // Each signed-in person may read and write only their own documents.
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;

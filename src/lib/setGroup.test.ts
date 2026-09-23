@@ -19,6 +19,10 @@ describe("set numbering groups", () => {
     expect(numberingGroup(undefined, [])).toBe("untagged");
   });
 
+  it("uses the explicit primary presentation for numbering even with secondary branches", () => {
+    expect(numberingGroup(["Vomiting::Causes"], qs(["vomiting"]), "abdominal-pain")).toBe("abdominal-pain");
+  });
+
   it("numbers from 1 within each group", () => {
     const taken = [{ group: "dizziness", number: 3 }, { group: "dizziness", number: 1 }, { group: "chest-pain", number: 2 }];
     expect(nextNumberIn("dizziness", taken)).toBe(4);

@@ -28,7 +28,7 @@ export function historyEntries(attempts: Attempt[], marks: Mark[], questions: Qu
       const set = bySet.get(question?.setId ?? attempt.qref?.setId ?? "");
       const order = question?.order ?? attempt.qref?.order;
       return { attempt, mark: byAttempt.get(attempt.id), question, set,
-        label: `${set ? setLabel(set) : attempt.qref?.setNumber !== undefined ? `Set ${String(attempt.qref.setNumber).padStart(2, "0")}` : attempt.qref?.setName || "Question set"}${order !== undefined ? ` · Question ${order + 1}` : ""}`,
+        label: `${set ? setLabel(set) : attempt.qref?.setNumber !== undefined ? `Set ${String(attempt.qref.setNumber).padStart(2, "0")}` : attempt.qref?.setName || "Question set"}${order !== undefined ? `, Question ${order + 1}` : ""}`,
         text: question?.text || question?.parts[0]?.text || attempt.qref?.text || "Question no longer available on this device.",
       };
     });

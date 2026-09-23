@@ -26,20 +26,27 @@ export default function AmbossSettings({ settings }: { settings: Settings }) {
   };
   return <section aria-label="AMBOSS connection">
     <h2 id="amboss" className="amboss-settings-heading"><AmbossLogo /></h2>
-    <div className="card stack">
+    <div className="card amboss-settings-card">
       {settings.ambossToken ? <>
-        <div className="row spread"><span>Logged in{settings.ambossUser?.firstName ? ` as ${settings.ambossUser.firstName}` : ""}</span><span className="row">
+        <div className="amboss-account-row"><span>Logged in{settings.ambossUser?.firstName ? ` as ${settings.ambossUser.firstName}` : ""}</span><span className="row">
           <button className="small" disabled={busy} onClick={() => void run(async () => {
             if (!await ambossCheck()) throw new Error("AMBOSS could not reconnect. Update your login below.");
             setMessage("AMBOSS is connected.");
-          })}>Check</button>
+          })}>Check connection</button>
           <button className="small" disabled={busy} onClick={() => void run(async () => { await ambossLogout(); setPassword(""); setRemember(false); setEditLogin(false); setMessage("Logged out. Saved login removed from this browser."); })}>Log out</button>
         </span></div>
-        <label className="check"><input type="checkbox" checked={settings.ambossHighlights} onChange={(e) => void patchSettings({ ambossHighlights: e.target.checked })} />Link AMBOSS terms in notes, questions and marking</label>
-        <label className="check"><input type="checkbox" checked={settings.ambossOnPaper} onChange={(e) => void patchSettings({ ambossOnPaper: e.target.checked })} />Also while sitting a paper</label>
+        <div className="amboss-preferences">
+          <label className="check"><input type="checkbox" checked={settings.ambossHighlights} onChange={(e) => void patchSettings({ ambossHighlights: e.target.checked })} /><span>Link medical terms<small>In notes, questions and marking</small></span></label>
+          <label className="check"><input type="checkbox" checked={settings.ambossOnPaper} onChange={(e) => void patchSettings({ ambossOnPaper: e.target.checked })} /><span>Show AMBOSS during a paper</span></label>
+        </div>
       </> : <p className="muted">Connect AMBOSS to open medical references beside your notes.</p>}
-      {saved && <div className="row spread"><span>{saved.needsAttention ? "Saved login needs updating" : "Automatic sign-in enabled"}<small className="muted" style={{ display: "block" }}>{saved.username}</small></span><button className="small" disabled={busy} onClick={() => void run(async () => { await forgetAmbossLogin(); setRemember(false); setMessage("Saved password removed. Your current session stays connected."); })}>Forget saved login</button></div>}
-      {settings.ambossToken && !editLogin && <button className="small" disabled={busy} onClick={() => { setRemember(true); setEditLogin(true); setMessage(""); setError(""); }}>{saved ? "Update saved login" : "Remember login on this device"}</button>}
+      {(saved || settings.ambossToken) && <div className="amboss-login-row">
+        <div><span>Automatic sign-in</span><small>{saved ? saved.needsAttention ? "Saved login needs updating" : "Enabled on this device" : "Not enabled on this device"}</small>{saved && <small>{saved.username}</small>}</div>
+        <div className="row">
+          {settings.ambossToken && !editLogin && <button className="small" disabled={busy} onClick={() => { setRemember(true); setEditLogin(true); setMessage(""); setError(""); }}>{saved ? "Update login" : "Remember login"}</button>}
+          {saved && <button className="small link" disabled={busy} onClick={() => void run(async () => { await forgetAmbossLogin(); setRemember(false); setMessage("Saved password removed. Your current session stays connected."); })}>Forget login</button>}
+        </div>
+      </div>}
       {(!settings.ambossToken || editLogin) && <form className="stack amboss-login-form" onSubmit={(e) => { e.preventDefault(); void run(async () => {
         const user = await ambossLogin(username, password, remember);
         setPassword(""); setEditLogin(false);

@@ -1,3 +1,4 @@
+import { sameQuestion } from "./questionIdentity";
 import { belongsToAccount } from "./progressAccount";
 import { db, newId, patchSettings, getSettings } from "../data/db";
 import { validateNote } from "./noteModel";
@@ -69,7 +70,7 @@ export async function exportSet(setId: string): Promise<SetPack> {
   const set = await db.sets.get(setId);
   if (!set) throw new Error("Set not found.");
   const questions = await db.questions.where("setId").equals(setId).sortBy("order");
-  return { format: "saq-practice-set", version: 1, set, questions };
+  return { format: "saq-practice-set", version: 1, set, questions: questions.map(q => ({ ...q, id: q.bankQuestionId ?? q.id })) };
 }
 
 /** Import a shared set with fresh ids so it never collides with local data. */
@@ -79,9 +80,9 @@ export async function importSetPack(pack: SetPack, bankId?: string, bankUpdatedA
   // (synced attempts refer to them). Fall back to fresh ids only on a collision.
   const clash = !!(await db.sets.get(pack.set.id)) || (await db.questions.where("id").anyOf(pack.questions.map((q) => q.id)).count()) > 0;
   const setId = clash ? newId() : pack.set.id;
-  const num = number ?? pack.set.number ?? (await nextSetNumber(numberingGroup(pack.set.tags, pack.questions)));
+  const num = number ?? pack.set.number ?? (await nextSetNumber(numberingGroup(pack.set.tags, pack.questions, pack.set.primaryPresentation)));
   const set: QuestionSet = { ...pack.set, id: setId, number: num, createdAt: Date.now(), updatedAt: undefined, bankId, bankUpdatedAt };
-  const questions: Question[] = pack.questions.map((q) => ({ ...q, id: clash ? newId() : q.id, setId, createdAt: Date.now() }));
+  const questions: Question[] = pack.questions.map((q) => ({ ...q, id: clash ? newId() : q.id, bankQuestionId: q.bankQuestionId ?? q.id, setId, createdAt: Date.now() }));
   await db.transaction("rw", db.sets, db.questions, async () => {
     await db.sets.add(set);
     await db.questions.bulkAdd(questions);
@@ -126,8 +127,8 @@ export function readFileText(file: File): Promise<string> {
 }
 
 /**
- * Refresh a local copy from a newer bank version. Questions are matched by
- * position so existing question ids, and therefore attempts and marks, survive.
+ * Refresh a local copy by published question identity, keeping local attempt links
+ * intact when questions move. Legacy imports can be matched by unambiguous content.
  */
 export async function applyBankUpdate(localSetId: string, pack: SetPack, bankUpdatedAt: number): Promise<void> {
   const local = await db.sets.get(localSetId);
@@ -139,11 +140,19 @@ export async function applyBankUpdate(localSetId: string, pack: SetPack, bankUpd
     void _id; void _c; void _b; void _n;
     await db.sets.put({ ...local, ...rest, id: localSetId, bankUpdatedAt, updatedAt: bankUpdatedAt });
     const incoming = [...pack.questions].sort((a, b) => a.order - b.order);
+    const kept = new Set<string>();
+    const incomingIds = new Set(incoming.map(q => q.bankQuestionId ?? q.id));
     for (let i = 0; i < incoming.length; i++) {
       const q = incoming[i];
-      const keep = existing[i];
-      await db.questions.put({ ...q, id: keep?.id ?? newId(), setId: localSetId, order: i, createdAt: keep?.createdAt ?? Date.now() });
+      const canonicalId = q.bankQuestionId ?? q.id;
+      let keep = existing.find(old => !kept.has(old.id) && (old.bankQuestionId ?? old.id) === canonicalId);
+      if (!keep) {
+        const legacy = existing.filter(old => !kept.has(old.id) && !old.bankQuestionId && !incomingIds.has(old.id) && sameQuestion(old, q));
+        if (legacy.length === 1) keep = legacy[0];
+      }
+      if (keep) kept.add(keep.id);
+      await db.questions.put({ ...q, id: keep?.id ?? newId(), bankQuestionId: canonicalId, setId: localSetId, order: i, createdAt: keep?.createdAt ?? Date.now() });
     }
-    for (const q of existing.slice(incoming.length)) await db.questions.delete(q.id);
+    for (const q of existing) if (!kept.has(q.id)) await db.questions.delete(q.id);
   });
 }

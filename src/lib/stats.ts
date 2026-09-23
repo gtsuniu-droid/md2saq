@@ -81,8 +81,8 @@ export function heatGrid(perDay: Map<string, number>, end: number, days: number)
   const gridStart = new Date(start);
   gridStart.setDate(gridStart.getDate() - mondayOffset);
 
-  const max = Math.max(1, ...perDay.values());
-  const level = (n: number) => (n === 0 ? 0 : Math.min(4, Math.ceil((n / max) * 4)));
+  // Fixed daily thresholds keep colours comparable across date ranges.
+  const level = (n: number) => n >= 20 ? 4 : n >= 10 ? 3 : n >= 5 ? 2 : n >= 1 ? 1 : 0;
 
   const weeks: (HeatCell | null)[][] = [];
   const months: { col: number; label: string }[] = [];

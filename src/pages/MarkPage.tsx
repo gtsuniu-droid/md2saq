@@ -1,9 +1,12 @@
+import QuestionCommunity from "../components/QuestionCommunity";
+import { saveMarking } from "../lib/saveMarking";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { db, newId } from "../data/db";
 import { ERROR_TAGS, type ErrorTag, type Mark, type PartMark } from "../data/types";
+import CommentedAnswer from "../components/CommentedAnswer";
 import AnswerHtml from "../components/AnswerHtml";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, saveSession } from "../lib/session";
@@ -39,15 +42,21 @@ export default function MarkPage() {
     const position = session?.attemptIds.indexOf(attemptId) ?? -1;
     const nextId = position >= 0 ? session?.questionIds[position + 1] : undefined;
     const nextQuestion = nextId ? await db.questions.get(nextId) : undefined;
-    return { attempt, question, existing, previous, previousMark, stemHighlights, set, nextQuestion };
+    const setQuestions = await db.questions.where("setId").equals(question.setId).sortBy("order");
+    const laterQuestions = setQuestions.filter((q) => q.order > question.order);
+    const nextToMark = laterQuestions.map((q) => sessionAttempts.find((a) => a.questionId === q.id && a.submittedAt !== undefined)).find(Boolean);
+    return { attempt, question, existing, previous, previousMark, stemHighlights, set, nextQuestion, nextToMark };
   }, [attemptId]);
 
   const [confidence, setConfidence] = useState<number | undefined>();
   const [parts, setParts] = useState<PartMark[]>([]);
   const [errorTags, setErrorTags] = useState<ErrorTag[]>([]);
-  const [reflection, setReflection] = useState("");
   const [learningPoint, setLearningPoint] = useState("");
   const [notes, setNotes] = useState("");
+  const [reviewLater, setReviewLater] = useState(false);
+  const [lookedAtAnswer, setLookedAtAnswer] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
   const [seeded, setSeeded] = useState("");
   const [editing, setEditing] = useState(false);
   const admin = useLiveQuery(async () => isAdmin(await getSettings()), []) ?? false;
@@ -66,13 +75,15 @@ export default function MarkPage() {
     if (data.existing) {
       setParts(data.existing.parts);
       setErrorTags(data.existing.errorTags);
-      setReflection(data.existing.reflection ?? "");
       setLearningPoint(data.existing.learningPoint ?? "");
       setNotes(data.existing.notes ?? "");
+      setReviewLater(data.existing.reviewLater ?? false);
+      setLookedAtAnswer(data.existing.lookedAtAnswer ?? false);
     } else {
-      setErrorTags([]); setReflection(""); setLearningPoint(""); setNotes("");
+      setErrorTags([]); setLearningPoint(""); setNotes(""); setReviewLater(false); setLookedAtAnswer(false);
       setParts(partsInfo.map((pi) => ({ label: pi.part.label, score: 0, maxScore: pi.part.marks ?? 0, pointsHit: [] })));
     }
+    setMessage("");
     setSeeded(attemptId);
   }, [data, partsInfo, seeded, attemptId]);
 
@@ -80,13 +91,13 @@ export default function MarkPage() {
   if (data === null) return <p>Attempt not found.</p>;
   const { attempt, question, existing } = data;
 
-  const hasModel = hasModelAnswer(question) || partsInfo.some((pi) => hasModelAnswer(pi.part));
   const ambossTexts = [...stemsOf(question), question.text, ...question.parts.map((p) => p.text), ...partsInfo.map((pi) => pi.part.modelAnswer ?? "")];
-  const needsConfidence = hasModel && confidence === undefined && !existing;
   const wholeModel = question.parts.length > 0 && hasModelAnswer(question) && (richAnswerDocument(question) || !question.parts.some(hasModelAnswer));
 
-  const setPart = (label: string, patch: Partial<PartMark>) =>
+  const setPart = (label: string, patch: Partial<PartMark>) => {
+    setMessage("");
     setParts((ps) => ps.map((p) => (p.label === label ? { ...p, ...patch } : p)));
+  };
 
   const total = parts.reduce((a, p) => a + p.score, 0);
   const max = parts.reduce((a, p) => a + p.maxScore, 0);
@@ -94,7 +105,10 @@ export default function MarkPage() {
   const session = loadSession();
   const inSession = session?.attemptIds.includes(attempt.id) ? session : null;
 
-  const save = async () => {
+  const save = async (advance = true) => {
+    if (saving) return;
+    setSaving(true); setMessage("");
+    try {
     const mark: Mark = {
       id: existing?.id ?? newId(),
       attemptId: attempt.id,
@@ -105,16 +119,19 @@ export default function MarkPage() {
       maxScore: max,
       parts,
       errorTags,
-      reflection: reflection.trim() || undefined,
+      reflection: existing?.reflection,
       learningPoint: learningPoint.trim() || undefined,
       notes: notes.trim() || undefined,
+      reviewLater: reviewLater || lookedAtAnswer,
+      lookedAtAnswer,
       markedAt: Date.now(),
     };
-    await db.marks.put(mark);
+    await saveMarking(mark, confidence);
     requestSync();
+    if (!advance) { setMessage("Saved"); return; }
     if (inSession) {
       if (inSession.mode === "exam") {
-        nav(`/session/${inSession.id}`);
+        nav(data.nextToMark ? `/mark/${data.nextToMark.id}` : `/session/${inSession.id}`);
         return;
       }
       const nextIndex = inSession.attemptIds.indexOf(attempt.id) + 1;
@@ -128,45 +145,27 @@ export default function MarkPage() {
       nav(`/session/${inSession.id}`);
       return;
     }
-    nav(`/question/${question.id}`);
+    nav(data.nextToMark ? `/mark/${data.nextToMark.id}` : `/history/${attempt.id}`);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Could not save. Please try again."); }
+    finally { setSaving(false); }
   };
 
   const editor = editing ? (
     <QuickEdit
       question={question}
       onClose={() => setEditing(false)}
-      onDeleted={() => {
-        // The attempt being marked went with the question.
-        const rest = loadSession();
-        if (!inSession) nav(`/set/${question.setId}`, { replace: true });
-        else if (!rest) nav("/", { replace: true });
-        else if (rest.mode === "practice") nav("/paper", { replace: true });
-        else nav(`/session/${rest.id}`, { replace: true });
-      }}
+
     />
   ) : null;
 
-  if (needsConfidence) {
-    return (
-      <div>
-        <h1>Before you see the model answer</h1>
-        <p>How confident are you in this answer?</p>
-        <div className="row confidence">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} onClick={async () => { await db.attempts.update(attempt.id, { confidence: n }); setConfidence(n); }}>{n}</button>
-          ))}
-        </div>
-        <p className="muted">1 = guessing, 5 = certain. This is compared against your score later.</p>
-      </div>
-    );
-  }
 
   return (
     <div>
       <div className="row spread">
-        <h1 style={{ margin: 0 }}>Mark</h1>
+        <h1 style={{ margin: 0 }}>Mark your answer</h1>
         <span className="muted row">
           {formatDuration(attempt.elapsedSec)}, {attempt.mode}{confidence !== undefined ? `, confidence ${confidence}/5` : ""}, <Link to={`/question/${question.id}`}>question</Link>
+          <QuestionCommunity key={question.id} question={question} set={data.set} />
           {admin && <button className="small" onClick={() => setEditing(true)} title="Edit this question and its model answer (admin)">Edit</button>}
         </span>
       </div>
@@ -214,13 +213,13 @@ export default function MarkPage() {
             <div className="two-col">
               <div>
                 <h3>Your answer</h3>
-                <AnswerHtml doc={pi.answer?.doc} />
+                <CommentedAnswer key={`${attempt.id}:${pi.part.label}`} attemptId={attempt.id} partLabel={pi.part.label} doc={pi.answer?.doc} text={pi.answer?.text} comments={attempt.answerComments ?? []} />
                 {data.previous && (
                   <details style={{ marginTop: "0.5rem" }}>
                     <summary className="muted" style={{ cursor: "pointer" }}>
                       Previous attempt{data.previousMark ? ` (${data.previousMark.parts.find((p) => p.label === pi.part.label)?.score ?? "?"}/${data.previousMark.parts.find((p) => p.label === pi.part.label)?.maxScore ?? "?"})` : ""}
                     </summary>
-                    <AnswerHtml doc={prevAns?.doc} />
+                    {prevAns?.doc ? <AnswerHtml doc={prevAns.doc} /> : <p className="pre">{prevAns?.text || "No answer written."}</p>}
                   </details>
                 )}
               </div>
@@ -245,39 +244,32 @@ export default function MarkPage() {
           <div className="pre" style={{ marginTop: "0.3rem" }}>{data.set.debrief}</div>
         </details>
       )}
-      <div className="card stack">
+      <section className="card marking-notes" aria-label="Your marking">
         <div className="row spread">
           <strong>Total {total} / {max}</strong>
+          <button className={"review-later-button" + (reviewLater || lookedAtAnswer ? " selected" : "")} aria-pressed={reviewLater || lookedAtAnswer} disabled={lookedAtAnswer} title={lookedAtAnswer ? "Answer-assisted attempts are flagged for another review" : undefined} onClick={() => { setReviewLater(!reviewLater); setMessage(""); }}>{reviewLater || lookedAtAnswer ? "⚑ Review later" : "⚐ Review later"}</button>
         </div>
-        <div>
-          <label>What went wrong</label>
-          {ERROR_TAGS.map((t) => (
-            <span key={t.id} className={"chip" + (errorTags.includes(t.id) ? " on" : "")}
-              onClick={() => setErrorTags((ts) => (ts.includes(t.id) ? ts.filter((x) => x !== t.id) : [...ts, t.id]))}>
-              {t.label}
-            </span>
-          ))}
-        </div>
-        <div>
-          <label>What would I do differently?</label>
-          <input type="text" style={{ width: "100%" }} value={reflection} onChange={(e) => setReflection(e.target.value)} />
-        </div>
-        <div>
-          <label>Learning point (exported to Anki)</label>
-          <input type="text" style={{ width: "100%" }} value={learningPoint} onChange={(e) => setLearningPoint(e.target.value)} />
-        </div>
-        <div>
-          <label>Notes</label>
-          <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: "3rem" }} />
-        </div>
-        <div className="row">
-          <button className="primary" onClick={save}>
-            {inSession?.mode === "practice"
+        <label className="check assisted-answer"><input type="checkbox" checked={lookedAtAnswer} onChange={(e) => { setLookedAtAnswer(e.target.checked); if (e.target.checked) setReviewLater(true); setMessage(""); }} /> Looked at the answer</label>
+        <label htmlFor="mark-personal-notes">My notes</label>
+        <AutoTextarea id="mark-personal-notes" placeholder="What do you want to remember?" value={notes} onChange={(e) => { setNotes(e.target.value); setMessage(""); }} style={{ minHeight: "5rem" }} />
+        <details className="marking-extra">
+          <summary>More options</summary>
+          <div className="stack">
+            <label>Confidence <select value={confidence ?? ""} onChange={(e) => setConfidence(e.target.value ? Number(e.target.value) : undefined)}><option value="">Not rated</option>{[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}{n === 1 ? " — guessing" : n === 5 ? " — certain" : ""}</option>)}</select></label>
+            <div><label>What went wrong</label><div className="row">{ERROR_TAGS.map((t) => <button type="button" key={t.id} className={"chip" + (errorTags.includes(t.id) ? " on" : "")} aria-pressed={errorTags.includes(t.id)} onClick={() => setErrorTags((ts) => ts.includes(t.id) ? ts.filter((x) => x !== t.id) : [...ts, t.id])}>{t.label}</button>)}</div></div>
+            <label>Learning point for Anki<input type="text" value={learningPoint} onChange={(e) => setLearningPoint(e.target.value)} /></label>
+          </div>
+        </details>
+        <div className="row marking-save">
+          <button className="primary" disabled={saving || seeded !== attemptId} onClick={() => void save()}>
+            {saving ? "Saving…" : inSession?.mode === "practice"
               ? inSession.attemptIds.indexOf(attempt.id) < inSession.questionIds.length - 1 ? inSession.studyUnit === "sets" && data.nextQuestion?.setId !== question.setId ? "Save and next set" : "Save and next question" : "Save and finish"
-              : "Save mark"}
+              : data.nextToMark ? "Save and next question" : inSession ? "Save and return" : "Save and view set"}
           </button>
+          <button disabled={saving || seeded !== attemptId} onClick={() => void save(false)}>Save</button>
+          {message && <span role="status">{message}</span>}
         </div>
-      </div>
+      </section>
       {editor}
     </div>
   );

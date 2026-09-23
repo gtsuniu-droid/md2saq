@@ -6,10 +6,11 @@ import type { Question, QuestionImage, QuestionSet, SubPart } from "../data/type
 import PresentationPicker from "../components/PresentationPicker";
 import { compressImage, dataUrlBytes } from "../lib/images";
 import { partLabel } from "../lib/questions";
-import { loadSummaries, setLabel } from "../lib/sets";
+import { loadSummaries, nextSetNumber, setLabel } from "../lib/sets";
 import { knownTags, suggestConditionTags } from "../lib/tags";
 import TagEditor from "../components/TagEditor";
-import { presentationName } from "../data/presentations";
+import { primaryPresentation } from "../lib/primaryPresentation";
+import { PRESENTATIONS, presentationName } from "../data/presentations";
 import { isAdmin } from "../lib/admin";
 import { bankErrorMessage, pushToBank } from "../lib/share";
 import { recordDeletes } from "../lib/sync";
@@ -45,7 +46,7 @@ export default function SetEditPage() {
 
   useEffect(() => {
     if (!data || seeded) return;
-    setSet(data.set);
+    setSet({ ...data.set, primaryPresentation: primaryPresentation(data.set, data.questions) });
     setQuestions(data.questions.map((q) => ({ ...q, key: q.id })));
     setTags(data.set.tags ?? []);
     setSeeded(true);
@@ -120,7 +121,8 @@ export default function SetEditPage() {
     setQuestions((qs) => qs.map((q) => (q.key === key ? { ...q, images: (q.images ?? []).filter((im) => im.id !== imgId) } : q)));
 
   const saveLocal = async (): Promise<QuestionSet> => {
-    const nextSet: QuestionSet = { ...set, tags: tags.length ? tags : undefined, updatedAt: Date.now(), dirty: true };
+    const number = set.primaryPresentation && set.primaryPresentation !== primaryPresentation(data.set, data.questions) ? await nextSetNumber(set.primaryPresentation) : set.number;
+    const nextSet: QuestionSet = { ...set, number, tags: tags.length ? tags : undefined, updatedAt: Date.now(), dirty: true };
     const nextQuestions: Question[] = questions.map((q, i) => {
       const { key: _k, ...rest } = q;
       void _k;
@@ -174,6 +176,13 @@ export default function SetEditPage() {
       <h1 style={{ marginTop: "0.3rem" }}>Edit {setLabel(set)}</h1>
 
       <div className="card stack">
+        <label>Primary presentation
+          <select value={set.primaryPresentation ?? ""} onChange={(e) => patchSet({ primaryPresentation: e.target.value || undefined })}>
+            <option value="">Choose the main presenting complaint</option>
+            {PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        <p className="muted">This places the whole set under one presentation. Secondary question tags do not move it into other presentations.</p>
         <div className="row">
           <div style={{ flex: 1 }}>
             <label>Tags. Type or click a suggestion; Presentation::Topic nests the set in Browse</label>

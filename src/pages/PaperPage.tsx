@@ -1,3 +1,5 @@
+import QuestionCommunity from "../components/QuestionCommunity";
+import ShareLinks from "../components/ShareLinks";
 import { useLiveQuery } from "dexie-react-hooks";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -352,46 +354,43 @@ export default function PaperPage() {
     setTimeout(() => document.getElementById(`part-${i}-${label || "q"}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   };
 
-  const submitCurrent = async () => {
-    if (!attempt || !session) return;
-    await flushAttempt(attempt.id);
-    await db.attempts.update(attempt.id, { submittedAt: Date.now() });
-    requestSync(0);
-    nav(`/mark/${attempt.id}`);
-  };
-
   if (!session || !data || !question || !attempt) return null;
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
   const setMode = session.studyUnit === "sets";
   const setGroups = sessionSetGroups(session, data.questions);
   const setIndex = setGroups.findIndex((group) => group.indices.includes(index));
-  const currentSet = setGroups[setIndex];
-  const nextSet = setGroups[setIndex + 1];
   const openedGroups = setGroups.slice(0, openedSetCount(session, setGroups));
-  const currentSetSubmitted = !!currentSet && currentSet.indices.every((i) => data.attempts[i]?.submittedAt !== undefined);
   const marked = new Set(data.marks.map((m) => m.attemptId));
-  const firstToMark = currentSet?.indices.find((i) => !marked.has(data.attempts[i]?.id)) ?? currentSet?.indices[0] ?? index;
-  const openMarking = () => { flushAll(); nav(`/mark/${data.attempts[firstToMark].id}`); };
+  const currentSet = setGroups[setIndex];
+  const lastInSet = currentSet.indices[currentSet.indices.length - 1];
+  const setSubmitted = currentSet.indices.every((i) => data.attempts[i].submittedAt !== undefined);
+  const firstToMark = currentSet.indices.find((i) => !marked.has(data.attempts[i].id)) ?? currentSet.indices[0];
   const submitSet = async () => {
-    if (!currentSet || submittingRef.current) return;
+    if (submittingRef.current || setSubmitted) return;
     submittingRef.current = true;
     setSubmittingSet(true); setSaveError("");
     try {
       for (const i of currentSet.indices) await flushAttempt(data.attempts[i].id);
+      const submittedAt = Date.now();
       await db.transaction("rw", db.attempts, async () => {
-        for (const i of currentSet.indices) if (data.attempts[i].submittedAt === undefined) await db.attempts.update(data.attempts[i].id, { submittedAt: Date.now() });
+        for (const i of currentSet.indices) {
+          if (data.attempts[i].submittedAt === undefined) await db.attempts.update(data.attempts[i].id, { submittedAt });
+        }
       });
       requestSync(0);
     } catch { setSaveError("Could not submit this set. Your draft answers are still here; please try again."); }
     finally { submittingRef.current = false; setSubmittingSet(false); }
   };
+  const nextQuestion = (i: number) => {
+    if (i + 1 < data.questions.length) goTo(i + 1);
+    else { flushAll(); setSummaryOpen(true); }
+  };
 
   // Questions that share the same stems sit on one scrolling page.
   const groupIndices = paperQuestionGroup(data.questions, index, stemsOf);
   const stems = stemsOf(question);
-  const questionNumber = (i: number) => setMode ? data.questions[i].order + 1 : i + 1;
+  const questionNumber = (i: number) => i + 1;
   const groupLabel = groupIndices.length > 1 ? `${questionNumber(groupIndices[0])}–${questionNumber(groupIndices[groupIndices.length - 1])}` : `${questionNumber(index)}`;
-  const lastInGroup = groupIndices[groupIndices.length - 1];
   const stemTexts = [...stems, ...groupIndices.flatMap((i) => [data.questions[i].text, ...data.questions[i].parts.map((x) => x.text)])];
   // Without stems, a question with parts uses its own text as the stem (older paste format).
   const legacyStem = stems.length === 0 && question.parts.length > 0 ? question.text : null;
@@ -402,41 +401,30 @@ export default function PaperPage() {
   return (
     <>
       <div className="paper-top">
-        <span className="muted">{session.mode === "exam" ? "Exam" : "Practice"} · {setMode ? `Set ${setIndex + 1} of ${setGroups.length} · Question ${question.order + 1}` : `Question ${index + 1} of ${data.questions.length}`}</span>
+        <span className="muted">{session.mode === "exam" ? "Exam" : "Practice"}, {setMode ? `Set ${setIndex + 1} of ${setGroups.length}, Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
         {remaining !== null && (
           <span className={"timer" + (remaining <= 60 ? " low" : "")} aria-label={expired && session.mode === "practice" ? "Practice overtime" : "Time remaining"}>{expired && session.mode === "practice" ? `+${formatDuration(overtimeSec(session, now))}` : formatDuration(remaining)}</span>
         )}
         <span style={{ flex: 1 }} />
+        <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />
         <button onClick={() => nav("/")}>Save & exit</button>
-        {setMode && nextSet && <button onClick={() => goTo(nextSet.indices[0])} disabled={submittingSet}>Next set</button>}
-        {session.mode === "practice" ? (
-          setMode ? <button className="primary" onClick={() => void submitSet()} disabled={submittingSet || currentSetSubmitted}>{submittingSet ? "Submitting…" : currentSetSubmitted ? "Set submitted" : "Submit set"}</button> : unsubmitted === 0 ? (
-            <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish</button>
-          ) : (
-            <button className="primary" onClick={submitCurrent} disabled={!!attempt.submittedAt}>
-              {attempt.submittedAt ? `Question ${index + 1} submitted` : `Submit question ${index + 1}`}
-            </button>
-          )
-        ) : (
-          <button className="primary" onClick={submitAll} disabled={expired}>Submit paper ({unsubmitted} left)</button>
-        )}
+        <button onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
+        {session.mode === "practice"
+          ? <button onClick={() => nextQuestion(index)} disabled={submittingSet}>{index + 1 >= data.questions.length ? "Session summary" : data.questions[index + 1].setId !== data.questions[index].setId ? "Next set" : "Next"}</button>
+          : <button className="primary" onClick={submitAll} disabled={expired}>Submit paper ({unsubmitted} left)</button>}
+
       </div>
       {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">Suggested time reached. Keep writing and submit when you're ready.</div>}
       {saveError && <div className="practice-time-notice" role="alert">{saveError}</div>}
-      {setMode && session.mode === "practice" && currentSetSubmitted && <div className="set-submitted-actions" role="region" aria-label="Set submitted">
-        <div><strong>Set {setIndex + 1} submitted</strong><span className="muted">Mark it now, or come back from Summary later.</span></div>
-        <button onClick={openMarking}>{currentSet.indices.every((i) => marked.has(data.attempts[i].id)) ? "Review marking" : "Mark this set"}</button>
-        {nextSet ? <button className="primary" onClick={() => goTo(nextSet.indices[0])}>Continue to next set</button> : <button className="primary" onClick={() => { flushAll(); setSummaryOpen(true); }}>Session summary</button>}
-      </div>}
       <div className="paper">
-        <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} sets={data.sets} activePart={activePart} summaryOpen={summaryOpen} onSummary={() => { flushAll(); setSummaryOpen((open) => !open); }} onQuestion={goTo} />
+        <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
         {summaryOpen ? <section className="paper-summary" aria-label="Session summary">
           <h1>Session summary</h1><p className="muted">{data.attempts.length - unsubmitted} of {data.questions.length} questions submitted. {data.marks.length} marked.</p>
           {(setMode ? openedGroups : setGroups).map((group, number) => {
             const set = data.sets.find((s) => s.id === group.setId);
             const submitted = group.indices.filter((i) => data.attempts[i].submittedAt !== undefined);
             const unmarked = submitted.find((i) => !marked.has(data.attempts[i].id));
-            return <div className="session-summary-row" key={group.setId}><div><strong>{setMode ? `${number + 1}. ` : ""}{set ? setLabel(set) : "Set"}</strong><p>{set?.name}</p><span className="muted">{submitted.length} / {group.indices.length} submitted · {group.indices.filter((i) => marked.has(data.attempts[i].id)).length} marked</span></div><div className="row"><button onClick={() => goTo(group.indices[0])}>Open set</button>{session.mode === "practice" && submitted.length > 0 && <button onClick={() => nav(`/mark/${data.attempts[unmarked ?? submitted[0]].id}`)}>{unmarked !== undefined ? "Mark set" : "Review"}</button>}</div></div>;
+            return <div className="session-summary-row" key={group.setId}><div><strong>{setMode ? `${number + 1}. ` : ""}{set ? setLabel(set) : "Set"}</strong><p>{set?.name}</p><span className="muted">{submitted.length} / {group.indices.length} submitted, {group.indices.filter((i) => marked.has(data.attempts[i].id)).length} marked</span></div><div className="row"><button onClick={() => goTo(group.indices[0])}>Open set</button>{session.mode === "practice" && submitted.length > 0 && <button onClick={() => nav(`/mark/${data.attempts[unmarked ?? submitted[0]].id}`)}>{unmarked !== undefined ? "Mark set" : "Review"}</button>}</div></div>;
           })}
           {setMode && openedGroups.length < setGroups.length && <p className="muted">{setGroups.length - openedGroups.length} sets still to open.</p>}
           <div className="row"><button onClick={() => setSummaryOpen(false)}>Back to question</button>{setMode && openedGroups.length < setGroups.length && <button className="primary" onClick={() => goTo(setGroups[openedGroups.length].indices[0])}>Open next set</button>}{unsubmitted === 0 && <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish session</button>}</div>
@@ -473,11 +461,12 @@ export default function PaperPage() {
             return (
               <div key={q.id} className={"question-block" + (qi === index ? " current" : "")} id={`part-${qi}-q`}
                 onMouseDownCapture={() => { if (qi !== index) setCurrent(qi); }}>
-                {(groupIndices.length > 1 || admin) && (
+                {(
                   <div className="qhead">
                     <span>{groupIndices.length > 1 ? questionNumber(qi) : ""}</span>
                     <span style={{ flex: 1 }} />
                     {a.submittedAt && <span className="muted">submitted</span>}
+                    <QuestionCommunity question={q} set={data.sets.find(s => s.id === q.setId)} disabled={session.mode === "exam" && unsubmitted > 0} />
                     {admin && <button className="small" onClick={() => setEditing(q)} title="Edit this question (admin)">Edit</button>}
                   </div>
                 )}
@@ -509,14 +498,21 @@ export default function PaperPage() {
                     </div>
                   );
                 })}
+                <div className="row question-actions">
+                  {session.mode === "practice" && qi === lastInSet && (setSubmitted ? <>
+                    <span className="muted" role="status">Set submitted</span>
+                    <button onClick={() => { flushAll(); nav(`/mark/${data.attempts[firstToMark].id}`); }}>
+                      {currentSet.indices.every((i) => marked.has(data.attempts[i].id)) ? "Review marking" : "Mark set"}
+                    </button>
+                  </> : <button className="primary" onClick={() => void submitSet()} disabled={submittingSet}>
+                    {submittingSet ? "Submitting…" : "Submit set"}
+                  </button>)}
+                  <button onClick={() => nextQuestion(qi)} disabled={submittingSet}>{qi + 1 < data.questions.length ? qi === lastInSet ? "Next set" : "Next" : "Session summary"}</button>
+                </div>
               </div>
             );
           })}
-          {lastInGroup < data.questions.length - 1 && (
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button onClick={() => goTo(lastInGroup + 1)}>{setMode && data.questions[lastInGroup + 1].setId !== question.setId ? "Next set" : "Next question"}</button>
-            </div>
-          )}
+
         </div>
         </div>}
       </div>
@@ -524,15 +520,7 @@ export default function PaperPage() {
         <QuickEdit
           question={editing}
           onClose={() => setEditing(null)}
-          onDeleted={() => {
-            const next = loadSession();
-            if (!next) {
-              nav("/", { replace: true });
-              return;
-            }
-            setSession(next);
-            setActivePart("");
-          }}
+
         />
       )}
     </>

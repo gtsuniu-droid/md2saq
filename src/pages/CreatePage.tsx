@@ -1,3 +1,6 @@
+import { primaryPresentation } from "../lib/primaryPresentation";
+import SetAdditionUndo from "../components/SetAdditionUndo";
+import { saveAddedSet, type AdditionAction } from "../lib/setAdditionUndo";
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { db, newId } from "../data/db";
@@ -81,7 +84,7 @@ function draftsFromText(text: string, preset: string): { drafts: Draft[]; meta: 
   return { drafts, meta };
 }
 
-async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}, extra: Partial<QuestionSet> = {}): Promise<QuestionSet> {
+async function saveDrafts(name: string, source: string, drafts: Draft[], meta: PaperMeta = {}, extra: Partial<QuestionSet> = {}, action: AdditionAction = { id: newId(), label: "Added set" }): Promise<QuestionSet> {
   const number = await nextSetNumber(numberingGroup(extra.tags, drafts));
   const set: QuestionSet = {
     id: newId(),
@@ -106,10 +109,9 @@ async function saveDrafts(name: string, source: string, drafts: Draft[], meta: P
     tags: [],
     createdAt: Date.now(),
   }));
-  await db.transaction("rw", db.sets, db.questions, async () => {
-    await db.sets.add(set);
-    await db.questions.bulkAdd(questions);
-  });
+  set.primaryPresentation = primaryPresentation(set, questions);
+  if (set.primaryPresentation && set.primaryPresentation !== numberingGroup(extra.tags, drafts)) set.number = await nextSetNumber(set.primaryPresentation);
+  await saveAddedSet(set, questions, action);
   return set;
 }
 
@@ -128,9 +130,10 @@ interface CreateToolsProps {
   /** Rendered inside the Master page: no heading. */
   embedded?: boolean;
   onSaved?: () => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
-export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
+export function CreateTools({ embedded = false, onSaved, onSavingChange }: CreateToolsProps) {
   const [params] = useSearchParams();
   const presetPresentation = params.get("presentation") ?? "";
   const [raw, setRaw] = useState("");
@@ -150,6 +153,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   const summaries = useLiveQuery(loadSummaries, []) ?? [];
   const [setPresentations, setSetPresentations] = useState<string[]>(presetPresentation ? [presetPresentation] : []);
   const [saving, setSaving] = useState(false);
+  useEffect(() => { onSavingChange?.(saving); }, [saving, onSavingChange]);
   const { addingImages, onBusyChange } = useModelAnswerImages();
   const [notice, setNotice] = useState<{ text: string; setId?: string; error?: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -244,17 +248,15 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
 
   const savePaste = async () => {
     if (drafts.length === 0 || addingImages || saving) return;
-    setSaving(true);
-    setNotice(null);
-    const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags() });
-    const ok = await pushOrReport(set.id, setLabel(set));
-    if (ok) setNotice({ text: `Saved ${setLabel(set)} with ${drafts.length} questions.`, setId: set.id });
-    setRaw("");
-    setDrafts([]);
-    setTags([]);
-    if (!presetPresentation) setName("");
-    setSaving(false);
-    onSaved?.();
+    setSaving(true); setNotice(null);
+    try {
+      const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags() });
+      const ok = await pushOrReport(set.id, setLabel(set));
+      if (ok) setNotice({ text: `Saved ${setLabel(set)} with ${drafts.length} question${drafts.length === 1 ? "" : "s"}. Use Undo latest addition to reverse this.`, setId: set.id });
+      setRaw(""); setDrafts([]); setTags([]);
+      if (!presetPresentation) setName("");
+    } catch (e) { setNotice({ text: `Could not save: ${bankErrorMessage(e)}`, error: true }); }
+    finally { setSaving(false); onSaved?.(); }
   };
 
   const addFiles = async (list: FileList | File[]) => {
@@ -326,46 +328,43 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   };
 
   const saveCases = async () => {
-    if (cases.length === 0) return;
-    setSaving(true);
-    setNotice(null);
+    if (cases.length === 0 || saving) return;
+    setSaving(true); setNotice(null);
+    const action = { id: newId(), label: "Imported cases" };
     let questions = 0;
     let ok = true;
-    for (const b of cases) {
-      const set = await saveDrafts("", `${b.name}: ${b.c.title}`, b.drafts, { minutes: b.c.minutes }, {
-        collection: b.collection,
-        tags: b.tags.length ? b.tags : undefined,
-        instructions: b.c.instructions,
-        markingNotes: b.c.markingNotes,
-        debrief: b.c.debrief,
-      });
-      questions += b.drafts.length;
-      if (ok) ok = await pushOrReport(set.id, setLabel(set));
-    }
-    if (ok) setNotice({ text: `Saved ${cases.length} case${cases.length === 1 ? "" : "s"} with ${questions} questions.` });
-    setCases([]);
-    setSaving(false);
-    onSaved?.();
+    try {
+      for (const b of cases) {
+        const set = await saveDrafts("", `${b.name}: ${b.c.title}`, b.drafts, { minutes: b.c.minutes }, {
+          collection: b.collection, tags: b.tags.length ? b.tags : undefined,
+          instructions: b.c.instructions, markingNotes: b.c.markingNotes, debrief: b.c.debrief,
+        }, action);
+        questions += b.drafts.length;
+        setCases((pending) => pending.filter((item) => item.key !== b.key));
+        if (ok) ok = await pushOrReport(set.id, setLabel(set));
+      }
+      if (ok) setNotice({ text: `Saved ${cases.length} cases with ${questions} questions. Undo latest addition reverses this whole batch.` });
+    } catch (e) { setNotice({ text: `Import stopped: ${bankErrorMessage(e)} Saved sets are in Recent additions; unsaved cases remain below.`, error: true }); }
+    finally { setSaving(false); onSaved?.(); }
   };
 
   const saveFiles = async () => {
     const usable = files.filter((f) => f.drafts.length > 0);
-    if (usable.length === 0) return;
-    setSaving(true);
-    setNotice(null);
-    let sets = 0;
+    if (usable.length === 0 || saving) return;
+    setSaving(true); setNotice(null);
+    const action = { id: newId(), label: "Imported files" };
     let questions = 0;
     let ok = true;
-    for (const f of usable) {
-      const set = await saveDrafts(f.name, "", f.drafts, f.meta, { tags: typedTags() });
-      sets++;
-      questions += f.drafts.length;
-      if (ok) ok = await pushOrReport(set.id, setLabel(set));
-    }
-    if (ok) setNotice({ text: `Saved ${sets} set${sets === 1 ? "" : "s"} with ${questions} questions.` });
-    setFiles([]);
-    setSaving(false);
-    onSaved?.();
+    try {
+      for (const f of usable) {
+        const set = await saveDrafts(f.name, "", f.drafts, f.meta, { tags: typedTags() }, action);
+        questions += f.drafts.length;
+        setFiles((pending) => pending.filter((item) => item.key !== f.key));
+        if (ok) ok = await pushOrReport(set.id, setLabel(set));
+      }
+      if (ok) setNotice({ text: `Saved ${usable.length} sets with ${questions} questions. Undo latest addition reverses this whole batch.` });
+    } catch (e) { setNotice({ text: `Import stopped: ${bankErrorMessage(e)} Saved sets are in Recent additions; unsaved files remain below.`, error: true }); }
+    finally { setSaving(false); onSaved?.(); }
   };
 
   const editFile = (f: FileBatch) => {
@@ -392,6 +391,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
   return (
     <div>
       {!embedded && <h1>Create</h1>}
+      {!embedded && <SetAdditionUndo disabled={saving} onChanged={onSaved} />}
       {presetPresentation && (
         <p className="muted">Every question you add here is tagged <strong>{presentationName(presetPresentation)}</strong>. <Link to="/create">Clear</Link></p>
       )}
@@ -518,7 +518,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
             <TagEditor value={tags} onChange={setTags} suggestions={pasteSuggestions} known={known} />
           </div>
           <div className="row" style={{ marginTop: "0.6rem" }}>
-            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} questions`}</button>
+            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} question${drafts.length === 1 ? "" : "s"}`}</button>
           </div>
           <div className="card" style={{ marginTop: "0.8rem" }}>
             <div className="row spread">
@@ -587,7 +587,7 @@ export function CreateTools({ embedded = false, onSaved }: CreateToolsProps) {
             ))}
           </div>
           <div className="row" style={{ marginTop: "1rem" }}>
-            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} questions`}</button>
+            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} question${drafts.length === 1 ? "" : "s"}`}</button>
           </div>
         </>
       )}

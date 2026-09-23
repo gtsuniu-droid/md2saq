@@ -1,3 +1,57 @@
+# Whole-set submission correction — 21 September 2026
+
+final result: passed
+
+Latest user instruction supersedes the per-question submission behavior described in the earlier report below. The vertical sidebar and progressive set loading remain unchanged.
+
+- Removed every per-question submission control from the session paper, including the top toolbar.
+- Submit set appears only below the last question of the current set. It saves and submits all that set's answers together, leaving other sets untouched.
+- After submission, the footer offers Mark set and Next set (or Session summary for the final set), so marking can be deferred.
+- Whole sets remains the default on Home. Exam paper submission is unchanged.
+
+Browser evidence: `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/set-submit-footer.png`, 1280 × 720 CSS viewport and screenshot. Visually checked the single dark-green active sidebar row, original narrow column, existing typography/colors, and footer-only Submit set beside Next set. No image assets changed; no remaining visual findings.
+
+Verified with isolated disposable data on port 5177: both entered answers retained and locked after one Submit set; an unsubmitted question in another set remained editable; there were no per-question Submit controls; browser console had no errors. All 156 tests and production build passed. No push or deployment.
+
+---
+
+# Vertical sidebar correction — 21 September 2026
+
+final result: passed
+
+Source: `/Users/gabe/Downloads/최근 사진 보기.png` (1290 × 2796 photo).
+Implementation: `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/vertical-sidebar-desktop.png` (1280 × 720 CSS viewport and capture), `vertical-sidebar-mobile.png` in the same directory (390 × 844 CSS viewport and capture).
+
+Scope: restore the original narrow vertical question list. The user's written correction takes priority over the photo's multiple green rows: exactly one current row is dark green. No source medical imagery is needed for this navigation change.
+
+Comparison: opened the reference and desktop implementation together in one tool result. The source is an angled, cropped photograph with unknown device density; compared the relevant sidebar structure and readable numbered rows, not full-page pixel alignment. The captured test session has two sets opened, question 3 part b selected, and question 1 submitted. Mobile was separately inspected at 390 × 844; no horizontal overflow (clientWidth and scrollWidth both 390).
+
+Findings and corrections:
+- Previous circular set buttons and current-set-only question grid were replaced with the original 110px sidebar and continuous rectangular question rows. New sets append below earlier ones.
+- Removed bulk Submit set; each question now has Submit/Review marking and Next, with matching active-question controls above the paper.
+- Multipart questions now select exactly one row even when no part has been selected yet.
+- Kept the narrow vertical list on mobile (64px) and stacked the stem/answer area beside it.
+
+Fidelity surfaces:
+- Typography: reused existing app font and 0.9rem sidebar numerals; readable question/part labels.
+- Spacing: flat, full-width rows with thin separators, no circular selectors or added set headings. Existing case and answer layout retained.
+- Colors: existing dark teal for the single active row, pale teal for answered rows, neutral unvisited rows.
+- Imagery: reference is a layout guide only; no image assets added or replaced.
+- Copy: sequential question numbers with original part labels, per-question Submit and Next, Summary available above the paper.
+
+Behavior verified using disposable data on isolated port 5177 with cloud authentication disabled:
+- Initially only first-set questions appear; Next within the set does not reveal another set.
+- Next after its last question appends the next complete set; earlier rows remain clickable.
+- Unsubmitted answer text survives navigation and reload; opened sets and current question persist.
+- Submit affects only the selected question; next question stays editable.
+- Save and next set after marking the last question appends the next set.
+- Exactly one current row, including multipart selection.
+- Browser console: no errors. All 156 tests and production build pass.
+
+No remaining P0/P1/P2 findings. Intentional differences from photo: real app content, existing fonts/colors, one active green row, and responsive stem stacking. No changes pushed or deployed in this correction.
+
+---
+
 # Multi-set sessions and admin sorting QA — 21 September 2026
 
 final result: passed
@@ -96,3 +150,18 @@ No actionable P0/P1/P2 issues remain. The floating card follows the supplied Ank
 ## Follow-up polish / residual gaps
 
 No blocking visual follow-ups. Touch hardware and screen-reader narration were not independently exercised; touch retains the existing click-to-open side panel. Full AMBOSS articles continue to open through the existing article links.
+
+## Suggestions, discussion and short set links — 23 September 2026
+
+- Added question-specific side-panel conversations on practice, question details and marking. Exam controls are disabled until the paper is submitted.
+- Browser verification used an isolated origin with synthetic accounts and an in-memory API: suggestion posting, admin resolution/reopening, quoted replies, author-only deletion controls, non-admin moderation hiding, failed-send draft retention, and short whole-set link loading passed.
+- Sharing exposes only Copy set link. Short-link resolver tests cover stable codes, renamed/reordered sets, invalid/deleted/ambiguous codes, and read-only resolution.
+- 209 unit tests passed; production build passed (existing bundle-size warning only).
+- Firestore rules were reviewed but not exercised in a Firestore emulator: this machine has no Java runtime. No live posts, Firebase rule updates, or deployments were performed. Deploy the new rules alongside the release; existing live rules intentionally deny these new shared paths until then.
+
+## Firebase permissions deployment — 23 September 2026
+
+- Deployed only `firestore:rules` to the app's configured Firebase project `saqmd2`, following explicit user authorization. No Git push, website build release, or Netlify deployment was triggered.
+- Firebase compiled and released the rules successfully. Re-read the active release and confirmed its source exactly matches the local rules file.
+- Nine Firebase Rules API checks passed: authenticated discussion reads; guest denial; own private-note access; cross-account note/answer denial; author deletion; denial of another member's deletion; verified moderator deletion; and denial for an unverified moderator email.
+- Saved the previous rules, deployed release metadata, and test results outside the repository under `work/firebase-rules-2026-09-23`. No real discussion posts or practice data were created or modified during verification.

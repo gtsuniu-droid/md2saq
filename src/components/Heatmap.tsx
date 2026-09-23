@@ -1,10 +1,27 @@
-import type { HeatGrid } from "../lib/stats";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import type { HeatCell, HeatGrid } from "../lib/stats";
 
 const DAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", "Sun"];
 
 /** GitHub-style activity grid. Columns are weeks, rows Monday to Sunday. */
 export default function Heatmap({ grid }: { grid: HeatGrid }) {
+  const [hover, setHover] = useState<{ text: string; date: string; count: number; x: number; y: number; below: boolean } | null>(null);
+  const describe = (cell: HeatCell) => `${cell.count} question${cell.count === 1 ? "" : "s"} completed on ${new Date(cell.ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
+  const show = (element: HTMLElement, cell: HeatCell) => {
+    const rect = element.getBoundingClientRect();
+    const below = rect.top < 85;
+    setHover({ text: describe(cell), date: new Date(cell.ts).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }), count: cell.count, x: Math.max(100, Math.min(window.innerWidth - 100, rect.left + rect.width / 2)), y: below ? rect.bottom + 8 : rect.top - 8, below });
+  };
+  useEffect(() => {
+    const clear = () => setHover(null);
+    window.addEventListener("scroll", clear, true);
+    window.addEventListener("resize", clear);
+    return () => { window.removeEventListener("scroll", clear, true); window.removeEventListener("resize", clear); };
+  }, []);
+  useEffect(() => { setHover(null); }, [grid]);
   return (
+    <>
     <div className="heat">
       <div className="heat-months" style={{ gridTemplateColumns: `repeat(${grid.weeks.length}, var(--cell))` }}>
         {grid.months.map((m) => (
@@ -22,7 +39,16 @@ export default function Heatmap({ grid }: { grid: HeatGrid }) {
                 <span
                   key={`${wi}-${di}`}
                   className={`heat-cell l${cell.level}`}
-                  title={`${cell.count} answered on ${cell.day}`}
+                  tabIndex={0}
+                  role="img"
+                  aria-label={describe(cell)}
+                  data-active={hover?.text === describe(cell) || undefined}
+                  onMouseEnter={e => show(e.currentTarget, cell)}
+                  onMouseLeave={() => setHover(null)}
+                  onFocus={e => show(e.currentTarget, cell)}
+                  onBlur={() => setHover(null)}
+                  onClick={e => show(e.currentTarget, cell)}
+                  onKeyDown={e => { if (e.key === "Escape") setHover(null); }}
                   style={{ gridColumn: wi + 1, gridRow: di + 1 }}
                 />
               ) : (
@@ -33,5 +59,7 @@ export default function Heatmap({ grid }: { grid: HeatGrid }) {
         </div>
       </div>
     </div>
+    {hover && createPortal(<div role="tooltip" className="heat-tooltip" style={{ left: hover.x, top: hover.y, transform: `translate(-50%, ${hover.below ? "0" : "-100%"})` }}><span>{hover.date}</span><strong>{hover.count} question{hover.count === 1 ? "" : "s"}</strong></div>, document.body)}
+    </>
   );
 }

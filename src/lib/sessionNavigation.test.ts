@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Question, Session } from "../data/types";
-import { openedSetCount, paperQuestionGroup, sessionAtQuestion, sessionSetGroups } from "./sessionNavigation";
+import { openedSetCount, paperQuestionGroup, sessionQuestionRows, sessionAtQuestion, sessionSetGroups } from "./sessionNavigation";
 import { stemsOf } from "./questions";
 const questions: Question[] = ["a", "a", "b", "b", "c"].map((setId, i) => ({ id: `q${i}`, setId, order: i, text: "Question", stems: ["Shared wording"], parts: [], presentations: [], tags: [], createdAt: 1 }));
 const session: Session = { id: "s", mode: "practice", studyUnit: "sets", openedSetCount: 1, questionIds: questions.map((q) => q.id), attemptIds: ["a0", "a1", "a2", "a3", "a4"], index: 0, startedAt: 42, totalSec: 90 };
@@ -34,5 +34,26 @@ describe("progressive whole-set sessions", () => {
     expect(last.openedSetCount).toBe(3);
     expect(last.mode).toBe("exam");
     expect(last.questionIds).toEqual(session.questionIds);
+  });
+});
+
+describe("vertical question sidebar", () => {
+  it("appends a whole set only after Next reaches its first question, keeping earlier rows", () => {
+    expect(sessionQuestionRows(session, questions).map((r) => r.label)).toEqual(["1", "2"]);
+    const last = sessionAtQuestion(session, questions, 1);
+    expect(sessionQuestionRows(last, questions).map((r) => r.label)).toEqual(["1", "2"]);
+    const next = sessionAtQuestion(last, questions, 2);
+    expect(sessionQuestionRows(next, questions).map((r) => r.label)).toEqual(["1", "2", "3", "4"]);
+    const back = sessionAtQuestion(next, questions, 0);
+    expect(sessionQuestionRows(back, questions).map((r) => r.label)).toEqual(["1", "2", "3", "4"]);
+    expect(sessionQuestionRows(back, questions).filter((r) => r.current).map((r) => r.label)).toEqual(["1"]);
+  });
+  it("highlights exactly one row even when a multipart question first opens or an old part was removed", () => {
+    const multipart = questions.map((q, i) => i === 0 ? { ...q, parts: [{ label: "a", text: "First" }, { label: "b", text: "Second" }] } : q);
+    for (const activePart of ["", "a", "b", "removed"]) {
+      const rows = sessionQuestionRows(session, multipart, activePart);
+      expect(rows.filter((r) => r.current)).toHaveLength(1);
+      expect(rows.find((r) => r.current)?.part).toBe(activePart === "b" ? "b" : "a");
+    }
   });
 });

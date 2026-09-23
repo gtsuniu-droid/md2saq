@@ -54,12 +54,13 @@ it("upgrades the existing app database to notes without losing questions, answer
   old.close();
   const upgraded = new SaqDatabase(name);
   await upgraded.open();
-  expect(upgraded.verno).toBe(6);
+  expect(upgraded.verno).toBe(7);
   expect((await upgraded.questions.get("q"))?.text).toBe("Keep my question");
   expect((await upgraded.attempts.get("a"))?.answers[0].text).toBe("Keep my answer");
   expect((await upgraded.attempts.get("a"))?.ownerId).toBe("");
   expect((await upgraded.settings.get("settings"))?.minutesPerMark).toBe(2);
   expect(await upgraded.notes.count()).toBe(0);
   expect(await upgraded.deviceLogins.count()).toBe(0);
+  expect(await upgraded.setAdditions.count()).toBe(0);
   await upgraded.delete();
 });

@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { DBCore, DBCoreMutateRequest, DBCoreTable } from "dexie";
-import type { PresentationNote, RememberedAmbossLogin } from "./types";
+import type { PresentationNote, RememberedAmbossLogin, SetAdditionBatch } from "./types";
 import { DEFAULT_SETTINGS, type AmbossPhraseGroup, type AmbossPhrases, type Attempt, type Mark, type Meta, type Question, type QuestionSet, type Settings, type SyncDelete } from "./types";
 
 export class SaqDatabase extends Dexie {
@@ -15,6 +15,8 @@ export class SaqDatabase extends Dexie {
   meta!: EntityTable<Meta, "id">;
   notes!: EntityTable<PresentationNote, "id">;
   deviceLogins!: EntityTable<RememberedAmbossLogin, "id">;
+
+  setAdditions!: EntityTable<SetAdditionBatch, "id">;
 
   constructor(name = "saq-practice") {
     super(name);
@@ -47,6 +49,7 @@ export class SaqDatabase extends Dexie {
         await tx.table(name).toCollection().modify((row) => { row.ownerId ??= ownerId; });
       }
     });
+    this.version(7).stores({ setAdditions: "id, ownerId, createdAt" });
     this.use({ stack: "dbcore", name: "modifiedStamp", create: stampModified });
   }
 }

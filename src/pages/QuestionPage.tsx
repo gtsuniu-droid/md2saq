@@ -1,3 +1,5 @@
+import QuestionCommunity from "../components/QuestionCommunity";
+import ShareLinks from "../components/ShareLinks";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router";
@@ -56,6 +58,8 @@ export default function QuestionPage() {
     <div>
       <div className="row spread">
         <div className="muted"><Link to={`/set/${q.setId}`}>{set ? setLabel(set) : "Set"}</Link>, question {q.order + 1}</div>
+        <QuestionCommunity key={`community-${q.id}`} question={q} set={set} />
+        <ShareLinks key={q.id} set={set} />
         {(!set?.bankId || admin) && <button className="danger small" onClick={remove}>Delete question</button>}
       </div>
       {message && <p style={{ color: "var(--warn)" }}>{message}</p>}

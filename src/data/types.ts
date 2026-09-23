@@ -20,6 +20,8 @@ export interface PresentationNote {
 }
 
 export interface QuestionSet {
+  /** The case’s main presenting complaint, independent of secondary question tags. */
+  primaryPresentation?: string;
   id: string;
   /** Running number, assigned by the bank when shared so every device agrees; provisional before that. */
   number?: number;
@@ -68,6 +70,8 @@ export interface SubPart {
 
 export interface Question {
   id: string;
+  /** Stable question ID in the published bank, even if local IDs collide. */
+  bankQuestionId?: string;
   setId: string;
   /** Position within the set. */
   order: number;
@@ -125,6 +129,17 @@ export interface QuestionRef {
   setNumber?: number;
 }
 
+export interface AnswerComment {
+  id: string;
+  partLabel: string;
+  start: number;
+  end: number;
+  quote: string;
+  text: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Attempt {
   id: string;
   /** Account that owns this attempt; empty string means device-only guest work. */
@@ -142,6 +157,8 @@ export interface Attempt {
   /** Session id for exam mode, so a paper's attempts can be marked together. */
   sessionId?: string;
   confidence?: number;
+  /** Private comments anchored to text in this saved answer. */
+  answerComments?: AnswerComment[];
   /** Candidate's own highlights on the stems, as character ranges per stem index. */
   stemHighlights?: { stem: number; start: number; end: number }[];
 }
@@ -152,6 +169,18 @@ export interface PartMark {
   maxScore: number;
   /** Indices of marking points hit, when a model answer exists for the part. */
   pointsHit: number[];
+}
+
+export type ReviewRating = "again" | "hard" | "good" | "easy";
+export interface ReviewSchedule {
+  dueAt: number;
+  intervalDays: number;
+  ease: number;
+  repetitions: number;
+  lapses: number;
+  reviewedAt: number;
+  introducedAt: number;
+  rating: ReviewRating;
 }
 
 export interface Mark {
@@ -167,6 +196,11 @@ export interface Mark {
   errorTags: ErrorTag[];
   reflection?: string;
   learningPoint?: string;
+  /** Personal reminder saved with this account’s marking. */
+  reviewLater?: boolean;
+  /** Answer was consulted during this attempt; score is assisted. */
+  lookedAtAnswer?: boolean;
+  reviewSchedule?: ReviewSchedule;
   notes?: string;
   markedAt: number;
 }
@@ -275,4 +309,15 @@ export interface Session {
   attemptIds: string[];
   /** Set while the paper is not open, so the exam clock stands still. */
   pausedAt?: number;
+}
+
+/** Device-local record of one Add/Import action, retained for undo and recovery. */
+export interface SetAdditionBatch {
+  id: string;
+  ownerId: string;
+  createdAt: number;
+  label: string;
+  items: { set: QuestionSet; questions: Question[] }[];
+  undoneIds: string[];
+  status: "saved" | "undoing" | "undone" | "restored";
 }

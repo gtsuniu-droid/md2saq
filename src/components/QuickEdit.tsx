@@ -1,23 +1,25 @@
 import { useState } from "react";
-import { db } from "../data/db";
+import { useLiveQuery } from "dexie-react-hooks";
+import { isAdmin } from "../lib/admin";
+import { db, getSettings } from "../data/db";
 import type { Question, SubPart } from "../data/types";
 import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
-import { deleteQuestion } from "../lib/deleteQuestion";
 import AutoTextarea from "../components/AutoTextarea";
 import ModelAnswerEditor, { useModelAnswerImages } from "./ModelAnswerEditor";
 
 interface Props {
   question: Question;
   onClose: () => void;
-  /** Called after the question has been deleted (the page must stop showing it). */
-  onDeleted?: () => void;
 }
 
 /**
  * Edit a question in place while sitting or marking a paper. Saves to the
  * library and publishes when a passcode is on the device. Only shown to admins.
  */
-export default function QuickEdit({ question, onClose, onDeleted }: Props) {
+export default function QuickEdit({ question, onClose }: Props) {
+  const settings = useLiveQuery(getSettings, []);
+  const admin = !!settings && isAdmin(settings);
+  const [removedParts, setRemovedParts] = useState<{ parts: SubPart[]; marks: string }[]>([]);
   const [stems, setStems] = useState<string[]>(question.stems ?? []);
   const [text, setText] = useState(question.text);
   const [marks, setMarks] = useState<string>(question.marks?.toString() ?? "");
@@ -31,7 +33,7 @@ export default function QuickEdit({ question, onClose, onDeleted }: Props) {
   const patchPart = (i: number, p: Partial<SubPart>) => setParts((ps) => ps.map((x, xi) => (xi === i ? { ...x, ...p } : x)));
 
   const save = async () => {
-    if (addingImages || busy) return;
+    if (addingImages || busy || !isAdmin(await getSettings())) return;
     setBusy(true);
     setMessage(null);
     const cleanStems = stems.map((s) => s.trim()).filter(Boolean);
@@ -65,26 +67,15 @@ export default function QuickEdit({ question, onClose, onDeleted }: Props) {
     }
   };
 
-  const remove = async () => {
-    if (!confirm(`Delete question ${question.order + 1} from this set, with every attempt and mark on it?`)) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      await deleteQuestion(question.id);
-      if (await savedPasscode()) {
-        try {
-          await pushToBank(question.setId);
-        } catch (e) {
-          setMessage(`Deleted here, not published: ${bankErrorMessage(e)}`);
-        }
-      }
-      onDeleted?.();
-      onClose();
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
-      setBusy(false);
-    }
+  const removePart = (index: number) => {
+    if (!admin || busy || addingImages) return;
+    setRemovedParts(history => [...history, { parts, marks }]);
+    const removedMarks = parts[index]?.marks;
+    if (marks.trim() && removedMarks !== undefined) setMarks(String(Math.max(0, Number(marks) - removedMarks)));
+    setParts(current => current.filter((_, i) => i !== index));
   };
+
+  if (!admin) return null;
 
   return (
     <>
@@ -97,10 +88,7 @@ export default function QuickEdit({ question, onClose, onDeleted }: Props) {
         <div className="amboss-pane-body stack">
           {stems.map((st, i) => (
             <div key={i}>
-              <div className="row spread">
-                <label>Stem {i + 1}</label>
-                <button className="small link" onClick={() => setStems((s) => s.filter((_, x) => x !== i))}>remove</button>
-              </div>
+              <label>Stem {i + 1}</label>
               <AutoTextarea value={st} style={{ minHeight: "5rem" }} onChange={(e) => setStems((s) => s.map((x, xi) => (xi === i ? e.target.value : x)))} />
             </div>
           ))}
@@ -113,9 +101,10 @@ export default function QuickEdit({ question, onClose, onDeleted }: Props) {
             <AutoTextarea value={text} style={{ minHeight: "5rem" }} onChange={(e) => setText(e.target.value)} />
           </div>
           {parts.map((p, i) => (
-            <div key={i} className="card" style={{ background: "var(--card)" }}>
+            <div key={p.label} className="card" style={{ background: "var(--card)" }}>
               <div className="row">
                 <strong>({p.label})</strong>
+                <button className="small danger" aria-label={`Remove subquestion ${p.label}`} title="Remove subquestion" onClick={() => removePart(i)} disabled={busy || addingImages}>×</button>
                 <span style={{ flex: 1 }} />
                 <label style={{ margin: 0 }}>Marks</label>
                 <input type="number" min={0} value={p.marks ?? ""} onChange={(e) => patchPart(i, { marks: e.target.value === "" ? undefined : Number(e.target.value) })} />
@@ -125,6 +114,15 @@ export default function QuickEdit({ question, onClose, onDeleted }: Props) {
               <ModelAnswerEditor answer={p} label={`Model answer for part ${p.label}`} onChange={(value) => patchPart(i, value)} onBusyChange={(value) => onBusyChange(`part:${i}`, value)} />
             </div>
           ))}
+          {removedParts.length > 0 && <div className="row" role="status">
+            <span>Subquestion removed. Save to apply.</span>
+            <button className="small" disabled={busy || addingImages} onClick={() => {
+              const previous = removedParts[removedParts.length - 1];
+              setParts(previous.parts);
+              setMarks(previous.marks);
+              setRemovedParts(history => history.slice(0, -1));
+            }}>Undo</button>
+          </div>}
           <div>
             <label>{parts.length ? "Model answer for the whole question (optional)" : "Model answer, one marking point per line"}</label>
             <ModelAnswerEditor answer={{ modelAnswer, modelAnswerDoc }} onChange={(value) => { setModelAnswer(value.modelAnswer ?? ""); setModelAnswerDoc(value.modelAnswerDoc); }} onBusyChange={(value) => onBusyChange("whole", value)} />
@@ -132,8 +130,6 @@ export default function QuickEdit({ question, onClose, onDeleted }: Props) {
           <div className="row">
             <button className="primary" onClick={save} disabled={busy || addingImages}>{addingImages ? "Adding pictures…" : "Save and publish"}</button>
             <button onClick={onClose} disabled={busy || addingImages}>Cancel</button>
-            <span style={{ flex: 1 }} />
-            <button className="small danger" onClick={remove} disabled={busy || addingImages} title="Remove this question from the set">Delete question</button>
           </div>
           {message && <div style={{ color: "var(--bad)" }}>{message}</div>}
         </div>

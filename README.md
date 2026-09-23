@@ -276,3 +276,13 @@ focusing an answer saves the position immediately. **Save & exit** pauses the ti
 continuing restores that question and part. Draft answers autosave to IndexedDB, with a
 synchronous recovery copy to cover closing or refreshing before the delayed save finishes.
 Starting another paper from Home or a set asks before replacing the existing session.
+
+### Question suggestions and discussion
+
+Published questions have Suggestions and Discussion controls in practice, question details, and marking. Suggestions can propose an answer or report a problem. Discussion supports comments and quoted replies. Posts are shared with signed-in users; they do not include private practice answers or saved notes automatically.
+
+Conversations use Firestore at `questionCommunity/{bankId}/questions/{publishedQuestionId}/{suggestions|discussion}/{postId}`. They load on opening, Refresh, or Load older posts (25 at a time), without a polling loop. Question identity follows the bank ID rather than its current position. Posts use server timestamps and retry-safe document IDs. Authors may delete their own posts; the verified `gtsuniu@gmail.com` account can moderate and resolve suggestions. Post content and authorship cannot be edited after posting.
+
+**Firebase status:** these rules were deployed and verified on project `saqmd2` on 23 September 2026. For future rules changes, deploy `firestore.rules` to the same Firebase project before enabling the corresponding UI on the live website. Publishing the Netlify build alone does not update Firebase rules. The rules retain the existing private per-user restrictions and add the shared conversation paths. If the moderator account changes, update the verified-email rule as well as the UI admin configuration. The implementation follows Firebase's [field-access rules](https://firebase.google.com/docs/firestore/security/rules-fields) and [cursor pagination](https://firebase.google.com/docs/firestore/query-data/query-cursors) guidance.
+
+Short set links use `/s/{eight-character-code}`. Codes are derived from the permanent bank ID, survive renaming/reordering, and resolve read-only through `/api/bank?short=...`; no link database or additional publish is needed when copying. Old `/shared/...` links still open. The sharing menu now copies only whole-set links.

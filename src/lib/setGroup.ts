@@ -31,7 +31,8 @@ export function rankedPresentations(questions: { presentations?: string[] }[]): 
 }
 
 /** The key sets are numbered within: a presentation id, or a lowercased custom branch name. */
-export function numberingGroup(tags: string[] | undefined, questions: { presentations?: string[] }[]): string {
+export function numberingGroup(tags: string[] | undefined, questions: { presentations?: string[] }[], primary?: string): string {
+  if (primary) return primary;
   const nested = (tags ?? []).find((t) => t.includes("::"));
   if (nested) {
     const top = nested.split("::")[0].replace(/_/g, " ").trim();

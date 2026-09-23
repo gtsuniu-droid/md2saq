@@ -39,3 +39,9 @@ describe("session selection", () => {
     expect(eligibleSessionSets(sets, questions, [], ["cough"], false, new Map())).toHaveLength(2);
   });
 });
+
+it("randomizes checked sets without including unchecked sets or splitting their questions", () => {
+  const extra = { id: "c", name: "Unchecked", createdAt: 1 };
+  const picked = buildSessionSelection({ ...base, sets: [...sets, extra], questions: [...questions, q("c1", "c", 0)], setIds: ["a", "b"], random: () => 0 });
+  expect(picked.map((q) => q.id)).toEqual(["b1", "b2", "a1", "a2"]);
+});

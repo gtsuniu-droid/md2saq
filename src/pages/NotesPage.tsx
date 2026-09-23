@@ -121,7 +121,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
     {message && <p role="status" className="muted">{message}</p>}
     {draft?.ownerId === SHARED_OWNER && draft.revision && notes?.some((n) => n.id === draft.id && n.revision !== draft.revision) && <p role="alert" className="notes-notice">This note was updated elsewhere. Your draft is safe here; copy your changes before reopening the latest version.</p>}
     {draft && <form className="note-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <div className="row spread"><h2>{draft.revision ? "Edit note" : "New note"}</h2><span className="muted">{draft.ownerId === SHARED_OWNER ? "Shared note · saved edits are public" : "Private draft kept on this device"}</span></div>
+      <div className="row spread"><h2>{draft.revision ? "Edit note" : "New note"}</h2><span className="muted">{draft.ownerId === SHARED_OWNER ? "Shared note, saved edits are public" : "Private draft kept on this device"}</span></div>
       <div className="note-fields">
         <label>Presentation<select aria-label="Note presentation" disabled={draft.ownerId === SHARED_OWNER && !!draft.revision} value={draft.presentationId} onChange={(e) => setDraft({ ...draft, presentationId: e.target.value })}>{PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         <label>Section<select aria-label="Note section" value={noteSection(draft.section)} onChange={(e) => setDraft({ ...draft, section: noteSection(e.target.value) })}>{NOTE_SECTIONS.map((s) => <option key={s.id} value={s.id}>{s.label} — {s.description}</option>)}</select></label>

@@ -1,4 +1,5 @@
 import type { Question, Session } from "../data/types";
+import { answerParts, partLabel } from "./questions";
 
 export interface SessionSetGroup { setId: string; indices: number[] }
 
@@ -41,4 +42,20 @@ export function paperQuestionGroup(questions: Question[], index: number, stems: 
   return questions.flatMap((q, i) => q.setId === question.setId && (
     currentStems.length ? stems(q).join("\u2029") === key : i === index || (!stems(q).length && !q.parts.length && !question.parts.length)
   ) ? [i] : []);
+}
+
+/** One continuous question list; reveal the next complete set only when it is reached. */
+export function sessionQuestionRows(session: Session, questions: Question[], activePart = "") {
+  const groups = sessionSetGroups(session, questions);
+  const visible = new Set(groups.slice(0, openedSetCount(session, groups)).flatMap((group) => group.indices));
+  return questions.flatMap((question, index) => {
+    if (!visible.has(index)) return [];
+    const parts = answerParts(question);
+    const selectedPart = parts.some((part) => part.label === activePart) ? activePart : parts[0]?.label;
+    return parts.map((part) => ({
+      index, part: part.label,
+      label: `${index + 1}${part.label ? ` ${partLabel(part.label)}` : ""}`,
+      current: index === session.index && part.label === selectedPart,
+    }));
+  });
 }

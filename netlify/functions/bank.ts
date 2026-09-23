@@ -1,3 +1,4 @@
+import { setLinkCode } from "../../src/lib/shortSetLink";
 import { getStore } from "@netlify/blobs";
 import type { Config } from "@netlify/functions";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -67,7 +68,7 @@ interface TextUpload {
 
 interface SetPackUpload {
   format: "saq-practice-set";
-  set: { id?: string; name?: string; source?: string; collection?: string; tags?: string[]; number?: number };
+  set: { primaryPresentation?: string; id?: string; name?: string; source?: string; collection?: string; tags?: string[]; number?: number };
   questions: { presentations?: string[] }[];
   key?: string;
 }
@@ -109,7 +110,7 @@ function entryFrom(id: string, pack: Pack, previous?: BankEntry): BankEntry {
     id,
     setId: typeof set.id === "string" ? set.id : previous?.setId,
     number: previous?.number,
-    group: numberingGroup(set.tags, pack.questions),
+    group: numberingGroup(set.tags, pack.questions, set.primaryPresentation),
     name: String(set.name ?? "Untitled set").slice(0, 200),
     source: set.source ? String(set.source).slice(0, 200) : undefined,
     collection: set.collection ? String(set.collection).slice(0, 200) : undefined,
@@ -225,6 +226,17 @@ export default async (req: Request): Promise<Response> => {
   };
 
   if (req.method === "GET") {
+    if (url.searchParams.has("short")) {
+      const code = url.searchParams.get("short") ?? "";
+      if (!/^[A-Za-z0-9_-]{8}$/.test(code)) return new Response("Not found", { status: 404 });
+      const index = ((await store.get("index", { type: "json" })) as BankEntry[] | null) ?? [];
+      const matches = (await Promise.all(index.map(async entry => ({ entry, code: await setLinkCode(entry.id) })))).filter(item => item.code === code);
+      // Refuse ambiguous codes rather than ever showing a different set.
+      if (matches.length !== 1) return new Response("Not found", { status: 404 });
+      const bankId = matches[0].entry.id;
+      const pack = await store.get(`sets/${bankId}`, { type: "json" });
+      return pack ? json({ bankId, pack }) : new Response("Not found", { status: 404 });
+    }
     const id = url.searchParams.get("id");
     if (id) {
       const pack = await store.get(`sets/${id}`, { type: "json" });

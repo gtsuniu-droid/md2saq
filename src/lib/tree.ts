@@ -1,12 +1,8 @@
+import { primaryPresentation } from "./primaryPresentation";
 import { PRESENTATIONS, presentationName } from "../data/presentations";
 import { setLabel, type SetSummary } from "./sets";
 
-/**
- * Anki-style deck tree. A set's place comes from its hierarchical tags
- * ("Dizziness::Vestibular") when it has any, otherwise from its dominant
- * presentation, so every set lands under a presentation by default. A set
- * may appear under several branches if it carries several :: tags.
- */
+/** Deck tree grouped by one primary presentation, with optional topic branches. */
 
 export interface TreeNode {
   /** Full path, e.g. "Dizziness::Vestibular". */
@@ -37,10 +33,11 @@ function emojiFor(name: string): string | undefined {
 
 /** Paths a set belongs under. */
 export function setPaths(s: SetSummary): string[] {
-  const explicit = (s.set.tags ?? []).filter((t) => t.includes(SEP)).map((t) => t.split(SEP).map((x) => x.trim()).filter(Boolean).join(SEP));
-  if (explicit.length) return [...new Set(explicit)];
-  const top = s.presentations[0];
-  return [top ? presentationName(top) : "Untagged"];
+  const primary = primaryPresentation(s.set, s.questions);
+  const name = primary ? presentationName(primary) : "Untagged";
+  const explicit = (s.set.tags ?? []).filter((t) => t.includes(SEP)).map((t) => t.split(SEP).map((x) => x.trim()).filter(Boolean));
+  const matching = explicit.filter((parts) => displayName(parts[0]).toLowerCase() === name.toLowerCase());
+  return matching.length ? [...new Set(matching.map((parts) => [name, ...parts.slice(1)].join(SEP)))] : [name];
 }
 
 export function buildTree(summaries: SetSummary[]): TreeNode[] {

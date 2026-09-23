@@ -6,6 +6,7 @@ import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
 import { useSession } from "./lib/useSession";
 import { syncFromBank } from "./lib/bank";
 import { numberUnnumberedSets } from "./lib/sets";
+import SharedPage from "./pages/SharedPage";
 import HomePage from "./pages/HomePage";
 import CreatePage from "./pages/CreatePage";
 import BrowsePage from "./pages/BrowsePage";
@@ -16,6 +17,8 @@ import SetPage from "./pages/SetPage";
 import SetEditPage from "./pages/SetEditPage";
 import PaperPage from "./pages/PaperPage";
 import MarkPage from "./pages/MarkPage";
+import SetAttemptPage from "./pages/SetAttemptPage";
+import ReviewPage from "./pages/ReviewPage";
 import SessionReviewPage from "./pages/SessionReviewPage";
 import SettingsPage from "./pages/SettingsPage";
 import AmbossPanel from "./components/AmbossPanel";
@@ -127,6 +130,7 @@ export default function App() {
 
   // Drop unsubmitted attempts left behind by abandoned papers.
   useEffect(() => {
+    if (/^\/(shared|s)\//.test(window.location.pathname)) return;
     const current = loadSession()?.id;
     void (async () => {
       const ownerId = (await getSettings()).cloudUser?.uid ?? "";
@@ -139,7 +143,7 @@ export default function App() {
     void (async () => {
       await numberUnnumberedSets();
       const settings = await getSettings();
-      if (settings.autoImportBank === false) return;
+      if (settings.autoImportBank === false || /^\/(shared|s)\//.test(window.location.pathname)) return;
       try {
         if ((await syncFromBank()) ?? 0) await numberUnnumberedSets();
       } catch {
@@ -156,6 +160,7 @@ export default function App() {
         <NavLink to="/" end>Home</NavLink>
         <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/notes">Notes</NavLink>
+        <NavLink to="/review">Review</NavLink>
         <NavLink to="/settings">Settings</NavLink>
         {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue session</NavLink>}
         <span style={{ flex: 1 }} />
@@ -169,11 +174,16 @@ export default function App() {
           <Route path="/create" element={<CreatePage />} />
           <Route path="/browse" element={<BrowsePage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/review" element={<ReviewPage />} />
           <Route path="/set/:id" element={<SetPage />} />
           <Route path="/set/:id/edit" element={<SetEditPage />} />
           <Route path="/question/:id" element={<QuestionPage />} />
+          <Route path="/s/:code" element={<SharedPage />} />
+          <Route path="/shared/:bankId" element={<SharedPage />} />
+          <Route path="/shared/:bankId/question/:questionId" element={<SharedPage />} />
           <Route path="/paper" element={<PaperPage key={session?.id} />} />
           <Route path="/mark/:attemptId" element={<MarkPage />} />
+          <Route path="/history/:attemptId" element={<SetAttemptPage />} />
           <Route path="/session/:id" element={<SessionReviewPage />} />
           <Route path="/admin" element={<Navigate to="/settings#admin" replace />} />
           <Route path="/master" element={<Navigate to="/settings#admin" replace />} />

@@ -1,0 +1,72 @@
+import "fake-indexeddb/auto";
+import { beforeEach, expect, it } from "vitest";
+import { nextReview, reviewQueue, rateReview, reviewIntervalLabel, type ReviewQueueItem } from "./reviewSchedule";
+import type { Mark } from "../data/types";
+import { DEFAULT_SETTINGS } from "../data/types";
+import { db } from "../data/db";
+import { saveMarking } from "./saveMarking";
+const now = new Date(2026,8,23,14).getTime();
+const mark = (id: string): Mark => ({ id, ownerId:'alice', questionId:id, attemptId:id, score:1,maxScore:4,parts:[{label:'',score:1,maxScore:4,pointsHit:[]}],errorTags:[],markedAt:1,reviewLater:true });
+const item = (id: string): ReviewQueueItem => ({ topic:'Abdominal pain', reasons:['Flagged'], entry:{label:id,text:id,mark:mark(id),attempt:{id,ownerId:'alice',questionId:id,startedAt:1,submittedAt:2,mode:'practice',elapsedSec:1,answers:[]}} });
+it('uses short relearning steps and increasing successful intervals',()=>{
+ const again=nextReview(undefined,'again',now);
+ expect(again.dueAt-now).toBe(5*60_000);
+ expect(reviewIntervalLabel(again,now)).toBe('5 min');
+ expect(nextReview(undefined,'hard',now).dueAt-now).toBe(10*60_000);
+ const good=nextReview(undefined,'good',now);
+ expect(good.intervalDays).toBe(1);
+ expect(new Date(good.dueAt).getDate()).toBe(24);
+ expect(new Date(good.dueAt).getHours()).toBe(0);
+ const second=nextReview(good,'good',good.dueAt);
+ expect(second.intervalDays).toBe(3);
+ expect(nextReview(second,'good',second.dueAt).intervalDays).toBeGreaterThan(3);
+ expect(nextReview(undefined,'easy',now).intervalDays).toBe(4);
+ const lapse=nextReview(second,'again',now);
+ expect(lapse.repetitions).toBe(0);
+ expect(lapse.lapses).toBe(1);
+ expect(nextReview(lapse,'good',now).intervalDays).toBe(1);
+});
+it('limits new reviews per day and prioritizes scheduled due work',()=>{
+ const items=Array.from({length:15},(_,i)=>item(String(i)));
+ const scheduled=item('due'); scheduled.entry.mark!.reviewSchedule={...nextReview(undefined,'good',now-86400000),dueAt:now-1};
+ const queue=reviewQueue([...items,scheduled],[],now);
+ expect(queue.visible).toHaveLength(10);
+ expect(queue.visible[0].entry.mark!.id).toBe('due');
+ expect(queue.ready).toHaveLength(11);
+ expect(queue.waiting).toBe(5);
+ const introduced=items.slice(0,10).map((x)=>({...x.entry.mark!,reviewSchedule:nextReview(undefined,'good',now)}));
+ const capped=reviewQueue([scheduled,...items.slice(10)],introduced,now);
+ expect(capped.ready).toHaveLength(1);
+ expect(capped.waiting).toBe(5);
+ expect(reviewQueue(items.slice(10),introduced,new Date(2026,8,24,0,1).getTime()).ready).toHaveLength(5);
+});
+it('separates future reviews from due reviews without losing saved notes',()=>{
+ const x=item('future'); x.entry.mark!.reviewSchedule=nextReview(undefined,'good',now); x.entry.mark!.notes='Saved note';
+ expect(reviewQueue([x],[x.entry.mark!],now).visible).toEqual([]);
+ expect(reviewQueue([x],[x.entry.mark!],now).later[0].entry.mark!.notes).toBe('Saved note');
+ expect(reviewQueue([x],[x.entry.mark!],x.entry.mark!.reviewSchedule.dueAt).ready).toHaveLength(1);
+});
+beforeEach(async()=>{
+ await Promise.all([db.marks.clear(),db.attempts.clear(),db.settings.clear()]);
+ await db.settings.put({...DEFAULT_SETTINGS,cloudUser:{uid:'alice'}});
+});
+it('persists account review schedules and rejects stale or foreign ratings',async()=>{
+ await db.marks.put(mark('a'));
+ const before=(await db.marks.get('a'))!;
+ await rateReview('a','good',before._m,now);
+ const saved=(await db.marks.get('a'))!;
+ expect(saved.reviewSchedule?.intervalDays).toBe(1);
+ expect(saved.score).toBe(1);
+ await expect(rateReview('a','good',before._m,now)).rejects.toThrow('changed');
+ await db.settings.update('settings',{cloudUser:{uid:'bob'}});
+ await expect(rateReview('a','again',saved._m,now)).rejects.toThrow('another account');
+});
+it('keeps schedules when editing notes and resets them if the answer is newly flagged as assisted',async()=>{
+ await db.attempts.put(item('a').entry.attempt);
+ await db.marks.put({...mark('a'),reviewSchedule:nextReview(undefined,'good',now)});
+ await saveMarking({...mark('a'),notes:'Updated notes'});
+ expect((await db.marks.get('a'))?.reviewSchedule?.intervalDays).toBe(1);
+ await saveMarking({...mark('a'),lookedAtAnswer:true});
+ expect((await db.marks.get('a'))?.reviewSchedule).toBeUndefined();
+ expect((await db.marks.get('a'))?.reviewLater).toBe(true);
+});

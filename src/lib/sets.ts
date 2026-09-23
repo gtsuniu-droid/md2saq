@@ -123,7 +123,7 @@ async function groupedSets(): Promise<{ set: QuestionSet; group: string; number?
   const [sets, questions] = await Promise.all([db.sets.toArray(), db.questions.toArray()]);
   const bySet = new Map<string, Question[]>();
   for (const q of questions) bySet.set(q.setId, [...(bySet.get(q.setId) ?? []), q]);
-  return sets.map((set) => ({ set, group: numberingGroup(set.tags, bySet.get(set.id) ?? []), number: set.number }));
+  return sets.map((set) => ({ set, group: numberingGroup(set.tags, bySet.get(set.id) ?? [], set.primaryPresentation), number: set.number }));
 }
 
 /** Next provisional number on this device for a set in this group: one above the highest known there. */

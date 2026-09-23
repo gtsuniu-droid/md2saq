@@ -1,3 +1,5 @@
+import ShareLinks from "../components/ShareLinks";
+import { primaryPresentation } from "../lib/primaryPresentation";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { loadSession } from "../lib/session";
@@ -49,7 +51,7 @@ export default function SetPage() {
   };
 
   const move = async (presentationId: string) => {
-    if (!presentationId || presentationId === summary.presentations[0]) return;
+    if (!presentationId || presentationId === primaryPresentation(set, questions)) return;
     setMoving(true);
     setMoveMessage(null);
     try {
@@ -91,7 +93,7 @@ export default function SetPage() {
         {[
           `${questions.length} question${questions.length === 1 ? "" : "s"}`,
           summary.marks ? `${summary.marks} marks` : "",
-          summary.presentations.map(presentationName).join(", "),
+          primaryPresentation(set, questions) ? presentationName(primaryPresentation(set, questions)!) : "",
           set.number !== undefined && set.name && set.name !== setLabel(set) && !/^set\s*\d+$/i.test(set.name) ? set.name : "",
           set.source ?? "",
         ].filter(Boolean).join(", ")}
@@ -99,7 +101,7 @@ export default function SetPage() {
       {unlocked && (
         <p className="row" style={{ marginTop: "-0.4rem" }}>
           <label style={{ margin: 0 }}>Presentation</label>
-          <PresentationSelect value={summary.presentations[0] ?? ""} onChange={move} disabled={moving} placeholder="None" title="Move this set to a presentation. It takes the next number there." />
+          <PresentationSelect value={primaryPresentation(set, questions) ?? ""} onChange={move} disabled={moving} placeholder="None" title="Move this set to a presentation. It takes the next number there." />
           {moveMessage && <span className={moveMessage.includes("not published") ? "" : "muted"} style={moveMessage.includes("not published") ? { color: "var(--warn)" } : undefined}>{moveMessage}</span>}
         </p>
       )}
@@ -116,15 +118,16 @@ export default function SetPage() {
       )}
 
       <div className="card row" style={{ margin: "1.2rem 0" }}>
-        <button className="primary" onClick={() => start("practice")}>Practice</button>
+        <button className="primary" onClick={() => start("practice")}>{sittings.length ? "Practise again" : "Practice"}</button>
         <button onClick={() => start("exam")}>Exam</button>
-        <input type="number" min={0} placeholder={String(suggested)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
+        <input aria-label="Practice time in minutes" type="number" min={0} placeholder={String(suggested)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
         <span className="muted">min{set.suggestedMinutes ? ", as the paper suggests" : ""}. 0 for no timer.</span>
         <span style={{ flex: 1 }} />
+        <ShareLinks key={set.id} set={set} />
         {unlocked && <Link to={`/set/${set.id}/edit`}><button className="small">Edit</button></Link>}
         {(!set.bankId || unlocked) && <button className="small danger" onClick={remove} title={set.bankId ? "Removes the set from the library for everyone" : undefined}>Delete</button>}
       </div>
-      <p className="muted">Practice marks each question as you go. Exam reveals nothing until the whole paper is submitted.</p>
+      <p className="muted">Practice lets you submit a whole set, then mark it or continue. Exam reveals nothing until the whole paper is submitted.</p>
 
       <h2>Questions</h2>
       <table>
@@ -132,10 +135,10 @@ export default function SetPage() {
           {questions.map((q) => {
             const lm = lastByQuestion.get(q.id);
             return (
-              <tr key={q.id} className="clickable" onClick={() => nav(`/question/${q.id}`)}>
+              <tr key={q.id}>
                 <td style={{ width: "2.5rem" }} className="muted">{q.order + 1}</td>
                 <td>
-                  {truncate(q.text || q.parts[0]?.text || "", 140)}
+                  <Link to={`/question/${q.id}`}>{truncate(q.text || q.parts[0]?.text || "", 140)}</Link>
                   {(q.parts.length > 0 || q.stems?.length) && (
                     <div className="muted">
                       {[q.stems?.length ? `${q.stems.length} stem${q.stems.length === 1 ? "" : "s"}` : "", q.parts.length ? q.parts.map((p) => partLabel(p.label)).join(" ") : ""].filter(Boolean).join(", ")}

@@ -1,3 +1,4 @@
+import SetAdditionUndo from "../components/SetAdditionUndo";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -34,6 +35,7 @@ function MasterContents() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
   const [bulkTag, setBulkTag] = useState("");
   const [sort, setSort] = useState<{ key: "set" | "questions" | "status" | "added" | "updated"; direction: "asc" | "desc" }>({ key: "set", direction: "asc" });
@@ -75,7 +77,7 @@ function MasterContents() {
 
   if (!summaries) return null;
   const sortColumn = (key: typeof sort.key) => setSort((s) => ({ key, direction: s.key === key ? s.direction === "asc" ? "desc" : "asc" : key === "added" || key === "updated" ? "desc" : "asc" }));
-  const heading = (key: typeof sort.key, label: string) => <th aria-sort={sort.key === key ? sort.direction === "asc" ? "ascending" : "descending" : "none"}><button className="sortable-heading" onClick={() => sortColumn(key)}>{label}{sort.key === key && <span className="sort-direction">{key === "added" || key === "updated" ? sort.direction === "asc" ? "Oldest first" : "Newest first" : sort.direction === "asc" ? "Ascending" : "Descending"}</span>}</button></th>;
+  const heading = (key: typeof sort.key, label: string) => <th scope="col" aria-sort={sort.key === key ? sort.direction === "asc" ? "ascending" : "descending" : "none"} title={key === "added" ? "First published, or created locally if unpublished" : undefined}><button className="sortable-heading" onClick={() => sortColumn(key)}>{label}<span className="sort-direction" data-active={sort.key === key || undefined} aria-hidden="true">{sort.key === key ? sort.direction === "asc" ? "↑" : "↓" : "↕"}</span></button></th>;
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.set.id));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.set.id)));
   const toggle = (id: string) =>
@@ -203,21 +205,22 @@ function MasterContents() {
       {bankError && <p className="muted">{bankError}</p>}
       {message && <p>{message}</p>}
 
+      <SetAdditionUndo disabled={busy !== null || adding} onChanged={() => void refreshBank()} />
       <details className="section" open={summaries.length === 0}>
         <summary><h2>Add</h2></summary>
-        <CreateTools embedded onSaved={() => void refreshBank()} />
+        <CreateTools embedded onSavingChange={setAdding} onSaved={() => void refreshBank()} />
       </details>
 
       <details className="section" open>
         <summary><h2>Sets</h2></summary>
         <div className="row" style={{ margin: "0.4rem 0 0.6rem" }}>
-          <input type="search" placeholder="Filter sets" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input type="search" aria-label="Filter sets" placeholder="Filter sets" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <button className="small" onClick={() => setSort({ key: "added", direction: "desc" })}>Recently added</button>
           <span className="muted">{selected.size ? `${selected.size} selected` : `${rows.length} sets`}</span>
           <span style={{ flex: 1 }} />
           {selected.size > 0 ? (
             <>
-              <input type="text" placeholder="Tag to add, e.g. Dizziness::Vestibular" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)}
+              <input type="text" aria-label="Tag for selected sets" placeholder="Tag to add, e.g. Dizziness::Vestibular" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void tagSelected(); }} style={{ minWidth: "16rem" }} />
               <button className="small" onClick={tagSelected} disabled={busy !== null || !bulkTag.trim()}>Add tag</button>
               <PresentationSelect value="" onChange={moveSelected} disabled={busy !== null} placeholder="Move to presentation…" title="Each set takes the next number in that presentation" />
@@ -229,12 +232,11 @@ function MasterContents() {
             <button className="small" onClick={pushAll} disabled={busy !== null || !bank}>Publish local changes</button>
           )}
         </div>
-        <p className="muted">Click a column heading to change the order. Added shows when a set was first published, or created locally if unpublished.</p>
-        <div className="admin-table-scroll"><table aria-label="Admin question sets">
+        <div className="admin-table-scroll"><table className="admin-sets-table" aria-label="Admin question sets">
           <thead>
             <tr>
               <th style={{ width: "1.6rem" }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all shown" /></th>
-              {heading("set", "Set")}{heading("questions", "Questions")}{heading("status", "Status")}{heading("added", "Added")}{heading("updated", "Updated")}<th></th>
+              {heading("set", "Set")}{heading("questions", "Questions")}{heading("status", "Status")}{heading("added", "Added")}{heading("updated", "Updated")}<th scope="col"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -243,19 +245,19 @@ function MasterContents() {
               const status = !s.set.bankId ? "not published" : !bank ? "" : !entry ? "not found on the server" : s.set.dirty ? "edits not published" : "published";
               return (
                 <tr key={s.set.id} className={selected.has(s.set.id) ? "selected" : ""}>
-                  <td><input type="checkbox" checked={selected.has(s.set.id)} onChange={() => toggle(s.set.id)} /></td>
+                  <td><input type="checkbox" aria-label={`Select ${fullLabel(s)}`} checked={selected.has(s.set.id)} onChange={() => toggle(s.set.id)} /></td>
                   <td>
                     <Link to={`/set/${s.set.id}`}>{fullLabel(s)}</Link>
                     <div className="muted">{[(s.set.tags ?? []).join(", "), s.set.source].filter(Boolean).join(", ")}</div>
                   </td>
                   <td>{s.questions.length}</td>
                   <td className="muted">{status}</td>
-                  <td className="muted" title={addedAt(s) !== undefined ? new Date(addedAt(s)!).toLocaleString() : "Connect to the bank to see the original publish date"}>{addedAt(s) !== undefined ? formatDate(addedAt(s)!) : "—"}</td>
-                  <td className="muted" title={new Date(updatedAt(s)).toLocaleString()}>{formatDate(updatedAt(s))}</td>
-                  <td className="row" style={{ justifyContent: "flex-end" }}>
+                  <td className="muted admin-date" title={addedAt(s) !== undefined ? new Date(addedAt(s)!).toLocaleString() : "Connect to the bank to see the original publish date"}>{addedAt(s) !== undefined ? formatDate(addedAt(s)!) : "—"}</td>
+                  <td className="muted admin-date" title={new Date(updatedAt(s)).toLocaleString()}>{formatDate(updatedAt(s))}</td>
+                  <td><div className="admin-set-actions">
                     <button className="small" onClick={() => nav(`/set/${s.set.id}/edit`)}>Edit</button>
                     <button className="small danger" onClick={() => remove(s.set.id)} disabled={busy !== null}>Delete</button>
-                  </td>
+                  </div></td>
                 </tr>
               );
             })}

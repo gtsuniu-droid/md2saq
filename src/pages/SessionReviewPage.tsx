@@ -46,7 +46,7 @@ export default function SessionReviewPage() {
           {ordered.map((r, i) => (
             <tr key={r.a.id}>
               <td>{i + 1}</td>
-              <td>{r.q ? truncate(r.q.text || r.q.parts[0]?.text || "") : "(deleted)"}</td>
+              <td>{r.q ? truncate(r.q.text || r.q.parts[0]?.text || "") : "(deleted)"}{r.m?.reviewLater && <span className="review-later-label"> ⚑ Review later</span>}</td>
               <td>{formatDuration(r.a.elapsedSec)}</td>
               <td>{r.a.submittedAt === undefined ? session?.id === id ? <button className="small" onClick={() => resume(r.a.questionId)}>Continue</button> : "Not submitted" : r.m ? <Link to={`/mark/${r.a.id}`}>{r.m.score}/{r.m.maxScore}</Link> : <Link to={`/mark/${r.a.id}`}>Mark</Link>}</td>
             </tr>

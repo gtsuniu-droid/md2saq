@@ -12,7 +12,7 @@ import { remainingSec } from "../lib/sessionClock";
 import { useSession } from "../lib/useSession";
 import { answeredPerDay, heatGrid, presentationProgress, summarise } from "../lib/stats";
 
-import { buildSessionSelection, eligibleSessionSets, seededRandom, suggestedSessionMinutes, type StudyUnit } from "../lib/sessionBuilder";
+import { buildSessionSelection, setPresentationProgress, eligibleSessionSets, seededRandom, suggestedSessionMinutes, type StudyUnit } from "../lib/sessionBuilder";
 import { setLabel } from "../lib/sets";
 
 type Range = "week" | "year" | "overall";
@@ -62,6 +62,7 @@ export default function HomePage() {
     return {
       grid: heatGrid(perDay, now, days),
       summary: summarise(data.attempts, data.marks, range === "overall" ? undefined : from),
+      setProgress: setPresentationProgress(data.sets, data.questions, data.attempts, data.marks, PRESENTATIONS.map((p) => p.id)),
       progress: presentationProgress(data.questions, data.attempts, data.marks, PRESENTATIONS.map((p) => p.id), PARENT_OF),
     };
   }, [data, range]);
@@ -73,7 +74,12 @@ export default function HomePage() {
   }) : [], [data, unit, selected, newOnly, count, chooseSets, selectedSets, seed]);
 
   if (!data || !view) return null;
-  const { summary, progress } = view;
+  const { summary } = view;
+  const progress = unit === "sets" ? view.setProgress.progress : view.progress;
+  const allProgress = unit === "sets" ? view.setProgress.all : {
+    total: data.questions.length,
+    marked: new Set(data.marks.filter((m) => data.questions.some((q) => q.id === m.questionId)).map((m) => m.questionId)).size,
+  };
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -151,8 +157,8 @@ export default function HomePage() {
       <div className="card home-card" style={{ marginTop: "1.2rem" }}>
         <h1 style={{ fontSize: "1.05rem", marginBottom: "0.8rem" }}>New session</h1>
         <div className="session-unit-picker" role="group" aria-label="What would you like to practise?">
-          <button className={unit === "questions" ? "selected" : ""} aria-pressed={unit === "questions"} onClick={() => { setUnit("questions"); setCount(""); }}><strong>Individual questions</strong><span>Mix questions from your chosen presentations.</span></button>
           <button className={unit === "sets" ? "selected" : ""} aria-pressed={unit === "sets"} onClick={() => { setUnit("sets"); setCount(""); }}><strong>Whole sets</strong><span>Complete cases, with every question in order.</span></button>
+          <button className={unit === "questions" ? "selected" : ""} aria-pressed={unit === "questions"} onClick={() => { setUnit("questions"); setCount(""); }}><strong>Individual questions</strong><span>Mix questions from your chosen presentations.</span></button>
         </div>
         <div className="row">
           <input aria-label="Search presentations" type="search" placeholder="Search presentations" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: "12rem" }} />
@@ -168,7 +174,7 @@ export default function HomePage() {
             <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(withQuestions.map((p) => p.id)))} />
             <span className="name">All presentations</span>
             <span className="bar" />
-            <span className="count muted">{[...progress.values()].reduce((a, p) => a + p.marked, 0)} / {data.questions.length}</span>
+            <span className="count muted">{allProgress.marked} / {allProgress.total}</span>
           </label>
           {visible.map((p) => {
             const pr = progress.get(p.id)!;
@@ -189,12 +195,12 @@ export default function HomePage() {
         </div>
 
         {unit === "sets" && selected.size > 0 && <div className="session-set-picker">
-          <div className="row spread"><span className="muted">{setPool.length} complete sets available</span><div className="seg" role="group" aria-label="Set selection"><button className={!chooseSets ? "on" : ""} aria-pressed={!chooseSets} onClick={() => { setChooseSets(false); setCount(""); }}>Random sets</button><button className={chooseSets ? "on" : ""} aria-pressed={chooseSets} onClick={() => { setChooseSets(true); setCount(""); }}>Choose sets</button></div></div>
+          <div className="row spread"><span className="muted">{setPool.length} complete {setPool.length === 1 ? "set" : "sets"} available</span><div className="seg" role="group" aria-label="Set selection"><button className={!chooseSets ? "on" : ""} aria-pressed={!chooseSets} onClick={() => { setChooseSets(false); setCount(""); }}>Random sets</button><button className={chooseSets ? "on" : ""} aria-pressed={chooseSets} onClick={() => { setChooseSets(true); setCount(""); }}>Choose sets</button></div></div>
           {chooseSets && <div className="session-set-list">
             <div className="row"><button className="small link" onClick={() => setSelectedSets(new Set(setPool.map((s) => s.set.id)))}>Select all sets</button><button className="small link" onClick={() => setSelectedSets(new Set())}>Clear</button></div>
-            {setPool.map((s) => <label key={s.set.id} className="session-set-row"><input type="checkbox" checked={selectedSets.has(s.set.id)} onChange={() => setSelectedSets((prev) => { const next = new Set(prev); if (next.has(s.set.id)) next.delete(s.set.id); else next.add(s.set.id); return next; })} /><span><strong>{setLabel(s.set)}</strong><span className="muted">{truncate(stemsOf(s.questions[0])[0] || s.questions[0].text, 110)}</span></span><small>{s.questions.length} questions · {s.attempted === 0 ? "New" : `${s.attempted} attempted`}</small></label>)}
+            {setPool.map((s) => <label key={s.set.id} className="session-set-row"><input type="checkbox" checked={selectedSets.has(s.set.id)} onChange={() => setSelectedSets((prev) => { const next = new Set(prev); if (next.has(s.set.id)) next.delete(s.set.id); else next.add(s.set.id); return next; })} /><span><strong>{setLabel(s.set)}</strong><span className="muted">{truncate(stemsOf(s.questions[0])[0] || s.questions[0].text, 110)}</span></span><small>{s.questions.length} questions, {s.attempted === 0 ? "New" : `${s.attempted} attempted`}</small></label>)}
           </div>}
-          <p className="muted">All questions in each selected set are included, even if some cover another presentation.{newOnly ? " Sets with any submitted answers are excluded." : ""}</p>
+          <p className="muted">Sets are chosen by their primary presentation, with every question included.{newOnly ? " Sets with any submitted answers are excluded." : ""}</p>
         </div>}
         <div className="session-start-area">
           <div className="row">
@@ -203,8 +209,8 @@ export default function HomePage() {
             <span className="muted">Leave blank for the suggested time. Enter 0 for no timer.</span>
           </div>
           <div className="session-preview" aria-live="polite">
-            <div><strong>{!selected.size ? "Select presentations to begin" : !selectedQuestions.length ? "No questions selected" : unit === "sets" ? `${pickedSetIds.size} whole ${pickedSetIds.size === 1 ? "set" : "sets"} · ${selectedQuestions.length} questions` : `${selectedQuestions.length} individual ${selectedQuestions.length === 1 ? "question" : "questions"}`}</strong>
-              {!!selectedQuestions.length && <p className="muted">{mode === "exam" ? "Exam" : "Practice"} · {minutes === "0" ? "Untimed" : `${minutes || suggestedMinutes} minutes`}</p>}
+            <div><strong>{!selected.size ? "Select presentations to begin" : !selectedQuestions.length ? "No questions selected" : unit === "sets" ? `${pickedSetIds.size} whole ${pickedSetIds.size === 1 ? "set" : "sets"}, ${selectedQuestions.length} ${selectedQuestions.length === 1 ? "question" : "questions"}` : `${selectedQuestions.length} individual ${selectedQuestions.length === 1 ? "question" : "questions"}`}</strong>
+              {!!selectedQuestions.length && <p className="muted">{mode === "exam" ? "Exam" : "Practice"}, {minutes === "0" ? "Untimed" : `${minutes || suggestedMinutes} minutes`}</p>}
               {!selectedQuestions.length && selected.size > 0 && <p className="muted">{unit === "sets" && chooseSets ? "Tick the sets you want to study." : "Try changing the unattempted filter or the number requested."}</p>}
             </div>
             <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={start} disabled={!selectedQuestions.length || !validMinutes}>{mode === "exam" ? "Start exam" : "Start practice"}</button></div>
@@ -212,7 +218,7 @@ export default function HomePage() {
           {!!selectedQuestions.length && <details className="session-selection-preview"><summary>Preview selected {unit === "sets" ? "sets" : "questions"}</summary>{[...pickedSetIds].map((id) => {
             const set = data.sets.find((s) => s.id === id);
             const qs = selectedQuestions.filter((q) => q.setId === id);
-            return <div key={id}><strong>{set ? setLabel(set) : "Set"} · {qs.length} questions</strong><p className="muted">{set?.name}</p>{unit === "questions" && <ul>{qs.map((q) => <li key={q.id}>{q.text.slice(0, 150)}{q.text.length > 150 ? "…" : ""}</li>)}</ul>}</div>;
+            return <div key={id}><strong>{set ? setLabel(set) : "Set"}, {qs.length} questions</strong><p className="muted">{set?.name}</p>{unit === "questions" && <ul>{qs.map((q) => <li key={q.id}>{q.text.slice(0, 150)}{q.text.length > 150 ? "…" : ""}</li>)}</ul>}</div>;
           })}</details>}
         </div>
       </div>

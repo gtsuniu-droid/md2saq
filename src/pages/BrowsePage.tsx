@@ -1,9 +1,9 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { getSettings } from "../data/db";
 import { loadSummaries, setLabel, suggestedMinutesFor, type SetSummary } from "../lib/sets";
-import { startSession } from "../lib/session";
+import { loadSession, startSession } from "../lib/session";
 import { buildTree, filterTree, searchHits, setsInBranch, type TreeNode } from "../lib/tree";
 import { isAdmin } from "../lib/admin";
 
@@ -74,8 +74,9 @@ export default function BrowsePage() {
     const sets = setsInBranch(node);
     const ids = sets.flatMap((s) => s.questions.map((q) => q.id));
     if (ids.length === 0) return;
+    if (loadSession() && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
     const minutes = sets.reduce((acc, s) => acc + suggestedMinutesFor(s, data.settings.minutesPerMark), 0);
-    startSession(ids, mode, Math.round(minutes * 60));
+    startSession(ids, mode, Math.round(minutes * 60), "sets");
     nav("/paper");
   };
 
@@ -85,7 +86,7 @@ export default function BrowsePage() {
     const detail = plainTags.length ? plainTags.join(", ") : s.set.source ?? "";
     return (
       <div key={s.set.id}>
-        <div className="deck-row set" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }} onClick={() => nav(`/set/${s.set.id}`)}>
+        <Link to={`/set/${s.set.id}`} className="deck-row set" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }}>
           <span className="caret" />
           <span className="name">
             <Highlight text={setLabel(s.set)} needle={search} />
@@ -93,16 +94,16 @@ export default function BrowsePage() {
           </span>
           <Progress total={s.questions.length} attempted={s.attemptedQuestions} marked={s.markedQuestions} />
           <span className="actions" />
-        </div>
+        </Link>
         {hits && (hits.questions.length > 0 || hits.tags.some((t) => t.includes("::"))) && (
           <div className="deck-hits" style={{ paddingLeft: `${2.6 + depth * 1.4}rem` }}>
             {hits.tags.filter((t) => t.includes("::")).map((t) => (
               <div key={t} className="hit-line muted">tag <Highlight text={t} needle={search} /></div>
             ))}
             {hits.questions.map((h) => (
-              <div key={h.questionId} className="hit-line" onClick={() => nav(`/question/${h.questionId}`)} title="Open this question">
+              <Link to={`/question/${h.questionId}`} key={h.questionId} className="hit-line" title="Open this question">
                 <span className="muted">Q{h.number}{h.field === "question" ? "" : `, ${h.field}`}:</span> <Highlight text={h.snippet} needle={search} />
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -114,9 +115,8 @@ export default function BrowsePage() {
     const open = searching || expanded.has(node.path);
     return (
       <div key={node.path}>
-        <div className="deck-row branch" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }} onClick={() => toggle(node.path)}>
-          <span className="caret">{open ? "▾" : "▸"}</span>
-          <span className="name">{node.emoji && <span className="emoji">{node.emoji}</span>}{node.label}</span>
+        <div className="deck-row branch" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }}>
+          <button className="branch-toggle" aria-expanded={open} onClick={() => toggle(node.path)}><span className="caret">{open ? "▾" : "▸"}</span><span className="name">{node.emoji && <span className="emoji">{node.emoji}</span>}{node.label}</span></button>
           <Progress total={node.questions} attempted={node.attempted} marked={node.marked} />
           <span className="actions" onClick={(e) => e.stopPropagation()}>
             <button className="small link" onClick={() => practiseBranch(node, "practice")} disabled={node.questions === 0}>Practice</button>
@@ -138,14 +138,14 @@ export default function BrowsePage() {
       <div className="row spread">
         <h1 style={{ margin: 0 }}>Browse</h1>
         <span className="row">
-          <input type="search" placeholder="Search tags and questions" value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: "14rem" }} />
+          <input type="search" aria-label="Search tags and questions" placeholder="Search tags and questions" value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: "14rem" }} />
           <button className="small link" onClick={() => setExpanded(new Set(collectPaths(tree)))}>Expand all</button>
           <button className="small link" onClick={() => setExpanded(new Set())}>Collapse</button>
           {isAdmin(data.settings) && <button className="small link" onClick={() => nav("/settings#admin")}>+ New set</button>}
         </span>
       </div>
       <p className="muted" style={{ marginBottom: "0.8rem" }}>
-        Sets sit under their presentation{isAdmin(data.settings) ? '. Tag a set "Presentation::Topic" in Admin to nest it, Anki style; several tags put it in several places.' : "."}
+        Sets sit under their primary presentation{isAdmin(data.settings) ? '. Tag a set "Presentation::Topic" in Admin to nest it, Anki style; secondary tags remain searchable.' : "."}
       </p>
       <div className="deck-list">
         {tree.map((n) => renderNode(n, 0))}

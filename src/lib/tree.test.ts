@@ -18,8 +18,8 @@ describe("deck tree", () => {
     expect(setPaths(summary(2, []))).toEqual(["Untagged"]);
   });
 
-  it("uses :: tags when present, allowing several branches", () => {
-    expect(setPaths(summary(3, ["dizziness"], ["Dizziness::Vestibular", "MD2 :: Neuro", "Vertigo"]))).toEqual(["Dizziness::Vestibular", "MD2::Neuro"]);
+  it("keeps topic nesting within the primary presentation", () => {
+    expect(setPaths(summary(3, ["dizziness"], ["Dizziness::Vestibular", "MD2 :: Neuro", "Vertigo"]))).toEqual(["Dizziness::Vestibular"]);
   });
 
   it("builds nested nodes with branch totals", () => {

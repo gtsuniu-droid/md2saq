@@ -1,17 +1,18 @@
-import type { Attempt, Question, QuestionSet } from "../data/types";
+import { primaryPresentation } from "./primaryPresentation";
+import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 import { compileQuestions } from "./stats";
 import { totalMarks } from "./questions";
 export type StudyUnit = "questions" | "sets";
 export interface SessionSet { set: QuestionSet; questions: Question[]; attempted: number }
 
-export function eligibleSessionSets(sets: QuestionSet[], questions: Question[], attempts: Attempt[], presentations: string[], newOnly: boolean, parentOf: Map<string, string>): SessionSet[] {
+export function eligibleSessionSets(sets: QuestionSet[], questions: Question[], attempts: Attempt[], presentations: string[], newOnly: boolean, _parentOf: Map<string, string>): SessionSet[] {
   const chosen = new Set(presentations);
   const attempted = new Set(attempts.filter((a) => a.submittedAt !== undefined).map((a) => a.questionId));
   const grouped = new Map<string, Question[]>();
   for (const q of questions) grouped.set(q.setId, [...grouped.get(q.setId) ?? [], q]);
   return sets.flatMap((set) => {
     const members = (grouped.get(set.id) ?? []).sort((a, b) => a.order - b.order);
-    if (!members.some((q) => q.presentations.some((p) => chosen.has(p) || chosen.has(parentOf.get(p) ?? "")))) return [];
+    if (!members.length || !chosen.has(primaryPresentation(set, members) ?? "")) return [];
     const done = members.filter((q) => attempted.has(q.id)).length;
     if (newOnly && done > 0) return [];
     return [{ set, questions: members, attempted: done }];
@@ -33,13 +34,12 @@ export function buildSessionSelection(input: {
   if (input.setIds !== undefined) {
     const selected = new Set(input.setIds);
     pool = pool.filter((s) => selected.has(s.set.id));
-  } else {
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(input.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    if (input.count !== undefined) pool = pool.slice(0, input.count);
   }
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(input.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  if (input.setIds === undefined && input.count !== undefined) pool = pool.slice(0, input.count);
   return pool.flatMap((s) => s.questions);
 }
 
@@ -50,4 +50,25 @@ export function suggestedSessionMinutes(questions: Question[], sets: QuestionSet
     const suggested = unit === "sets" ? sets.find((s) => s.id === id)?.suggestedMinutes : undefined;
     return sum + (suggested && suggested > 0 ? suggested : members.reduce((n, q) => n + (totalMarks(q) ?? 4) * minutesPerMark, 0));
   }, 0)));
+}
+
+/** Set progress counts each nonempty set once, under its main complaint only. */
+export function setPresentationProgress(sets: QuestionSet[], questions: Question[], attempts: Attempt[], marks: Mark[], ids: string[]) {
+  const progress = new Map(ids.map((id) => [id, { id, total: 0, attempted: 0, marked: 0, meanPct: null }]));
+  const latest = new Map<string, Attempt>();
+  for (const a of attempts.filter((a) => a.submittedAt !== undefined).sort((a, b) => a.submittedAt! - b.submittedAt!)) latest.set(a.questionId, a);
+  const markedIds = new Set(marks.map((m) => m.attemptId));
+  const all = { total: 0, attempted: 0, marked: 0 };
+  const grouped = new Map<string, Question[]>();
+  for (const q of questions) grouped.set(q.setId, [...grouped.get(q.setId) ?? [], q]);
+  for (const set of sets) {
+    const members = grouped.get(set.id) ?? [];
+    if (!members.length) continue;
+    const attempted = members.some((q) => latest.has(q.id)) ? 1 : 0;
+    const marked = members.every((q) => markedIds.has(latest.get(q.id)?.id ?? "")) ? 1 : 0;
+    for (const tally of [all, progress.get(primaryPresentation(set, members) ?? "")]) {
+      if (tally) { tally.total++; tally.attempted += attempted; tally.marked += marked; }
+    }
+  }
+  return { progress, all };
 }

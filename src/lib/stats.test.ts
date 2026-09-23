@@ -36,9 +36,17 @@ describe("stats", () => {
     const grid = heatGrid(answeredPerDay(attempts), day(2026, 9, 6), 14);
     expect(grid.weeks.length).toBeGreaterThanOrEqual(2);
     const cells = grid.weeks.flat().filter(Boolean);
-    expect(cells.find((c) => c!.day === "2026-09-01")!.level).toBe(4);
-    expect(cells.find((c) => c!.day === "2026-09-03")!.level).toBe(2);
+    expect(cells.find((c) => c!.day === "2026-09-01")!.level).toBe(1);
+    expect(cells.find((c) => c!.day === "2026-09-03")!.level).toBe(1);
     expect(grid.months.some((m) => m.label === "Sep")).toBe(true);
+  });
+
+  it("uses fixed question-count bands, independent of the busiest day or date range", () => {
+    const counts = [0, 1, 4, 5, 9, 10, 19, 20, 100];
+    const perDay = new Map(counts.map((count, index) => [`2026-09-${String(index + 1).padStart(2, "0")}`, count]));
+    const cells = heatGrid(perDay, day(2026, 9, 9), 9).weeks.flat().filter(c => c !== null);
+    expect(cells.map(c => c.level)).toEqual([0, 1, 1, 2, 2, 3, 3, 4, 4]);
+    expect(heatGrid(new Map([["2026-09-01", 1]]), day(2026, 9, 1), 1).weeks.flat().find(c => c)?.level).toBe(1);
   });
 
   it("reports per-presentation progress", () => {

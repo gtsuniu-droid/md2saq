@@ -149,3 +149,11 @@ export async function deleteMany(uid: string, collection: CloudCollection, ids: 
     await batch.commit();
   }
 }
+
+/** Shared question conversations are separate from private progress and notes. */
+export async function communityServices() {
+  const result = await services();
+  await result.auth.authStateReady();
+  if (!result.auth.currentUser) throw new Error("Sign in to join the conversation.");
+  return result;
+}
