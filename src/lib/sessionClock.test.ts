@@ -45,3 +45,26 @@ it("auto-submits only timed exams, including when reopened after expiry", async 
   expect(overtimeSec(paused, after + 60_000)).toBe(30);
   expect(shouldAutoSubmit(resumedSession(paused, after + 60_000), after + 61_000)).toBe(false);
 });
+
+describe("six-stem exam phases", () => {
+  const exam: Session = { ...base, examFormat: "six-stem", readingSec: 900, totalSec: 7200 };
+  it("locks reading for 15 minutes then gives a full two hours to write", async () => {
+    const { readingRemainingSec, canWriteAnswers, shouldAutoSubmit } = await import("./sessionClock");
+    expect(readingRemainingSec(exam, exam.startedAt)).toBe(900);
+    expect(remainingSec(exam, exam.startedAt + 899_999)).toBe(7200);
+    expect(canWriteAnswers(exam, exam.startedAt + 899_999)).toBe(false);
+    expect(canWriteAnswers(exam, exam.startedAt + 900_000)).toBe(true);
+    expect(remainingSec(exam, exam.startedAt + 900_000)).toBe(7200);
+    expect(shouldAutoSubmit(exam, exam.startedAt + 8_099_999)).toBe(false);
+    expect(shouldAutoSubmit(exam, exam.startedAt + 8_100_000)).toBe(true);
+    expect(canWriteAnswers(exam, exam.startedAt + 8_100_000)).toBe(false);
+  });
+  it("keeps deadlines after leaving, serializing, and resuming in either phase", () => {
+    const left = pausedSession(exam, exam.startedAt + 60_000);
+    expect(left.pausedAt).toBeUndefined();
+    const restored = resumedSession(JSON.parse(JSON.stringify(left)), exam.startedAt + 1_000_000);
+    expect(restored.startedAt).toBe(exam.startedAt);
+    expect(remainingSec(restored, exam.startedAt + 1_000_000)).toBe(7100);
+    expect(remainingSec({ ...restored, pausedAt: exam.startedAt }, exam.startedAt + 8_101_000)).toBe(0);
+  });
+});

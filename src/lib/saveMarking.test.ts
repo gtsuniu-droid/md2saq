@@ -35,3 +35,20 @@ it("automatically flags answer-assisted attempts even when the caller did not fl
   await saveMarking({ ...mark, reviewLater: false, lookedAtAnswer: true });
   expect(await db.marks.get("m")).toMatchObject({ lookedAtAnswer: true, reviewLater: true });
 });
+
+it("saves all questions in a set together, preserving each question's notes", async () => {
+  await db.attempts.put({ id: "b", ownerId: "alice", questionId: "q2", answers: [], startedAt: 1, submittedAt: 2, elapsedSec: 10, mode: "practice" });
+  const { saveSetMarking } = await import("./saveMarking");
+  await saveSetMarking([{ mark }, { mark: { ...mark, id: "m2", attemptId: "b", questionId: "q2", notes: "Second answer notes", lookedAtAnswer: true } }]);
+  expect(await db.marks.count()).toBe(2);
+  expect(await db.marks.get("m2")).toMatchObject({ questionId: "q2", notes: "Second answer notes", lookedAtAnswer: true, reviewLater: true });
+});
+it("rolls back the entire set if a later attempt disappears or belongs to another account", async () => {
+  const { saveSetMarking } = await import("./saveMarking");
+  await expect(saveSetMarking([{ mark, confidence: 4 }, { mark: { ...mark, id: "m2", attemptId: "missing" } }])).rejects.toThrow("submitted attempt");
+  expect(await db.marks.count()).toBe(0);
+  expect((await db.attempts.get("a"))?.confidence).toBeUndefined();
+  await db.attempts.put({ id: "private", ownerId: "bob", questionId: "q2", answers: [], startedAt: 1, submittedAt: 2, elapsedSec: 0, mode: "practice" });
+  await expect(saveSetMarking([{ mark }, { mark: { ...mark, id: "m2", attemptId: "private" } }])).rejects.toThrow("submitted attempt");
+  expect(await db.marks.count()).toBe(0);
+});

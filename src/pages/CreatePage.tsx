@@ -1,3 +1,6 @@
+import { hasAnswerContent } from "../lib/answerContent";
+import { hasFileTransfer } from "../lib/imageTransfer";
+import QuestionTextEditor from "../components/QuestionTextEditor";
 import { primaryPresentation } from "../lib/primaryPresentation";
 import SetAdditionUndo from "../components/SetAdditionUndo";
 import { saveAddedSet, type AdditionAction } from "../lib/setAdditionUndo";
@@ -9,7 +12,7 @@ import { parsePaper, questionFullText, type PaperMeta, type ParsedQuestion } fro
 import { suggestPresentations } from "../lib/suggest";
 import PresentationPicker from "../components/PresentationPicker";
 import { partLabel } from "../lib/questions";
-import { presentationName } from "../data/presentations";
+import { PRESENTATIONS, presentationName } from "../data/presentations";
 import { bankErrorMessage, pushToBank, savedPasscode } from "../lib/share";
 import { readFileText } from "../lib/exportImport";
 import PasscodeGate from "../components/PasscodeGate";
@@ -26,10 +29,12 @@ import TagEditor from "../components/TagEditor";
 import { FORMAT_GUIDE } from "../data/formatGuide";
 import AutoTextarea from "../components/AutoTextarea";
 import ModelAnswerEditor, { useModelAnswerImages } from "../components/ModelAnswerEditor";
-import { mergeModelAnswers } from "../lib/modelAnswer";
+import { answerDocument, mergeModelAnswers } from "../lib/modelAnswer";
 
 interface Draft extends ParsedQuestion {
   key: string;
+  textDoc?: unknown;
+  stemDocs?: unknown[];
   presentations: string[];
   suggested: string[];
 }
@@ -101,6 +106,8 @@ async function saveDrafts(name: string, source: string, drafts: Draft[], meta: P
     order: i,
     stems: d.stems.length ? d.stems : undefined,
     text: d.text,
+    textDoc: d.textDoc,
+    stemDocs: d.stemDocs,
     marks: d.marks,
     modelAnswer: d.modelAnswer,
     modelAnswerDoc: d.modelAnswerDoc,
@@ -136,6 +143,7 @@ interface CreateToolsProps {
 export function CreateTools({ embedded = false, onSaved, onSavingChange }: CreateToolsProps) {
   const [params] = useSearchParams();
   const presetPresentation = params.get("presentation") ?? "";
+  const [entryMode, setEntryMode] = useState<"write" | "import">("import");
   const [raw, setRaw] = useState("");
   const [name, setName] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -169,10 +177,14 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
   };
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const lastParsed = useRef(JSON.stringify(["", presetPresentation]));
   // Re-parse when the paste changes. Manual edits to drafts are kept until the paste changes again.
   // A paste holding whole cases ("CASE 01: ..." headers) is split into sets like a dropped file.
   useEffect(() => {
+    const inputKey = JSON.stringify([raw, presetPresentation]);
+    if (entryMode === "write" || lastParsed.current === inputKey) return;
     const t = setTimeout(() => {
+      lastParsed.current = inputKey;
       const pasted: CaseFile[] = [{ name: "Pasted text", text: raw }];
       if (isCaseBank(pasted) && parseCaseBank(pasted).cases.some((c) => c.questions.length > 0)) {
         void addTexts(pasted);
@@ -185,7 +197,7 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
     }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [raw, presetPresentation]);
+  }, [raw, presetPresentation, entryMode]);
 
   const update = (key: string, patch: Partial<Draft>) =>
     setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -199,6 +211,7 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
       const merged: Draft = {
         ...prev,
         text: [prev.text, cur.text].filter(Boolean).join("\n"),
+        textDoc: prev.textDoc || cur.textDoc ? { type: "doc", content: [prev, cur].flatMap(d => answerDocument({ modelAnswer: d.text, modelAnswerDoc: d.textDoc }).content ?? []) } : undefined,
         parts: [...prev.parts, ...cur.parts],
         marks: prev.marks !== undefined || cur.marks !== undefined ? (prev.marks ?? 0) + (cur.marks ?? 0) : undefined,
         ...mergeModelAnswers(prev, cur),
@@ -213,22 +226,19 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
       const i = ds.findIndex((d) => d.key === key);
       return ds.map((d, j) => (j >= i ? { ...d, stems: [...d.stems, ""] } : d));
     });
-  const updateStem = (key: string, si: number, text: string) =>
+  const updateStem = (key: string, si: number, text: string, doc?: unknown) =>
     setDrafts((ds) => {
       const i = ds.findIndex((d) => d.key === key);
       const old = ds[i].stems[si];
       // Keep later questions that share this stem in sync.
-      return ds.map((d, j) => (j >= i && d.stems[si] === old ? { ...d, stems: d.stems.map((x, xi) => (xi === si ? text : x)) } : d));
+      return ds.map((d, j) => (j >= i && d.stems[si] === old ? { ...d, stems: d.stems.map((x, xi) => (xi === si ? text : x)), stemDocs: d.stems.map((_, xi) => xi === si ? doc ?? null : d.stemDocs?.[xi] ?? null) } : d));
     });
   const removeStem = (key: string, si: number) =>
     setDrafts((ds) => {
       const i = ds.findIndex((d) => d.key === key);
       const old = ds[i].stems[si];
-      return ds.map((d, j) => (j >= i && d.stems[si] === old ? { ...d, stems: d.stems.filter((_, xi) => xi !== si) } : d));
+      return ds.map((d, j) => (j >= i && d.stems[si] === old ? { ...d, stems: d.stems.filter((_, xi) => xi !== si), stemDocs: d.stemDocs?.filter((_, xi) => xi !== si) } : d));
     });
-
-  const applySetPresentations = () =>
-    setDrafts((ds) => ds.map((d) => ({ ...d, presentations: [...new Set([...d.presentations, ...setPresentations])] })));
 
   const totalMarks = useMemo(() => drafts.reduce((acc, d) => acc + (d.marks ?? 0), 0), [drafts]);
 
@@ -248,11 +258,13 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
 
   const savePaste = async () => {
     if (drafts.length === 0 || addingImages || saving) return;
+    const blank = drafts.findIndex(d => !hasAnswerContent({ text: d.text, doc: d.textDoc }) && !d.parts.some(p => hasAnswerContent({ text: p.text, doc: p.textDoc })));
+    if (blank >= 0) { setNotice({ text: `Add content to question ${blank + 1}.`, error: true }); return; }
     setSaving(true); setNotice(null);
     try {
-      const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags() });
+      const set = await saveDrafts(name, "", drafts, meta, { tags: typedTags(), primaryPresentation: setPresentations[0] });
       const ok = await pushOrReport(set.id, setLabel(set));
-      if (ok) setNotice({ text: `Saved ${setLabel(set)} with ${drafts.length} question${drafts.length === 1 ? "" : "s"}. Use Undo latest addition to reverse this.`, setId: set.id });
+      if (ok) setNotice({ text: `Saved ${setLabel(set)}.`, setId: set.id });
       setRaw(""); setDrafts([]); setTags([]);
       if (!presetPresentation) setName("");
     } catch (e) { setNotice({ text: `Could not save: ${bankErrorMessage(e)}`, error: true }); }
@@ -401,6 +413,11 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
         </p>
       )}
 
+      <div className="row authoring-entry" role="group" aria-label="Create a set">
+        <button className={entryMode === "write" ? "primary" : ""} disabled={addingImages || saving} onClick={() => { setEntryMode("write"); if (!drafts.length) setDrafts([{ key: newId(), text: "", stems: [""], parts: [], presentations: [...setPresentations], suggested: [] }]); }}>Write a set</button>
+        <button className={entryMode === "import" ? "primary" : ""} disabled={addingImages || saving} onClick={() => setEntryMode("import")}>Import / paste</button>
+      </div>
+      {entryMode === "import" && <>
       <div
         className="card"
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -410,7 +427,7 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
       >
         <div className="row spread">
           <span>
-            <strong>Drop files or a folder here.</strong> A generated case bank becomes one numbered set per case, tagged from its coverage file. An answers file on its own is merged into the matching sets. Other .txt or .md files become one set each.
+            <strong>Drop question files or a folder</strong><span className="muted"> (.txt, .md)</span>
           </span>
           <button className="small" onClick={() => fileRef.current?.click()}>Choose files</button>
           <input ref={fileRef} type="file" multiple accept=".md,.markdown,.txt,text/plain,text/markdown" style={{ display: "none" }}
@@ -495,39 +512,25 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
 
       <details className="guide" style={{ margin: "0.8rem 0" }}>
         <summary style={{ cursor: "pointer" }}>
-          <span>Format guide for question generators</span>
+          <span>Import format</span>
           <button className="small" onClick={(e) => { e.preventDefault(); e.stopPropagation(); void copyGuide(); }}>{copied ? "Copied" : "Copy guide"}</button>
         </summary>
         <pre className="guide-text" onClick={() => void copyGuide()} title="Click to copy">{FORMAT_GUIDE}</pre>
       </details>
-      <p className="muted">
-        Or paste below. Formats: numbered (1. / Q1 / Question 1), blank-line separated, sub-parts as (a) or 1),
-        marks as (4 marks) or [4], and model answers after a line starting with "Answer:" or "Model answer:".
-      </p>
-      <AutoTextarea value={raw} disabled={addingImages} onChange={(e) => setRaw(e.target.value)} placeholder="Paste here" style={{ minHeight: "12rem" }} />
+
+      <AutoTextarea onDragOver={e => { if (hasFileTransfer(e.dataTransfer)) e.preventDefault(); }} onDrop={e => { if (hasFileTransfer(e.dataTransfer)) { e.preventDefault(); setNotice({ text: "Add pictures in a stem or question field.", error: true }); } }} value={raw} disabled={addingImages} onChange={(e) => setRaw(e.target.value)} placeholder="Paste questions and answers" aria-label="Import questions" style={{ minHeight: "12rem" }} />
+      </>}
 
       {drafts.length > 0 && (
         <>
           <div className="row" style={{ marginTop: "1rem" }}>
             <input type="text" placeholder={meta.title ?? "Title (optional)"} value={name} onChange={(e) => setName(e.target.value)} />
 
-            <span className="muted">{drafts.length} questions{totalMarks ? `, ${totalMarks} marks` : ""}{meta.minutes ? `, ${meta.minutes} min suggested` : ""}</span>
+            <span className="muted">{drafts.length} {drafts.length === 1 ? "question" : "questions"}{totalMarks ? `, ${totalMarks} marks` : ""}{meta.minutes ? `, ${meta.minutes} min suggested` : ""}</span>
           </div>
-          <div style={{ marginTop: "0.6rem" }}>
-            <label>Tags</label>
-            <TagEditor value={tags} onChange={setTags} suggestions={pasteSuggestions} known={known} />
-          </div>
-          <div className="row" style={{ marginTop: "0.6rem" }}>
-            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} question${drafts.length === 1 ? "" : "s"}`}</button>
-          </div>
+          <details className="authoring-details"><summary>Tags</summary><TagEditor value={tags} onChange={setTags} suggestions={pasteSuggestions} known={known} /></details>
           <div className="card" style={{ marginTop: "0.8rem" }}>
-            <div className="row spread">
-              <div style={{ flex: 1 }}>
-                <span className="muted">Tag every question in this set with:</span>
-                <PresentationPicker selected={setPresentations} onChange={setSetPresentations} />
-              </div>
-              <button className="small" onClick={applySetPresentations} disabled={setPresentations.length === 0}>Apply to all</button>
-            </div>
+            <label>Primary presentation<select value={setPresentations[0] ?? ""} onChange={e => { const ids = e.target.value ? [e.target.value] : []; setSetPresentations(ids); setDrafts(ds => ds.map(d => ({ ...d, presentations: [...new Set([...ids, ...d.presentations])] }))); }}><option value="">Choose presentation</option>{PRESENTATIONS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           </div>
 
           <div className="stack" style={{ marginTop: "1rem" }}>
@@ -543,17 +546,17 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
                   </span>
                 </div>
                 {d.stems.map((st, si) => {
-                  const inherited = i > 0 && drafts[i - 1].stems[si] === st;
+                  const inherited = i > 0 && drafts[i - 1].stems[si] === st && JSON.stringify(drafts[i - 1].stemDocs?.[si] ?? null) === JSON.stringify(d.stemDocs?.[si] ?? null);
                   return (
                     <div key={si} style={{ marginTop: "0.5rem" }}>
                       <div className="row spread">
-                        <span className="muted">Stem {si + 1}{inherited ? " (shared with the question above)" : ""}</span>
-                        <button className="small danger" onClick={() => removeStem(d.key, si)}>Remove stem</button>
+                        <span className="muted">Stem {si + 1}{inherited ? " (shared)" : ""}</span>
+                        <button className="small danger" disabled={addingImages} onClick={() => removeStem(d.key, si)}>Remove stem</button>
                       </div>
                       {inherited ? (
-                        <div className="muted pre" style={{ fontSize: "0.85rem", maxHeight: "4.5rem", overflow: "hidden" }}>{st}</div>
+                        <span className="muted small">Same stem as above</span>
                       ) : (
-                        <AutoTextarea value={st} placeholder="Case information the candidate reads before this question" onChange={(e) => updateStem(d.key, si, e.target.value)} style={{ minHeight: "4rem" }} />
+                        <QuestionTextEditor text={st} doc={d.stemDocs?.[si]} label={`Stem ${si + 1}`} onBusyChange={value => onBusyChange(`${d.key}:stem:${si}`, value)} onChange={value => updateStem(d.key, si, value.text, value.textDoc)} />
                       )}
                     </div>
                   );
@@ -562,16 +565,13 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
                   <button className="small" onClick={() => addStem(d.key)} title="Adds a stem here and to every later question">+ Add stem</button>
                 </div>
                 <label>Question</label>
-                <AutoTextarea value={d.text} onChange={(e) => update(d.key, { text: e.target.value })} style={{ minHeight: "4rem" }} />
+                <QuestionTextEditor text={d.text} doc={d.textDoc} label={`Question ${i + 1}`} onBusyChange={value => onBusyChange(`${d.key}:prompt`, value)} onChange={value => update(d.key, value)} />
                 {d.parts.map((p, pi) => (
                   <div key={pi} className="card" style={{ marginTop: "0.6rem" }}>
                     <div className="row" style={{ alignItems: "flex-start" }}>
                     <span style={{ minWidth: "2.2rem", fontWeight: 600 }}>{partLabel(p.label)}</span>
-                    <AutoTextarea
-                      value={p.text}
-                      style={{ minHeight: "2.4rem", flex: 1 }}
-                      onChange={(e) => update(d.key, { parts: d.parts.map((x, xi) => (xi === pi ? { ...x, text: e.target.value } : x)) })}
-                    />
+                    <QuestionTextEditor text={p.text} doc={p.textDoc} label={`Question ${i + 1}, part ${p.label}`} onBusyChange={value => onBusyChange(`${d.key}:prompt:${pi}`, value)} onChange={value => update(d.key, { parts: d.parts.map((x, xi) => xi === pi ? { ...x, ...value } : x) })} />
+                    <button className="small danger" aria-label={`Remove part ${p.label}`} disabled={addingImages} onClick={() => update(d.key, { parts: d.parts.filter((_, x) => x !== pi) })}>×</button>
                     <input type="number" min={0} placeholder="marks" value={p.marks ?? ""}
                       onChange={(e) => update(d.key, { parts: d.parts.map((x, xi) => (xi === pi ? { ...x, marks: e.target.value === "" ? undefined : Number(e.target.value) } : x)) })} />
                     </div>
@@ -579,15 +579,16 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
                     <ModelAnswerEditor answer={p} label={`Model answer for question ${i + 1}, part ${p.label}`} onChange={(value) => update(d.key, { parts: d.parts.map((x, xi) => xi === pi ? { ...x, ...value } : x) })} onBusyChange={(value) => onBusyChange(`${d.key}:part:${pi}`, value)} />
                   </div>
                 ))}
-                <label>Model answer (optional, one marking point per line)</label>
+                <button className="small link" disabled={addingImages} onClick={() => { let n = 1; while (d.parts.some(p => p.label === String(n))) n++; update(d.key, { parts: [...d.parts, { label: String(n), text: "" }] }); }}>+ Subquestion</button>
+                <label>{d.parts.length ? "Whole-question answer (optional)" : "Model answer"}</label>
                 <ModelAnswerEditor answer={d} label={`Model answer for question ${i + 1}`} onChange={(value) => update(d.key, value)} onBusyChange={(value) => onBusyChange(`${d.key}:whole`, value)} />
-                <label>Presentations</label>
-                <PresentationPicker selected={d.presentations} suggested={d.suggested} onChange={(ids) => update(d.key, { presentations: ids })} />
+                <details className="authoring-details"><summary>Secondary presentations</summary><PresentationPicker selected={d.presentations} suggested={d.suggested} onChange={(ids) => update(d.key, { presentations: ids })} /></details>
               </div>
             ))}
           </div>
-          <div className="row" style={{ marginTop: "1rem" }}>
-            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : `Save ${drafts.length} question${drafts.length === 1 ? "" : "s"}`}</button>
+          <div className="row authoring-actions" style={{ marginTop: "1rem" }}>
+            <button disabled={saving || addingImages} onClick={() => { setEntryMode("write"); setDrafts(ds => [...ds, { key: newId(), text: "", stems: [...(ds.at(-1)?.stems ?? [])], stemDocs: ds.at(-1)?.stemDocs, parts: [], presentations: [...setPresentations], suggested: [] }]); }}>+ Add question</button>
+            <button className="primary" onClick={savePaste} disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : "Save set"}</button>
           </div>
         </>
       )}

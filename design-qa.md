@@ -165,3 +165,53 @@ No blocking visual follow-ups. Touch hardware and screen-reader narration were n
 - Firebase compiled and released the rules successfully. Re-read the active release and confirmed its source exactly matches the local rules file.
 - Nine Firebase Rules API checks passed: authenticated discussion reads; guest denial; own private-note access; cross-account note/answer denial; author deletion; denial of another member's deletion; verified moderator deletion; and denial for an unverified moderator email.
 - Saved the previous rules, deployed release metadata, and test results outside the repository under `work/firebase-rules-2026-09-23`. No real discussion posts or practice data were created or modified during verification.
+
+## 27 September 2026 — whole-set marking
+
+- Marking opens the selected sitting's whole set, preserving per-question scores, personal notes, answer comments and review flags. Shared stems appear once and cumulative stages introduce only new details.
+- One Save set writes all submitted questions atomically; invalid scores or missing/foreign attempts roll the transaction back. Save and next set resumes the next set in the session. Exam marking stays locked until the paper is submitted.
+- Session summaries now group questions into sets. History offers one Mark whole set link. Question and part prompts are bold.
+- Home retains the 900px width; other working pages use available space. Answer and guide columns stack when the marking workspace is narrow, including beside a reference panel.
+- Admin Quick Edit includes Delete question alongside the existing subquestion crosses. Deleting updates the current session and retains other questions/stems. Non-admin deletion is blocked in the mutation helper as well as the UI.
+- Isolated browser fixture verified: two questions on one marking page, one shared stem, scores/notes/assisted flag saved together and retained after reload, next set added to the sidebar, summary grouped by set, admin editor action, and reader edit controls hidden. At 390px workspace width, answer columns stack with no horizontal overflow. No real bank questions or user answers were changed during these checks.
+- Replaced an old parser test's vanished external temporary-file dependency with a committed synthetic staged-paper fixture, preserving the parsing assertions.
+
+## 2026-09-27 — picture input and question authoring
+- Fixed ProseMirror drop handling: its third argument is a Slice, not the internal-move flag. External screenshots no longer bypass the image handler.
+- Shared file/item clipboard handling and whole-editor drop targets cover notes, model answers, practice answers, stems, questions, and subquestions. Missing image MIME types fall back to known filename extensions. Internal moves remain native.
+- Added inline question/stem documents alongside searchable text, rendered in papers, marking, question details and history. Shared stems and image-only content persist through set export/import.
+- Added Write a set, Add question and Subquestion controls, compact formatting toolbars, one bottom Save set action, and optional metadata panels. Removed repeated editor instructions and redundant explanatory copy; retained every presentation.
+- Isolated localhost browser checks passed: content/toolbar drops, missing-MIME drop, clipboard paste, no duplicate images, locked-editor prevention, saved image answers after reload, images in all three creation fields, shared-stem images on the next question, and corner resizing from 160px to 236px retained after saving. Used synthetic pictures and a separate port with Firebase disabled; no live library data changed.
+- Native Edge verification could not be completed while the user was actively using Edge; its temporary test tab was closed. Browser verification above used the in-app Chromium browser.
+- 220 automated tests passed. Production build passed (existing large-bundle advisory remains). No push or deployment.
+
+## 6 October 2026 — Browse workspace and quieter history
+
+**Findings resolved**
+- Replaced the nested tag-heavy Browse tree and individual-question navigation with a compact set list and independently scrollable whole-set reading panel. Every primary presentation remains available in the filter. Search matches prompts and metadata, never hidden model answers, and keeps all questions in a matching set together.
+- Questions are bold, shared stems appear once, and additional case stages stay in sequence. Instructions and model answers are collapsed; each question has Show answer / Hide answer. Admin and personal editing use the same right-hand panel with optional metadata and answers collapsed.
+- Non-admin Browse edits are stored in account-scoped, device-only metadata, separate from bank questions and exports. Reset restores the shared version. These customizations apply to Browse; practice continues to use the shared question bank. Admin edits use the existing Save and publish flow when publishing is unlocked. No live publication was performed in this turn.
+- History rows now use a short date, with repeated set names, timestamps, mode/duration strings and routine sync prose removed. Attempt details retain the full time/mode/duration behind a disclosure.
+
+**Visual comparison**
+- Compared the provided Anki screenshot (2770×2188 source, displayed downsampled) with the local Browse capture (985×661). This is an adaptation of its list/detail interaction, not a pixel clone: the narrower 30% list deliberately gives SAQ stems more reading space. Existing SAQ system typography, navy navigation and teal selection are retained.
+- Typography: compact list labels and muted snippets; 600-weight question prompts distinguish them from case text. No text clipping in the reading panel; long list previews intentionally truncate to two lines.
+- Layout rhythm: aligned pane borders, stable header controls, separate scrolling, and no repeated row actions. At a 390px iframe viewport, the list and detail become separate views with a working Sets back button. No horizontal content overflow was visible.
+- Colors/tokens: existing theme variables throughout, restrained selected-row tint, neutral reading surface and error color for failed publishing messages.
+- Images: existing rich-document and legacy question images are preserved, constrained to panel width and not replaced with decorative assets. The clinical image inside the Anki reference is illustrative source content and is not copied into this product.
+- Copy: no explanatory tag paragraphs, inline tag clouds, repeated set names or always-visible answer fields. Full clinical question text is retained.
+- Evidence: `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/browse-qa-2026-10-06/browse.png` and `history.png`. Full-view captures made the relevant typography, controls and panel boundaries legible; no additional focused crop was needed.
+
+**Verification**
+- 246 unit tests passed, including new whole-set search/primary-presentation filters and personal-edit account isolation, preservation of shared content, bank-update merging, reset, images and account-switch rejection.
+- Isolated browser fixture verified admin edits/save/reload, shared-stem propagation, hidden/revealed answers, personal save/reload/reset, filtering via a later subquestion, empty results, and mobile list/detail/back navigation. Non-admins have personal editing but no shared metadata/deletion controls. No real bank content or user answers were changed by these checks.
+- Production build passed (existing bundle-size warning). Test harnesses removed and their server/tabs closed; local preview remains on port 5173.
+- Visual QA passes for the adapted requested flow. Residual gaps: no live cloud publish, native touch or screen-reader testing, or separate dark-mode screenshot in this pass.
+
+## 6 October 2026 — fixed six-stem exam
+- Home now offers Practice / Exam. The exam draws six different primary presentations uniformly, then one nonempty whole set from each. Every question stays in order; undersized pools cannot start. The full practice presentation list is unchanged.
+- Reading lasts 900 seconds, with every selected stem accessible and no answer editors mounted. Submit is disabled and answer-change handling independently rejects writes during reading. Writing unlocks automatically for a further 7,200 seconds, then all attempts submit. This format runs continuously across exit/reload; ordinary session pause behaviour remains unchanged.
+- Admin quick editing, reference-note panels and AMBOSS question highlighting are unavailable inside this exam paper. Existing exam answer/marking restrictions remain in force.
+- 252 tests passed, covering random whole-set selection, distinct primary topics, insufficient pools, exact reading/writing boundaries, continuous deadlines and all-set navigation. Production build passed with the existing size warning.
+- Isolated browser verification: six sets loaded, all question navigation buttons available during reading, zero answer textboxes, disabled Submit, phase retained on reload, automatic writing unlock, and automatic submission of all 11 fixture questions with the written test answer retained. Boundary controls existed only in the temporary harness, which was removed; no real session was started or replaced.
+- Local Home screenshot inspected at `/Users/gabe/Documents/Codex/2026-09-21/mmy/work/browse-qa-2026-10-06/exam.png`: clear three-column format summary, existing type/theme, restrained copy, no clipped controls. The current local library has only two primary presentations, so the disabled-start explanation correctly appears. No image assets were needed. No deployment or Git push.

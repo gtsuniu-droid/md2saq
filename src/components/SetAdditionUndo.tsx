@@ -40,12 +40,12 @@ export default function SetAdditionUndo({ disabled = false, onChanged }: { disab
   };
   return <section className="addition-undo" aria-label="Undo additions">
     <div className="row spread">
-      <div><strong>Recent additions</strong><p className="muted">Undo the last saved batch, including a multi-set import. Saved on this device.</p></div>
+      <div><strong>Recent additions</strong></div>
       {latest && <button disabled={busy || disabled} onClick={() => { setPreview(latest.id); setError(""); }} title="Ctrl+Z / ⌘Z outside a text field">
         {latest.status === "undoing" ? "Finish undo" : "Undo latest addition"} ({latest.items.length} {latest.items.length === 1 ? "set" : "sets"})
       </button>}
     </div>
-    {!batches?.length && <p className="muted">New additions will appear here. Earlier imports have no batch record.</p>}
+    {!batches?.length && <p className="muted">No recent additions.</p>}
     {message && <p role="status">{message}</p>}
     {error && <p role="alert">{error} {latest?.status === "undoing" && `${latest.undoneIds.length} of ${latest.items.length} sets removed. You can retry or restore the removed sets.`}</p>}
     {target && <div className="undo-preview card" ref={panel} tabIndex={-1} role="region" aria-label="Review addition to undo" onKeyDown={(e) => { if (e.key === "Escape" && !busy) setPreview(null); }}>

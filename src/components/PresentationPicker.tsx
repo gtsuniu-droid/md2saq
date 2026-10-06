@@ -18,21 +18,21 @@ export default function PresentationPicker({ selected, onChange, suggested = [] 
       <summary style={{ cursor: "pointer" }}>
         {selected.length === 0 ? <span className="muted">No presentation tagged</span> : null}
         {selected.map((id) => (
-          <span key={id} className="chip on" onClick={(e) => { e.preventDefault(); toggle(id); }}>
+          <button type="button" key={id} className="chip on" aria-label={`Remove ${PRESENTATIONS.find((p) => p.id === id)?.name ?? id}`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(id); }}>
             {PRESENTATIONS.find((p) => p.id === id)?.name ?? id} ×
-          </span>
+          </button>
         ))}
         {suggested.filter((id) => !selected.includes(id)).map((id) => (
-          <span key={id} className="chip" title="Suggested" onClick={(e) => { e.preventDefault(); toggle(id); }}>
+          <button type="button" key={id} className="chip" title="Suggested" aria-label={`Add ${PRESENTATIONS.find((p) => p.id === id)?.name ?? id}, suggested presentation`} onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggle(id); }}>
             + {PRESENTATIONS.find((p) => p.id === id)?.name ?? id}
-          </span>
+          </button>
         ))}
       </summary>
       <div style={{ marginTop: "0.4rem" }}>
         {ordered.map((p) => (
-          <span key={p.id} className={"chip" + (selected.includes(p.id) ? " on" : "")} onClick={() => toggle(p.id)}>
+          <button type="button" key={p.id} className={"chip" + (selected.includes(p.id) ? " on" : "")} aria-pressed={selected.includes(p.id)} onClick={() => toggle(p.id)}>
             {p.parent ? "↳ " : ""}{p.name}
-          </span>
+          </button>
         ))}
       </div>
     </details>

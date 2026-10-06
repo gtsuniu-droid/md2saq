@@ -132,7 +132,7 @@ export function subscribeSession(cb: () => void): () => void {
   };
 }
 
-export function startSession(questionIds: string[], mode: "practice" | "exam", totalSec?: number, studyUnit: "questions" | "sets" = "questions"): Session {
+export function startSession(questionIds: string[], mode: "practice" | "exam", totalSec?: number, studyUnit: "questions" | "sets" = "questions", options: Pick<Session, "readingSec" | "examFormat"> = {}): Session {
   const previous = loadSession();
   if (previous) void dropUnsubmitted(previous.id);
   const s: Session = {
@@ -141,6 +141,7 @@ export function startSession(questionIds: string[], mode: "practice" | "exam", t
     mode,
     questionIds,
     studyUnit,
+    ...options,
     ...(studyUnit === "sets" ? { openedSetCount: 1 } : {}),
     index: 0,
     totalSec,
@@ -151,7 +152,7 @@ export function startSession(questionIds: string[], mode: "practice" | "exam", t
   return s;
 }
 
-/** Stop the exam clock: called whenever the paper is left. Idempotent. */
+/** Pause ordinary sessions on exit; fixed-format exams keep their deadline. */
 export function pauseSession(ownerId = sessionOwner()): void {
   const s = loadSession(ownerId);
   if (!s || s.pausedAt !== undefined) return;

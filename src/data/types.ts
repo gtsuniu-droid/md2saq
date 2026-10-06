@@ -61,6 +61,7 @@ export interface QuestionImage {
 export interface SubPart {
   label: string;
   text: string;
+  textDoc?: unknown;
   marks?: number;
   /** Model answer for this part, when the pasted answer was sectioned by part. */
   modelAnswer?: string;
@@ -77,8 +78,11 @@ export interface Question {
   order: number;
   /** Case stems shown before the question, in order. */
   stems?: string[];
+  /** Rich documents aligned with stems, when edited with pictures or formatting. */
+  stemDocs?: unknown[];
   images?: QuestionImage[];
   text: string;
+  textDoc?: unknown;
   marks?: number;
   /** Raw model answer as pasted. Marking points are derived from it. */
   modelAnswer?: string;
@@ -302,12 +306,15 @@ export interface Session {
   index: number;
   /** Last focused answer part, restored when continuing. */
   activePart?: string;
-  /** Total time for exam mode. */
+  /** Writing time, excluding any reading period. */
   totalSec?: number;
+  /** A fixed six-presentation paper with a continuously running clock. */
+  examFormat?: "six-stem";
+  readingSec?: number;
   /** Start of the clock; moved forward on resume by the time spent away. */
   startedAt: number;
   attemptIds: string[];
-  /** Set while the paper is not open, so the exam clock stands still. */
+  /** Pauses ordinary papers; fixed-format exams ignore this field. */
   pausedAt?: number;
 }
 

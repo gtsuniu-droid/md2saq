@@ -1,6 +1,7 @@
 import { setProgressAccount } from "./lib/progressAccount";
 import { useEffect } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
+import { isAdmin } from "./lib/admin";
 import { db, getSettings } from "./data/db";
 import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
 import { useSession } from "./lib/useSession";
@@ -95,11 +96,11 @@ function AccountButton() {
 }
 
 export default function App() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const account = useLiveQuery(getSettings, []);
   const session = useSession();
   const [notesOpen, setNotesOpen] = useState(false);
-  const studying = /^\/(mark|paper|question|set|session)(\/|$)/.test(pathname);
+  const studying = /^\/(mark|paper|question|set|session|history)(\/|$)/.test(pathname);
   useEffect(() => { document.querySelector("main")?.scrollTo(0, 0); }, [pathname]);
 
   useEffect(() => {
@@ -161,14 +162,15 @@ export default function App() {
         <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/notes">Notes</NavLink>
         <NavLink to="/review">Review</NavLink>
-        <NavLink to="/settings">Settings</NavLink>
+        <NavLink to="/settings" className={({ isActive }) => isActive && hash !== "#admin" ? "active" : ""}>Settings</NavLink>
+        {isAdmin(account) && <Link to="/settings#admin" className={pathname === "/settings" && hash === "#admin" ? "active" : undefined}>Admin</Link>}
         {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue session</NavLink>}
         <span style={{ flex: 1 }} />
-        {studying && <button className="nav-notes" aria-expanded={notesOpen} onClick={() => setNotesOpen((open) => !open)}>{notesOpen ? "Hide reference notes" : "Reference notes"}</button>}
+        {studying && !(session?.examFormat && pathname.startsWith("/paper")) && <button className="nav-notes" aria-expanded={notesOpen} onClick={() => setNotesOpen((open) => !open)}>{notesOpen ? "Hide reference notes" : "Reference notes"}</button>}
         <AccountButton />
       </nav>
       <div className="study-workspace">
-      <main className={full ? "page full" : pathname.startsWith("/notes") ? "page notes-shell" : "page"}>
+      <main className={full ? "page full" : pathname === "/" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : "page wide-shell"}>
         <Routes key={`${account?.cloudUser?.uid ?? ""}:${sessionOwner()}`}>
           <Route path="/" element={<HomePage />} />
           <Route path="/create" element={<CreatePage />} />
@@ -191,7 +193,7 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
-      {notesOpen && studying && <NotesPanel onClose={() => setNotesOpen(false)} />}
+      {notesOpen && studying && !(session?.examFormat && pathname.startsWith("/paper")) && <NotesPanel onClose={() => setNotesOpen(false)} />}
       </div>
       <AmbossPanel />
       <AmbossHover />

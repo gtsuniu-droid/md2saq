@@ -18,7 +18,7 @@ export function sessionSetGroups(session: Session, questions: Question[]): Sessi
 }
 
 export function openedSetCount(session: Session, groups: SessionSetGroup[]): number {
-  if (session.studyUnit !== "sets") return groups.length;
+  if (session.examFormat === "six-stem" || session.studyUnit !== "sets") return groups.length;
   const current = groups.findIndex((group) => group.indices.includes(session.index));
   return Math.min(groups.length, Math.max(1, session.openedSetCount ?? 1, current + 1));
 }
@@ -40,7 +40,7 @@ export function paperQuestionGroup(questions: Question[], index: number, stems: 
   const currentStems = stems(question);
   const key = currentStems.join("\u2029");
   return questions.flatMap((q, i) => q.setId === question.setId && (
-    currentStems.length ? stems(q).join("\u2029") === key : i === index || (!stems(q).length && !q.parts.length && !question.parts.length)
+    currentStems.length ? stems(q).join("\u2029") === key && JSON.stringify(q.stemDocs ?? []) === JSON.stringify(question.stemDocs ?? []) : i === index || (!stems(q).length && !q.parts.length && !question.parts.length)
   ) ? [i] : []);
 }
 

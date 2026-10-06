@@ -124,7 +124,7 @@ export default function SetPage() {
         <span className="muted">min{set.suggestedMinutes ? ", as the paper suggests" : ""}. 0 for no timer.</span>
         <span style={{ flex: 1 }} />
         <ShareLinks key={set.id} set={set} />
-        {unlocked && <Link to={`/set/${set.id}/edit`}><button className="small">Edit</button></Link>}
+        {unlocked && <Link className="button small" to={`/set/${set.id}/edit#case-stems`}>Edit stems & questions</Link>}
         {(!set.bankId || unlocked) && <button className="small danger" onClick={remove} title={set.bankId ? "Removes the set from the library for everyone" : undefined}>Delete</button>}
       </div>
       <p className="muted">Practice lets you submit a whole set, then mark it or continue. Exam reveals nothing until the whole paper is submitted.</p>

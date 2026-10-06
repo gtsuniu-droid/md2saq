@@ -104,7 +104,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
   const toggle = (id: string) => setExpanded((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   return <div className="notes-page">
-    <div className="row spread notes-heading"><div><h1>Notes</h1><p className="muted">Your reference library, one presentation at a time.</p></div>
+    <div className="row spread notes-heading"><div><h1>Notes</h1></div>
       <div className="row">
         <span className="muted" role="status">{library === "shared" ? "Shared website library" : !signedIn ? "Saved on this device" : sync.status === "syncing" ? "Syncing notes…" : sync.status === "synced" ? "Notes synced" : sync.status === "error" ? "Sync needs attention" : "Private to your account"}</span>
         {library === "private" && signedIn && <button className="small" disabled={sync.status === "syncing"} onClick={() => { void syncNotes().catch(() => undefined); }}>Sync notes</button>}
@@ -148,12 +148,12 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
           <button className="primary" disabled={!presentation || saving || (library === "shared" && !admin)} onClick={() => begin()}>+ Add note</button></div>
         <NoteSectionTabs id="presentation-sections" value={section} notes={available} onChange={(next) => { setParams({ presentation: selected, section: next }); setKind(""); }} />
         <div id="presentation-sections-panel" role="tabpanel" aria-labelledby={`presentation-sections-tab-${section}`} tabIndex={0}>
-        <p className="muted">{sectionInfo.description}</p>
+
         <NoteReadingControls size={readingSize} onChange={setReadingSize} />
         <AmbossNotesStatus />
         <div className="note-kind-pills" aria-label="Filter note types"><button aria-pressed={!kind} onClick={() => setKind("")}>All types <span>{sectionNotes.length}</span></button>{kinds.map((k) => <button key={k} aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{k}</button>)}</div>
         <div className="row spread notes-list-tools"><span className="muted">{visible.length} {trash ? "deleted " : ""}note{visible.length === 1 ? "" : "s"}</span><span className="row"><button className="small link" onClick={() => setExpanded(new Set(visible.map((n) => n.id)))}>Expand all</button><button className="small link" onClick={() => setExpanded(new Set())}>Collapse all</button></span></div>
-        {notes === undefined ? <p>Loading…</p> : !visible.length ? <div className="notes-empty"><span aria-hidden="true">✎</span><h3>{q || kind ? "No matching notes" : trash ? "No deleted notes" : `No ${sectionInfo.label} notes yet`}</h3><p>{q || kind ? "Try another search or note type." : "Add a note to this section, then paste or write your content."}</p>{!trash && !q && !kind && <div className="row notes-suggestions">{["Lecture Notes", "First Aid", "Sketchy", "My Notes"].map((k) => <span key={k}>{k}</span>)}</div>}</div> : visible.map((n) => {
+        {notes === undefined ? <p>Loading…</p> : !visible.length ? <div className="notes-empty"><span aria-hidden="true">✎</span><h3>{q || kind ? "No matching notes" : trash ? "No deleted notes" : `No ${sectionInfo.label} notes yet`}</h3><p>{q || kind ? "Try another search or note type." : trash ? "Deleted notes appear here and can be restored." : library === "shared" && !admin ? "Shared notes have not been added here yet. Use My private notes to add your own." : "Add a note to this section, then paste or write your content."}</p>{!trash && !q && !kind && <div className="row notes-suggestions">{["Lecture Notes", "First Aid", "Sketchy", "My Notes"].map((k) => <span key={k}>{k}</span>)}</div>}</div> : visible.map((n) => {
           const open = expanded.has(n.id);
           return <article key={n.id} className={"note-card" + (open ? " open" : "")}>
             <button className="note-toggle" aria-expanded={open} aria-controls={`note-${n.id}`} onClick={() => toggle(n.id)}><span className="note-caret">{open ? "▾" : "▸"}</span><span><span className="note-kind">{n.kind}</span><strong>{n.title}</strong></span></button>

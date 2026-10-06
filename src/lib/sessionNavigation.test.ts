@@ -57,3 +57,10 @@ describe("vertical question sidebar", () => {
     }
   });
 });
+
+it("makes every exam stem available during reading without changing progressive practice", () => {
+  const exam = { ...session, mode: "exam" as const, examFormat: "six-stem" as const, readingSec: 900 };
+  expect(openedSetCount(exam, sessionSetGroups(exam, questions))).toBe(3);
+  expect(sessionQuestionRows(exam, questions)).toHaveLength(5);
+  expect(openedSetCount(session, sessionSetGroups(session, questions))).toBe(1);
+});

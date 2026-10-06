@@ -129,11 +129,10 @@ A woman presents with dyspnoea.
 });
 
 describe("staged papers with stems", () => {
-  const S = "/private/tmp/claude-502/-Users-gabe-Desktop-Frontal/384f50d6-d1cb-4be0-8ed0-69046cf8a54c/scratchpad";
   it("parses the dizziness paper", async () => {
     const { readFileSync } = await import("node:fs");
     const { parsePaper } = await import("./parser");
-    const { questions: qs, meta } = parsePaper(readFileSync(`${S}/dizzy.txt`, "utf8"));
+    const { questions: qs, meta } = parsePaper(readFileSync(new URL("./__fixtures__/parser/dizzy.txt", import.meta.url), "utf8"));
     expect(qs).toHaveLength(6);
     expect(meta.title).toBe("“I feel dizzy”");
     expect(meta.minutes).toBe(25);

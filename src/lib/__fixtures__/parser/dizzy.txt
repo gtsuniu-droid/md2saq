@@ -1,0 +1,36 @@
+Title: “I feel dizzy”
+Time: 25 minutes
+
+Stage 1
+Michael Tan presents with dizziness. This is a synthetic parser fixture.
+
+Question 1 (3 marks)
+Generate an initial differential.
+List THREE plausible diagnoses (½ mark per diagnosis).
+
+Question 2 (4 marks)
+Describe the history you would seek.
+
+Stage 2
+Further history reveals persistent symptoms.
+Marked unsteadiness is noted.
+
+Question 3 (4 marks)
+a) Describe one finding. (1 mark)
+b) Explain two features. (2 marks)
+c) State one concern. (1 mark)
+
+Question 4 (4 marks)
+Outline your initial investigations.
+
+Question 5 (3 marks)
+Explain your initial management.
+
+Stage 3
+A non-contrast CT brain is performed.
+
+Question 6 (2 marks)
+a) Interpret the result. (1 mark)
+b) Outline the next step. (1 mark)
+
+Total: 20 marks

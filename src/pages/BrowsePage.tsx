@@ -1,164 +1,149 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { getSettings } from "../data/db";
-import { loadSummaries, setLabel, suggestedMinutesFor, type SetSummary } from "../lib/sets";
+import { PRESENTATIONS } from "../data/presentations";
+import { loadSummaries, suggestedMinutesFor, type SetSummary } from "../lib/sets";
 import { loadSession, startSession } from "../lib/session";
-import { buildTree, filterTree, searchHits, setsInBranch, type TreeNode } from "../lib/tree";
 import { isAdmin } from "../lib/admin";
+import { browseSets, browseSetTitle } from "../lib/browseSets";
+import { introducedStems } from "../lib/markingSet";
+import { hasModelAnswer, richAnswerDocument } from "../lib/modelAnswer";
+import { partLabel, totalMarks, truncate } from "../lib/questions";
+import AmbossText from "../components/AmbossText";
+import ModelAnswerContent from "../components/ModelAnswerContent";
+import SetEditPage from "./SetEditPage";
+import { applyPersonalSetEdits, loadPersonalSetEdits, resetPersonalSetEdits } from "../lib/personalSetEdits";
 
-/** A tick once everything is marked; otherwise a slim bar, teal for marked and amber for answered but unmarked. Untouched shows nothing. */
-function Progress({ total, attempted, marked }: { total: number; attempted: number; marked: number }) {
-  if (total === 0 || attempted === 0) return <span className="bar empty" />;
-  if (marked === total) return <span className="done-tick" title={`All ${total} marked`}>✓</span>;
-  const m = (100 * marked) / total;
-  const a = (100 * Math.max(0, attempted - marked)) / total;
-  return (
-    <span className="bar" title={`${marked} of ${total} marked${attempted > marked ? `, ${attempted - marked} answered but unmarked` : ""}`}>
-      <span className="fill marked" style={{ width: `${m}%` }} />
-      <span className="fill attempted" style={{ width: `${a}%` }} />
-    </span>
-  );
-}
-
-/** Text with every occurrence of the search term marked. */
-function Highlight({ text, needle }: { text: string; needle: string }) {
-  const n = needle.trim().toLowerCase();
-  if (!n) return <>{text}</>;
-  const out: ReactNode[] = [];
-  let i = 0;
-  const lower = text.toLowerCase();
-  for (;;) {
-    const at = lower.indexOf(n, i);
-    if (at < 0) break;
-    if (at > i) out.push(text.slice(i, at));
-    out.push(<mark key={at} className="hit">{text.slice(at, at + n.length)}</mark>);
-    i = at + n.length;
-  }
-  if (i < text.length) out.push(text.slice(i));
-  return <>{out}</>;
-}
-
-const EXPANDED_KEY = "saq-browse-expanded";
-
-function loadExpanded(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? "[]") as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-/** Anki-style deck list: presentations and :: tags as branches, sets as leaves. */
 export default function BrowsePage() {
   const nav = useNavigate();
-  const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
-  const data = useLiveQuery(async () => ({ summaries: await loadSummaries(), settings: await getSettings() }), []);
+  const [params, setParams] = useSearchParams();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const detail = useRef<HTMLDivElement>(null);
+  const data = useLiveQuery(async () => {
+    const settings = await getSettings();
+    const personal = isAdmin(settings) ? new Map() : await loadPersonalSetEdits(settings.cloudUser?.uid ?? "");
+    const summaries = (await loadSummaries()).map((summary) => ({ ...summary, questions: applyPersonalSetEdits(summary.questions, personal.get(summary.set.id)) }));
+    return { summaries, settings, personal };
+  }, []);
+  const search = params.get("q") ?? "";
+  const presentation = params.get("presentation") ?? "";
+  const tag = params.get("tag");
+  const collection = params.get("collection");
+  const sets = useMemo(() => browseSets(data?.summaries ?? [], search, presentation, tag, collection), [data, search, presentation, tag, collection]);
+  const selected = sets.find((s) => s.set.id === params.get("set")) ?? sets[0];
+  // Keep the editor mounted if live updates change the matching list mid-edit.
+  const active = editing ? data?.summaries.find((s) => s.set.id === editing) : selected;
 
-  const tree = useMemo(() => (data ? filterTree(buildTree(data.summaries), search) : []), [data, search]);
-  const searching = search.trim().length > 0;
+  useEffect(() => { detail.current?.scrollTo(0, 0); setMessage(""); }, [active?.set.id]);
 
-  if (!data) return null;
-
-  const toggle = (path: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
-      return next;
-    });
-
-  const practiseBranch = (node: TreeNode, mode: "practice" | "exam") => {
-    const sets = setsInBranch(node);
-    const ids = sets.flatMap((s) => s.questions.map((q) => q.id));
-    if (ids.length === 0) return;
-    if (loadSession() && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
-    const minutes = sets.reduce((acc, s) => acc + suggestedMinutesFor(s, data.settings.minutesPerMark), 0);
-    startSession(ids, mode, Math.round(minutes * 60), "sets");
+  function changeFilter(key: string, value: string) {
+    const next = new URLSearchParams(params);
+    value ? next.set(key, value) : next.delete(key);
+    next.delete("set");
+    setParams(next, { replace: true });
+  }
+  function select(id: string) {
+    if (editing) return;
+    const next = new URLSearchParams(params);
+    next.set("set", id);
+    setParams(next, { replace: true });
+  }
+  function start(summary: SetSummary) {
+    if (!data) return;
+    if (loadSession() && !confirm("Replace your unfinished session? Submitted answers will be kept.")) return;
+    startSession(summary.questions.map((q) => q.id), "practice", Math.round(suggestedMinutesFor(summary, data.settings.minutesPerMark) * 60), "sets");
     nav("/paper");
-  };
+  }
 
-  const renderSet = (s: SetSummary, depth: number) => {
-    const plainTags = (s.set.tags ?? []).filter((t) => !t.includes("::"));
-    const hits = searching ? searchHits(s, search) : null;
-    const detail = plainTags.length ? plainTags.join(", ") : s.set.source ?? "";
-    return (
-      <div key={s.set.id}>
-        <Link to={`/set/${s.set.id}`} className="deck-row set" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }}>
-          <span className="caret" />
-          <span className="name">
-            <Highlight text={setLabel(s.set)} needle={search} />
-            {detail && <span className="muted"> — <Highlight text={detail} needle={search} /></span>}
-          </span>
-          <Progress total={s.questions.length} attempted={s.attemptedQuestions} marked={s.markedQuestions} />
-          <span className="actions" />
-        </Link>
-        {hits && (hits.questions.length > 0 || hits.tags.some((t) => t.includes("::"))) && (
-          <div className="deck-hits" style={{ paddingLeft: `${2.6 + depth * 1.4}rem` }}>
-            {hits.tags.filter((t) => t.includes("::")).map((t) => (
-              <div key={t} className="hit-line muted">tag <Highlight text={t} needle={search} /></div>
-            ))}
-            {hits.questions.map((h) => (
-              <Link to={`/question/${h.questionId}`} key={h.questionId} className="hit-line" title="Open this question">
-                <span className="muted">Q{h.number}{h.field === "question" ? "" : `, ${h.field}`}:</span> <Highlight text={h.snippet} needle={search} />
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderNode = (node: TreeNode, depth: number) => {
-    const open = searching || expanded.has(node.path);
-    return (
-      <div key={node.path}>
-        <div className="deck-row branch" style={{ paddingLeft: `${0.7 + depth * 1.4}rem` }}>
-          <button className="branch-toggle" aria-expanded={open} onClick={() => toggle(node.path)}><span className="caret">{open ? "▾" : "▸"}</span><span className="name">{node.emoji && <span className="emoji">{node.emoji}</span>}{node.label}</span></button>
-          <Progress total={node.questions} attempted={node.attempted} marked={node.marked} />
-          <span className="actions" onClick={(e) => e.stopPropagation()}>
-            <button className="small link" onClick={() => practiseBranch(node, "practice")} disabled={node.questions === 0}>Practice</button>
-            <button className="small link" onClick={() => practiseBranch(node, "exam")} disabled={node.questions === 0}>Exam</button>
-          </span>
+  return <div className={`browse-workspace${params.has("set") || editing ? " browse-detail-open" : ""}`}>
+    <header className="browse-heading"><h1>Browse</h1>{data && isAdmin(data.settings) && !editing && <Link className="button small" to="/create">New set</Link>}</header>
+    <div className="browse-panes">
+      <aside className="browse-library" aria-label="Set library">
+        <fieldset className="browse-filters" disabled={!!editing}>
+          <input type="search" aria-label="Search sets and questions" placeholder="Search sets and questions" value={search} onChange={(e) => changeFilter("q", e.target.value)} />
+          <select aria-label="Presentation" value={presentation} onChange={(e) => changeFilter("presentation", e.target.value)}>
+            <option value="">All presentations</option>
+            {PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <option value="unassigned">Unassigned</option>
+          </select>
+          {(tag || collection) && <button className="small link" onClick={() => { const next = new URLSearchParams(params); next.delete("tag"); next.delete("collection"); setParams(next, { replace: true }); }}>Clear {tag ? "tag" : "collection"} filter</button>}
+        </fieldset>
+        <div className="browse-count" role="status">{data ? `${sets.length} ${sets.length === 1 ? "set" : "sets"}` : "Loading…"}</div>
+        <div className="browse-set-list" role="list" aria-label="Sets">
+          {sets.map((summary, index) => <div role="listitem" key={summary.set.id}>
+            <button className={`browse-set-row${active?.set.id === summary.set.id ? " selected" : ""}`} disabled={!!editing} aria-current={active?.set.id === summary.set.id ? "true" : undefined}
+              onClick={() => select(summary.set.id)} onKeyDown={(event) => {
+                const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+                if (!delta) return;
+                event.preventDefault();
+                const next = sets[index + delta];
+                if (next) { select(next.set.id); const rows = event.currentTarget.closest('[role="list"]')?.querySelectorAll<HTMLButtonElement>(".browse-set-row"); rows?.[index + delta]?.focus(); }
+              }}>
+              <span className="browse-set-title">{browseSetTitle(summary)}</span>
+              <span className="browse-set-preview">{truncate(summary.questions[0]?.stems?.[0] || summary.questions[0]?.text || summary.set.source || "Empty set", 110)}</span>
+              <span className="browse-set-count">{summary.questions.length}</span>
+            </button>
+          </div>)}
+          {data && !sets.length && <p className="browse-empty">{data.summaries.length ? "No matching sets." : "No sets yet."}</p>}
         </div>
-        {open && (
-          <div>
-            {node.children.map((c) => renderNode(c, depth + 1))}
-            {node.sets.map((s) => renderSet(s, depth + 1))}
+      </aside>
+      <section className="browse-detail" aria-label="Selected set">
+        {active ? <>
+          <header className="browse-detail-heading">
+            <div><button className="small link browse-back" disabled={!!editing} onClick={() => { const next = new URLSearchParams(params); next.delete("set"); setParams(next, { replace: true }); }}>← Sets</button><h2>{browseSetTitle(active)}</h2><span className="muted">{active.questions.length} questions</span></div>
+            {!editing && <div className="row"><button className="small" disabled={!active.questions.length} onClick={() => start(active)}>Practice</button><button className="small" onClick={() => { select(active.set.id); setEditing(active.set.id); detail.current?.scrollTo(0, 0); }}>Edit</button></div>}
+          </header>
+          <div className="browse-detail-scroll" ref={detail}>
+            {message && <p className={`browse-save-message${/not published|Could not/.test(message) ? " field-error" : ""}`} role={/not published|Could not/.test(message) ? "alert" : "status"}>{message}</p>}
+            {!editing && data?.personal?.has(active.set.id) && <div className="browse-personal-notice"><span>Personal edits</span><button className="small link" onClick={async () => {
+              if (!confirm("Reset your personal edits to the shared version?")) return;
+              try { await resetPersonalSetEdits(data.settings.cloudUser?.uid ?? "", active.set.id); setMessage("Shared version restored."); }
+              catch { setMessage("Could not reset your edits. Try again."); }
+            }}>Reset</button></div>}
+            {editing ? <SetEditPage key={editing} embeddedSetId={editing} onDone={(note) => { setEditing(null); setMessage(note ?? ""); detail.current?.scrollTo(0, 0); }} /> : <BrowseContent key={active.set.id} summary={active} />}
           </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div>
-      <div className="row spread">
-        <h1 style={{ margin: 0 }}>Browse</h1>
-        <span className="row">
-          <input type="search" aria-label="Search tags and questions" placeholder="Search tags and questions" value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: "14rem" }} />
-          <button className="small link" onClick={() => setExpanded(new Set(collectPaths(tree)))}>Expand all</button>
-          <button className="small link" onClick={() => setExpanded(new Set())}>Collapse</button>
-          {isAdmin(data.settings) && <button className="small link" onClick={() => nav("/settings#admin")}>+ New set</button>}
-        </span>
-      </div>
-      <p className="muted" style={{ marginBottom: "0.8rem" }}>
-        Sets sit under their primary presentation{isAdmin(data.settings) ? '. Tag a set "Presentation::Topic" in Admin to nest it, Anki style; secondary tags remain searchable.' : "."}
-      </p>
-      <div className="deck-list">
-        {tree.map((n) => renderNode(n, 0))}
-      </div>
-      {tree.length === 0 && (
-        <p className="muted" style={{ marginTop: "1rem" }}>
-          {data.summaries.length === 0 ? "No sets yet. Add some in Admin, at the bottom of Settings." : "Nothing matches."}
-        </p>
-      )}
+        </> : <div className="browse-empty">{data ? "Choose a set to view its questions." : "Loading…"}</div>}
+      </section>
     </div>
-  );
+  </div>;
 }
 
-function collectPaths(nodes: TreeNode[]): string[] {
-  return nodes.flatMap((n) => [n.path, ...collectPaths(n.children)]);
+function BrowseContent({ summary }: { summary: SetSummary }) {
+  const seenImages = new Set<string>();
+  return <div className="browse-reading">
+    {summary.set.instructions && <details className="browse-instructions"><summary>Instructions</summary><p className="pre">{summary.set.instructions}</p></details>}
+    {summary.questions.map((q, index) => {
+      const stems = introducedStems(q, summary.questions[index - 1]);
+      const texts = [...(q.stems ?? []), q.text, ...q.parts.map((p) => p.text)];
+      const stemImages = (q.images ?? []).filter((im) => {
+        if (im.place !== "stem" || seenImages.has(im.dataUrl)) return false;
+        seenImages.add(im.dataUrl); return true;
+      });
+      const marks = totalMarks(q);
+      return <article className="browse-question" key={q.id}>
+        {stems.map((stem) => <div className="browse-stem" key={stem.index}><AmbossText cacheKey={`browse:${q.id}`} texts={texts} text={stem.text} doc={q.stemDocs?.[stem.index]} /></div>)}
+        {stemImages.map((im) => <figure key={im.id}><img src={im.dataUrl} alt={im.caption || "Case image"} />{im.caption && <figcaption>{im.caption}</figcaption>}</figure>)}
+        <div className="browse-question-number"><h3>Question {index + 1}</h3>{marks !== undefined && <span>{marks} {marks === 1 ? "mark" : "marks"}</span>}</div>
+        <AmbossText cacheKey={`browse:${q.id}`} texts={texts} text={q.text} doc={q.textDoc} className="pre browse-prompt" />
+        {(q.images ?? []).filter((im) => im.place === "question").map((im) => <figure key={im.id}><img src={im.dataUrl} alt={im.caption || "Question image"} />{im.caption && <figcaption>{im.caption}</figcaption>}</figure>)}
+        {q.parts.map((p, pi) => <div key={pi} className="browse-part"><strong>{partLabel(p.label)}</strong><AmbossText cacheKey={`browse:${q.id}`} texts={texts} text={p.text} doc={p.textDoc} className="pre browse-prompt" /></div>)}
+        <BrowseAnswer question={q} />
+      </article>;
+    })}
+    {!summary.questions.length && <p className="muted">No questions in this set.</p>}
+  </div>;
+}
+
+function BrowseAnswer({ question: q }: { question: SetSummary["questions"][number] }) {
+  const [open, setOpen] = useState(false);
+  return <div className="browse-answer">
+    <button className="small link" aria-expanded={open} aria-controls={`answer-${q.id}`} onClick={() => setOpen(!open)}>{open ? "Hide answer" : "Show answer"}</button>
+    {open && <div id={`answer-${q.id}`} className="browse-answer-content">
+      {q.parts.filter(hasModelAnswer).map((p, i) => <div key={i}><strong>{partLabel(p.label)}</strong><ModelAnswerContent answer={p} /></div>)}
+      {hasModelAnswer(q) && (richAnswerDocument(q) || !q.parts.some(hasModelAnswer)) && <ModelAnswerContent answer={q} />}
+      {!hasModelAnswer(q) && !q.parts.some(hasModelAnswer) && <p className="muted">No answer added yet.</p>}
+    </div>}
+  </div>;
 }

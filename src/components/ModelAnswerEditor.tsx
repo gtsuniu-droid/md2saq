@@ -9,7 +9,7 @@ export default function ModelAnswerEditor({ answer, label = "Model answer", onCh
   onBusyChange: (busy: boolean) => void;
 }) {
   const initial = useMemo(() => answerDocument(answer), [answer.modelAnswerDoc, answer.modelAnswer]);
-  return <div className="model-answer-editor"><NoteEditor initial={initial} label={label} syncContent onBusyChange={onBusyChange}
+  return <div className="model-answer-editor"><NoteEditor compact initial={initial} label={label} syncContent onBusyChange={onBusyChange}
     onChange={(doc, text) => onChange({ modelAnswerDoc: doc, modelAnswer: text.trim() || undefined })} /></div>;
 }
 

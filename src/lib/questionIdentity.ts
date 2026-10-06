@@ -3,8 +3,8 @@ import type { SetPack } from "./exportImport";
 
 /** Ignore local IDs and marking state when matching older imported questions. */
 export function sameQuestion(a: Question, b: Question): boolean {
-  return JSON.stringify([a.text, a.stems ?? [], a.parts.map(p => [p.label, p.text]), a.images ?? []])
-    === JSON.stringify([b.text, b.stems ?? [], b.parts.map(p => [p.label, p.text]), b.images ?? []]);
+  return JSON.stringify([a.text, a.textDoc ?? null, a.stemDocs ?? [], a.stems ?? [], a.parts.map(p => [p.label, p.text, p.textDoc ?? null]), a.images ?? []])
+    === JSON.stringify([b.text, b.textDoc ?? null, b.stemDocs ?? [], b.stems ?? [], b.parts.map(p => [p.label, p.text, p.textDoc ?? null]), b.images ?? []]);
 }
 
 export function publishedQuestion(pack: SetPack, local: Question): Question | undefined {

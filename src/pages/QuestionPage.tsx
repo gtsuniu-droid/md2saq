@@ -39,19 +39,19 @@ export default function QuestionPage() {
   const qTexts = [...stemsOf(q), q.text, ...q.parts.map((p) => p.text)];
 
   const remove = async () => {
+    if (!isAdmin(await getSettings())) return;
     const everyone = !!set?.bankId && admin;
     if (!confirm(`Delete this question${everyone ? " from the set for everyone" : ""}, with its attempts?`)) return;
     const setId = q.setId;
-    await deleteQuestion(id);
-    if (await savedPasscode()) {
-      try {
-        await pushToBank(setId);
-      } catch (e) {
-        setMessage(`Deleted here, not published: ${bankErrorMessage(e)}`);
-        return;
+    try {
+      await deleteQuestion(id);
+      let warning: string | undefined;
+      if (await savedPasscode()) {
+        try { await pushToBank(setId); }
+        catch (e) { warning = `Deleted here, not published: ${bankErrorMessage(e)} Publish local changes in Settings to retry.`; }
       }
-    }
-    nav(`/set/${setId}`);
+      nav(`/set/${setId}`, { state: { message: warning } });
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Could not delete this question."); }
   };
 
   return (
@@ -60,24 +60,24 @@ export default function QuestionPage() {
         <div className="muted"><Link to={`/set/${q.setId}`}>{set ? setLabel(set) : "Set"}</Link>, question {q.order + 1}</div>
         <QuestionCommunity key={`community-${q.id}`} question={q} set={set} />
         <ShareLinks key={q.id} set={set} />
-        {(!set?.bankId || admin) && <button className="danger small" onClick={remove}>Delete question</button>}
+        {admin && <button className="danger small" onClick={remove}>Delete question</button>}
       </div>
       {message && <p style={{ color: "var(--warn)" }}>{message}</p>}
       <div className="card" style={{ marginTop: "0.8rem" }}>
         {stemsOf(q).map((st, si) => (
           <div key={si} className="stem-block">
             {stemsOf(q).length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
-            <AmbossText cacheKey={q.id} texts={qTexts} text={st} />
+            <AmbossText cacheKey={q.id} texts={qTexts} text={st} doc={q.stemDocs?.[si]} />
           </div>
         ))}
         {(q.images ?? []).map((im) => (
           <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
         ))}
-        <AmbossText cacheKey={q.id} texts={qTexts} text={q.text} />
+        <AmbossText cacheKey={q.id} texts={qTexts} text={q.text} doc={q.textDoc} />
         {q.parts.map((p) => (
           <div key={p.label} className="part-head" style={{ marginTop: "0.6rem" }}>
             <span className="label">{partLabel(p.label)}</span>
-            <AmbossText cacheKey={q.id} texts={qTexts} text={p.text} className="text" />
+            <AmbossText cacheKey={q.id} texts={qTexts} text={p.text} doc={p.textDoc} className="text" />
             {p.marks !== undefined && <span className="marks">({p.marks})</span>}
           </div>
         ))}

@@ -93,3 +93,26 @@ export function selectionOffsets(container: HTMLElement, ignore = ".amboss-popup
   if (start === -1 || end === -1 || end <= start) return null;
   return { start, end };
 }
+
+/** Paint ranges over rich content using the same text-node offsets as selectionOffsets. */
+export function highlightHtml(html: string, ranges: Range[] = []): string {
+  if (!ranges.length) return html;
+  const root = document.createElement("div");
+  root.innerHTML = html;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  let offset = 0;
+  for (const node of nodes) {
+    const local = ranges.map(r => ({ start: Math.max(0, r.start - offset), end: Math.min(node.length, r.end - offset) })).filter(r => r.end > r.start);
+    offset += node.length;
+    if (!local.length) continue;
+    const fragment = document.createDocumentFragment();
+    for (const piece of splitByRanges([{ text: node.data }], local)) {
+      if (!piece.hl) fragment.append(document.createTextNode(piece.text));
+      else { const mark = document.createElement("mark"); mark.className = "user-hl"; mark.textContent = piece.text; fragment.append(mark); }
+    }
+    node.replaceWith(fragment);
+  }
+  return root.innerHTML;
+}

@@ -1,10 +1,13 @@
+import { noteHtml } from "./NoteEditor";
+import { annotateAmbossHtml } from "../lib/ambossNotes";
+import { openNoteTerm } from "./AmbossNotes";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { getSettings } from "../data/db";
 import { ambossPhrases } from "../lib/amboss";
 import { openAmbossPanel } from "../lib/ambossPanel";
 import { markTerms, type Segment, type Term } from "../lib/ambossMatch";
-import { splitByRanges, type Piece, type Range } from "../lib/highlights";
+import { highlightHtml, splitByRanges, type Piece, type Range } from "../lib/highlights";
 
 interface Props {
   /** Cache key, normally the question id. Texts sharing a key are sent to AMBOSS together. */
@@ -13,6 +16,7 @@ interface Props {
   texts: string[];
   /** The text this instance renders (one of `texts`). */
   text: string;
+  doc?: unknown;
   /** Force highlighting off, e.g. during the paper unless the setting allows it. */
   disabled?: boolean;
   className?: string;
@@ -25,7 +29,7 @@ interface Props {
 /** Shared per-key request within the page, so the parts of one question do not each hit the API. */
 const inflight = new Map<string, Promise<Term[]>>();
 
-export default function AmbossText({ cacheKey, texts, text, disabled = false, className = "pre", highlights, dataStem }: Props) {
+export default function AmbossText({ cacheKey, texts, text, doc, disabled = false, className = "pre", highlights, dataStem }: Props) {
   const settings = useLiveQuery(getSettings, []);
   const [terms, setTerms] = useState<Term[]>([]);
   const active = !!settings?.ambossToken && settings.ambossHighlights && !disabled;
@@ -54,6 +58,10 @@ export default function AmbossText({ cacheKey, texts, text, disabled = false, cl
 
   const base: Segment[] = active ? markTerms(text, terms) : [{ text }];
   const segments: Piece[] = highlights?.length ? splitByRanges(base, highlights) : base;
+
+  if (doc) return <div className={`${className} note-rich question-rich`} data-stem={dataStem}
+    onClick={(event) => openNoteTerm(event.target)}
+    dangerouslySetInnerHTML={{ __html: highlightHtml(annotateAmbossHtml(noteHtml(doc), active ? terms : []), highlights) }} />;
 
   return (
     <span className={className} style={{ position: "relative", display: "block" }} data-stem={dataStem}>

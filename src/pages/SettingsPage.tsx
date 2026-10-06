@@ -74,7 +74,7 @@ export default function SettingsPage() {
           <label style={{ margin: 0 }}>Minutes per mark</label>
           <input type="number" step={0.25} min={0.25} value={settings.minutesPerMark}
             onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
-          <span className="muted">used to suggest timer lengths</span>
+
         </div>
       </div>
 
@@ -82,8 +82,7 @@ export default function SettingsPage() {
       <div className="card stack">
         {!cloudConfigured() ? (
           <p className="muted" style={{ margin: 0 }}>
-            Cloud sync is not set up on this site. With it, your answers, marks and settings follow you between devices after a Google sign-in.
-            The README has the ten-minute setup.
+            Cloud sync is not configured.
           </p>
         ) : settings.cloudUser ? (
           <div className="row spread">
@@ -165,7 +164,6 @@ export default function SettingsPage() {
 
       <h2>Backup</h2>
       <p className="muted">
-        Everything lives in this browser only. Export regularly.{" "}
         {settings.lastExportAt ? `Last export ${formatDate(settings.lastExportAt)}.` : "Never exported."}
       </p>
       <div className="row">

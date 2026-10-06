@@ -13,7 +13,7 @@ const pending = new Map<string, Promise<Term[]>>();
 
 export function AmbossNotesStatus() {
   const settings = useLiveQuery(getSettings, []);
-  return <p className="amboss-notes-status muted"><AmbossLogo /><span>{settings?.ambossToken && settings.ambossHighlights ? "Hover over an underlined term for pictures and an explanation. Click to keep the reference beside your notes." : <Link to="/settings#amboss">{settings?.ambossToken ? "Enable medical term links in Settings" : "Connect in Settings to link medical terms"}</Link>}</span></p>;
+  return <p className="amboss-notes-status muted"><AmbossLogo /><span>{settings?.ambossToken && settings.ambossHighlights ? "Medical term links on" : <Link to="/settings#amboss">{settings?.ambossToken ? "Enable medical term links in Settings" : "Connect in Settings to link medical terms"}</Link>}</span></p>;
 }
 
 export function useAmbossNoteHtml(doc: unknown, html: string) {

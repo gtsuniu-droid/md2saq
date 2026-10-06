@@ -1,3 +1,4 @@
+import { hasAnswerContent } from "../lib/answerContent";
 import { useEffect, useRef } from "react";
 import type { Attempt, Question, Session } from "../data/types";
 import { sessionQuestionRows } from "../lib/sessionNavigation";
@@ -17,7 +18,7 @@ export default function SessionSidebar({ session, questions, attempts, activePar
       const answer = attempt?.answers.find((a) => a.label === row.part);
       const current = row.current && !summaryOpen;
       return <button key={`${row.index}-${row.part}`} ref={current ? currentRef : undefined}
-        className={(current ? "current " : "") + (attempt?.submittedAt !== undefined || answer?.text.trim() ? "done" : "")}
+        className={(current ? "current " : "") + (attempt?.submittedAt !== undefined || hasAnswerContent(answer) ? "done" : "")}
         aria-current={current ? "step" : undefined}
         aria-label={`Question ${row.label}${answer?.flagged ? ", flagged" : ""}`}
         onClick={() => onQuestion(row.index, row.part)}>

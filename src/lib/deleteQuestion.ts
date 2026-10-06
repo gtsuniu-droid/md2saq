@@ -1,4 +1,5 @@
-import { db } from "../data/db";
+import { isAdmin } from "./admin";
+import { db, getSettings } from "../data/db";
 import { loadSession, saveSession } from "./session";
 import { recordDeletes } from "./sync";
 
@@ -9,6 +10,7 @@ import { recordDeletes } from "./sync";
  * publish carries the change.
  */
 export async function deleteQuestion(questionId: string): Promise<{ setId: string; remaining: number } | null> {
+  if (!isAdmin(await getSettings())) throw new Error("Only an admin can delete questions.");
   const q = await db.questions.get(questionId);
   if (!q) return null;
   const goneAttempts = (await db.attempts.where("questionId").equals(questionId).primaryKeys()) as string[];

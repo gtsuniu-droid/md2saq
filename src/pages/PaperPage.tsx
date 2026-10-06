@@ -1,3 +1,4 @@
+import { hasAnswerContent } from "../lib/answerContent";
 import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -9,7 +10,7 @@ import Editor from "../components/Editor";
 import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, pauseSession, resumeSession, saveSession } from "../lib/session";
 import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/answerDrafts";
-import { overtimeSec, remainingSec, shouldAutoSubmit } from "../lib/sessionClock";
+import { canWriteAnswers, readingRemainingSec, overtimeSec, remainingSec, shouldAutoSubmit } from "../lib/sessionClock";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
 import { isAdmin } from "../lib/admin";
@@ -32,6 +33,12 @@ export default function PaperPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [submittingSet, setSubmittingSet] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const imageJobs = useRef(new Set<string>());
+  const [addingImages, setAddingImages] = useState(false);
+  const onImageBusy = (key: string, busy: boolean) => {
+    if (busy) imageJobs.current.add(key); else imageJobs.current.delete(key);
+    setAddingImages(imageJobs.current.size > 0);
+  };
   const [activePart, setActivePart] = useState<string>(() => session?.activePart ?? "");
   const elapsedRef = useRef<Map<string, number>>(new Map());
   const answersRef = useRef<Map<string, PartAnswer[]>>(new Map());
@@ -154,9 +161,10 @@ export default function PaperPage() {
     const settings = await getSettings();
     return { ambossOnPaper: settings.ambossOnPaper, admin: isAdmin(settings) };
   }, []);
-  const ambossOnPaper = prefs?.ambossOnPaper ?? false;
-  const admin = prefs?.admin ?? false;
+  const ambossOnPaper = session?.examFormat ? false : prefs?.ambossOnPaper ?? false;
+  const admin = !session?.examFormat && (prefs?.admin ?? false);
   const [editing, setEditing] = useState<Question | null>(null);
+  const [editingMode, setEditingMode] = useState<"stem" | "question">("question");
 
   const data = useLiveQuery(async () => {
     if (!session || !ready) return undefined;
@@ -187,6 +195,9 @@ export default function PaperPage() {
   const question = data?.questions[index];
   const attempt = data?.attempts[index];
   const remaining = session ? remainingSec(session, now) : null;
+  const readingLeft = session ? readingRemainingSec(session, now) : 0;
+  const reading = readingLeft > 0;
+  const displayedRemaining = reading ? readingLeft : remaining;
   const expired = remaining !== null && remaining <= 0;
   const examExpired = !!session && shouldAutoSubmit(session, now);
 
@@ -233,7 +244,7 @@ export default function PaperPage() {
   useEffect(() => {
     const t = setInterval(() => {
       setNow(Date.now());
-      if (attempt && !attempt.submittedAt) {
+      if (attempt && !attempt.submittedAt && sessionRef.current && canWriteAnswers(sessionRef.current, Date.now())) {
         elapsedRef.current.set(attempt.id, (elapsedRef.current.get(attempt.id) ?? 0) + 1);
       }
     }, 1000);
@@ -249,7 +260,7 @@ export default function PaperPage() {
   }, [attempt, flushAttempt]);
 
   const submitAll = useCallback(async () => {
-    if (!session || !data || submittingRef.current) return;
+    if (!session || !data || readingRemainingSec(session, Date.now()) > 0 || submittingRef.current || imageJobs.current.size) return;
     submittingRef.current = true;
     for (const a of data.attempts) {
       await flushAttempt(a.id);
@@ -262,13 +273,14 @@ export default function PaperPage() {
   // Only exams submit at the deadline. Practice remains editable after time runs out.
   useEffect(() => {
     if (examExpired && data && !submittingRef.current) void submitAll();
-  }, [examExpired, data, submitAll]);
+  }, [examExpired, data, submitAll, addingImages]);
 
   const onAnswerChange = (attemptId: string, label: string, doc: unknown, text: string) => {
+    if (!sessionRef.current || !canWriteAnswers(sessionRef.current, Date.now())) return;
     const current = answersRef.current.get(attemptId) ?? [];
     const existing = current.find((x) => x.label === label);
-    const wasAnswered = !!existing?.text.trim();
-    if (wasAnswered !== !!text.trim()) bump((n) => n + 1);
+    const wasAnswered = hasAnswerContent(existing);
+    if (wasAnswered !== hasAnswerContent({ doc, text })) bump((n) => n + 1);
     const next = existing
       ? current.map((x) => (x.label === label ? { ...x, doc, text } : x))
       : [...current, { label, doc, text }];
@@ -349,6 +361,7 @@ export default function PaperPage() {
   }, [!!data]);
 
   const goTo = (i: number, label = "") => {
+    if (imageJobs.current.size) return;
     setSummaryOpen(false);
     setCurrent(i, label);
     setTimeout(() => document.getElementById(`part-${i}-${label || "q"}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
@@ -366,7 +379,7 @@ export default function PaperPage() {
   const setSubmitted = currentSet.indices.every((i) => data.attempts[i].submittedAt !== undefined);
   const firstToMark = currentSet.indices.find((i) => !marked.has(data.attempts[i].id)) ?? currentSet.indices[0];
   const submitSet = async () => {
-    if (submittingRef.current || setSubmitted) return;
+    if (submittingRef.current || setSubmitted || imageJobs.current.size) return;
     submittingRef.current = true;
     setSubmittingSet(true); setSaveError("");
     try {
@@ -382,6 +395,7 @@ export default function PaperPage() {
     finally { submittingRef.current = false; setSubmittingSet(false); }
   };
   const nextQuestion = (i: number) => {
+    if (imageJobs.current.size) return;
     if (i + 1 < data.questions.length) goTo(i + 1);
     else { flushAll(); setSummaryOpen(true); }
   };
@@ -393,6 +407,7 @@ export default function PaperPage() {
   const groupLabel = groupIndices.length > 1 ? `${questionNumber(groupIndices[0])}–${questionNumber(groupIndices[groupIndices.length - 1])}` : `${questionNumber(index)}`;
   const stemTexts = [...stems, ...groupIndices.flatMap((i) => [data.questions[i].text, ...data.questions[i].parts.map((x) => x.text)])];
   // Without stems, a question with parts uses its own text as the stem (older paste format).
+  const legacyStemDoc = stems.length === 0 && question.parts.length > 0 ? question.textDoc : undefined;
   const legacyStem = stems.length === 0 && question.parts.length > 0 ? question.text : null;
   // Highlights made while any question of this group was current apply to the shared stems.
   const groupHighlights = (stem: number): Range[] =>
@@ -402,19 +417,21 @@ export default function PaperPage() {
     <>
       <div className="paper-top">
         <span className="muted">{session.mode === "exam" ? "Exam" : "Practice"}, {setMode ? `Set ${setIndex + 1} of ${setGroups.length}, Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
-        {remaining !== null && (
-          <span className={"timer" + (remaining <= 60 ? " low" : "")} aria-label={expired && session.mode === "practice" ? "Practice overtime" : "Time remaining"}>{expired && session.mode === "practice" ? `+${formatDuration(overtimeSec(session, now))}` : formatDuration(remaining)}</span>
+        {displayedRemaining !== null && (
+          <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : expired && session.mode === "practice" ? "Practice overtime" : "Writing time remaining"}>{expired && session.mode === "practice" ? `+${formatDuration(overtimeSec(session, now))}` : `${reading ? "Reading " : session.examFormat ? "Writing " : ""}${formatDuration(displayedRemaining)}`}</span>
         )}
         <span style={{ flex: 1 }} />
-        <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />
-        <button onClick={() => nav("/")}>Save & exit</button>
-        <button onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
+        {!session.examFormat && <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />}
+        <button disabled={addingImages} onClick={() => nav("/")}>{session.examFormat ? "Exit" : "Save & exit"}</button>
+        <button disabled={addingImages} onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
         {session.mode === "practice"
-          ? <button onClick={() => nextQuestion(index)} disabled={submittingSet}>{index + 1 >= data.questions.length ? "Session summary" : data.questions[index + 1].setId !== data.questions[index].setId ? "Next set" : "Next"}</button>
-          : <button className="primary" onClick={submitAll} disabled={expired}>Submit paper ({unsubmitted} left)</button>}
+          ? <button onClick={() => nextQuestion(index)} disabled={submittingSet || addingImages}>{index + 1 >= data.questions.length ? "Session summary" : data.questions[index + 1].setId !== data.questions[index].setId ? "Next set" : "Next"}</button>
+          : <button className="primary" onClick={submitAll} disabled={reading || expired || addingImages}>Submit paper ({unsubmitted} left)</button>}
 
       </div>
+      {reading && <div className="practice-time-notice" role="status">Reading time. Answers unlock automatically when writing begins.</div>}
       {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">Suggested time reached. Keep writing and submit when you're ready.</div>}
+      {addingImages && <div className="practice-time-notice" role="status">Adding pictures…</div>}
       {saveError && <div className="practice-time-notice" role="alert">{saveError}</div>}
       <div className="paper">
         <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
@@ -433,28 +450,28 @@ export default function PaperPage() {
           <div className="col-head">
             <span>{groupLabel}</span>
             <span style={{ flex: 1 }} />
-            {admin && <button className="small hl-btn" onClick={() => setEditing(question)} title="Edit this question and its stem (admin)">Edit</button>}
+            {admin && <button className="small hl-btn" onClick={() => { setEditingMode("stem"); setEditing(question); }}>Edit case stem</button>}
             <button className="small hl-btn" onMouseDown={(e) => e.preventDefault()} onClick={highlightSelection} title="Highlight the selected text (⌘⇧H). Select highlighted text and press again to remove.">Highlight</button>
           </div>
           {stems.map((st, si) => (
             <div key={si} className="stem-block">
               {stems.length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
-              <AmbossText cacheKey={question.id} texts={stemTexts} text={st} disabled={!ambossOnPaper} highlights={groupHighlights(si)} dataStem={si} />
+              <AmbossText cacheKey={question.id} texts={stemTexts} text={st} doc={question.stemDocs?.[si]} disabled={!ambossOnPaper} highlights={groupHighlights(si)} dataStem={si} />
             </div>
           ))}
-          {legacyStem && <AmbossText cacheKey={question.id} texts={stemTexts} text={legacyStem} disabled={!ambossOnPaper} highlights={groupHighlights(0)} dataStem={0} />}
+          {(legacyStem || legacyStemDoc) ? <AmbossText cacheKey={question.id} texts={stemTexts} text={legacyStem ?? ""} doc={legacyStemDoc} disabled={!ambossOnPaper} highlights={groupHighlights(0)} dataStem={0} /> : null}
           {groupIndices.flatMap((i) => (data.questions[i].images ?? []).filter((im) => im.place === "stem")).map((im) => (
             <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
           ))}
-          {stems.length === 0 && !legacyStem && <div className="muted">No case stem.</div>}
+          {stems.length === 0 && !legacyStem && !legacyStemDoc && <div className="muted">No case stem.</div>}
         </div>
         <div className="paper-handle" onPointerDown={startDrag} title="Drag to resize" />
         <div className="paper-answers">
-          <div className="col-head">Answer</div>
+          <div className="col-head">{reading ? "Questions" : "Answer"}</div>
           {groupIndices.map((qi) => {
             const q = data.questions[qi];
             const a = data.attempts[qi];
-            const locked = !!a.submittedAt || examExpired;
+            const locked = !!a.submittedAt || reading || examExpired;
             const cachedAnswers = answersRef.current.get(a.id) ?? a.answers;
             const parts = answerParts(q);
             const showText = stemsOf(q).length > 0 || q.parts.length === 0;
@@ -467,12 +484,12 @@ export default function PaperPage() {
                     <span style={{ flex: 1 }} />
                     {a.submittedAt && <span className="muted">submitted</span>}
                     <QuestionCommunity question={q} set={data.sets.find(s => s.id === q.setId)} disabled={session.mode === "exam" && unsubmitted > 0} />
-                    {admin && <button className="small" onClick={() => setEditing(q)} title="Edit this question (admin)">Edit</button>}
+                    {admin && <button className="small" onClick={() => { setEditingMode("question"); setEditing(q); }} title="Edit this question (admin)">Edit question</button>}
                   </div>
                 )}
                 {showText && (
                   <div className="part-head" style={{ marginBottom: "0.8rem" }}>
-                    <AmbossText cacheKey={q.id} texts={stemTexts} text={q.text} className="text" disabled={!ambossOnPaper} />
+                    <AmbossText cacheKey={q.id} texts={stemTexts} text={q.text} doc={q.textDoc} className="text" disabled={!ambossOnPaper} />
                     {q.parts.length === 0 && q.marks !== undefined && <span className="marks">({q.marks} mark{q.marks === 1 ? "" : "s"})</span>}
                   </div>
                 )}
@@ -485,16 +502,17 @@ export default function PaperPage() {
                     <div key={`${a.id}-${p.label}`} className="part" id={`part-${qi}-${p.label || "q"}`}>
                       <div className="part-head">
                         {p.label && <span className="label">{partLabel(p.label)}</span>}
-                        <AmbossText cacheKey={q.id} texts={stemTexts} text={p.text} className="text" disabled={!ambossOnPaper} />
+                        <AmbossText cacheKey={q.id} texts={stemTexts} text={p.text} doc={p.textDoc} className="text" disabled={!ambossOnPaper} />
                         {q.parts.length > 0 && p.marks !== undefined && <span className="marks">({p.marks} mark{p.marks === 1 ? "" : "s"})</span>}
                         <button className={"small" + (ans?.flagged ? " active" : "")} title="Flag for review" onClick={() => toggleFlag(a.id, p.label)}>⚑</button>
                       </div>
-                      <Editor
+                      {!reading && <Editor
                         initial={ans?.doc}
                         locked={locked}
                         onChange={(doc, text) => onAnswerChange(a.id, p.label, doc, text)}
                         onFocus={() => setCurrent(qi, p.label)}
-                      />
+                        onBusyChange={(busy) => onImageBusy(`${a.id}:${p.label}`, busy)}
+                      />}
                     </div>
                   );
                 })}
@@ -504,10 +522,10 @@ export default function PaperPage() {
                     <button onClick={() => { flushAll(); nav(`/mark/${data.attempts[firstToMark].id}`); }}>
                       {currentSet.indices.every((i) => marked.has(data.attempts[i].id)) ? "Review marking" : "Mark set"}
                     </button>
-                  </> : <button className="primary" onClick={() => void submitSet()} disabled={submittingSet}>
+                  </> : <button className="primary" onClick={() => void submitSet()} disabled={submittingSet || addingImages}>
                     {submittingSet ? "Submitting…" : "Submit set"}
                   </button>)}
-                  <button onClick={() => nextQuestion(qi)} disabled={submittingSet}>{qi + 1 < data.questions.length ? qi === lastInSet ? "Next set" : "Next" : "Session summary"}</button>
+                  <button onClick={() => nextQuestion(qi)} disabled={submittingSet || addingImages}>{qi + 1 < data.questions.length ? qi === lastInSet ? "Next set" : "Next" : "Session summary"}</button>
                 </div>
               </div>
             );
@@ -519,7 +537,9 @@ export default function PaperPage() {
       {editing && (
         <QuickEdit
           question={editing}
+          mode={editingMode}
           onClose={() => setEditing(null)}
+          onDeleted={() => { setEditing(null); const current = loadSession(ownerRef.current); setSession(current); if (!current) nav("/"); }}
 
         />
       )}
