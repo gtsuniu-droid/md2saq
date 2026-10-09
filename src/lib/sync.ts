@@ -1,5 +1,7 @@
+import { loadLibrary, readCatalogue } from "./library";
+import { syncFromBank } from "./bank";
 import { db, getSettings, withRemoteWrites } from "../data/db";
-import type { Attempt, Mark, Question, QuestionRef, Session, Settings } from "../data/types";
+import type { Attempt, Mark, Question, QuestionSet, QuestionRef, Session, Settings } from "../data/types";
 import { cloudConfigured, currentUser, deleteMany, fetchSince, writeMany, type CloudUser } from "./firebase";
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
 import { syncNotes } from "./notes";
@@ -113,8 +115,8 @@ export async function recordDeletes(table: "attempts" | "marks", ids: string[]):
 }
 
 /** Question reference for a record being created, so other devices can place it. */
-export async function questionRef(question: Question): Promise<QuestionRef> {
-  const set = await db.sets.get(question.setId);
+export async function questionRef(question: Question, knownSet?: QuestionSet): Promise<QuestionRef> {
+  const set = knownSet ?? await db.sets.get(question.setId) ?? (await readCatalogue())?.entries.find(e => e.set.id === question.setId)?.set;
   return { setId: question.setId, bankId: set?.bankId, order: question.order, text: (question.text || question.parts[0]?.text || "").slice(0, 200), setName: set?.name, setNumber: set?.number };
 }
 
@@ -179,9 +181,12 @@ async function push(uid: string): Promise<number> {
   const env = loadSessionEnvelope(uid);
   if (env._m > 0 && env._m !== (await cursor(uid, SESSION_PUSHED))) {
     const qrefs: QuestionRef[] = [];
+    const library = await loadLibrary();
+    const byId = new Map(library.questions.map(q => [q.id, q]));
+    const bySet = new Map(library.sets.map(s => [s.id, s]));
     for (const qid of env.session?.questionIds ?? []) {
-      const q = await db.questions.get(qid);
-      qrefs.push(q ? await questionRef(q) : { setId: "", order: -1 });
+      const q = byId.get(qid);
+      qrefs.push(q ? await questionRef(q, bySet.get(q.setId)) : { setId: "", order: -1 });
     }
     const doc: CloudSession = { id: "session", _m: env._m, session: env.session, qrefs };
     await writeMany(uid, "settings", [stripUndefined(doc) as unknown as Record<string, unknown>]);
@@ -207,9 +212,9 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
     fetchSince(uid, "settings", since),
     fetchSince(uid, "deleted", since),
   ]);
-  const questions = await db.questions.toArray();
+  if (!await readCatalogue()) await syncFromBank().catch(() => undefined);
+  const { questions, sets } = await loadLibrary();
   const byId = new Map(questions.map((q) => [q.id, q]));
-  const sets = await db.sets.toArray();
   const bankOfSet = new Map(sets.filter((s) => s.bankId).map((s) => [s.id, s.bankId!]));
   const byBankAndOrder = new Map<string, Question>();
   for (const q of questions) {

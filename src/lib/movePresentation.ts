@@ -1,3 +1,4 @@
+import { ensureSetContent } from "./bank";
 import { db } from "../data/db";
 import { PRESENTATION_BY_ID, presentationName } from "../data/presentations";
 import { primaryPresentation } from "./primaryPresentation";
@@ -13,6 +14,7 @@ import { SEP, displayName } from "./tree";
  */
 export async function moveSetToPresentation(setId: string, presentationId: string): Promise<void> {
   if (!PRESENTATION_BY_ID.has(presentationId)) throw new Error("Unknown presentation.");
+  await ensureSetContent(setId);
   const set = await db.sets.get(setId);
   if (!set) throw new Error("Set not found.");
   const questions = await db.questions.where("setId").equals(setId).toArray();

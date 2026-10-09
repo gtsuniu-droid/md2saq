@@ -1,7 +1,8 @@
 import { db, patchSettings, getSettings } from "../data/db";
-import { BankPasscodeError, deleteBankSet, updateBankSet, uploadBankSet } from "./bank";
+import { BankPasscodeError, ensureSetContent, deleteBankSet, updateBankSet, uploadBankSet } from "./bank";
 import { recordDeletes } from "./sync";
 import { exportSet } from "./exportImport";
+import { isAdmin } from "./admin";
 
 export { BankPasscodeError as PasscodeError };
 
@@ -58,24 +59,25 @@ export function bankErrorMessage(e: unknown): string {
 }
 
 /**
- * Delete a set here and, when it is published and the admin passcode is on
- * this device, from the library too, so it does not come back on the next
- * sync. Returns where it was removed from.
+ * Delete a set from the shared library before removing local content.
+ * A failed or locked cloud deletion must leave the local copy intact.
  */
 export async function deleteSetEverywhere(setId: string): Promise<{ local: boolean; published: boolean }> {
+  const settings = await getSettings();
+  if (!isAdmin(settings)) throw new Error("Only admins can delete sets.");
+  await ensureSetContent(setId);
   const set = await db.sets.get(setId);
   if (!set) return { local: false, published: false };
   let published = false;
   if (set.bankId) {
-    const passcode = await savedPasscode();
-    if (passcode) {
-      try {
-        await deleteBankSet(set.bankId, passcode);
-        published = true;
-      } catch (e) {
-        // Already gone from the library: nothing to remove there.
-        if (!(e instanceof Error && /not found/i.test(e.message))) throw e;
-      }
+    const passcode = settings.bankPasscode;
+    if (!passcode) throw new Error("Unlock Admin in Settings to delete a shared set.");
+    try {
+      await deleteBankSet(set.bankId, passcode);
+      published = true;
+    } catch (e) {
+      // Already gone from the library: nothing to remove there.
+      if (!(e instanceof Error && /not found/i.test(e.message))) throw e;
     }
   }
   const qids = (await db.questions.where("setId").equals(setId).primaryKeys()) as string[];

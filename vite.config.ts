@@ -18,7 +18,7 @@ function netlifyFunctionsDev(): Plugin {
           const body = chunks.length ? Buffer.concat(chunks) : undefined;
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
-          const request = new Request(`http://localhost${url}`, { method: req.method, headers, body: body && req.method !== "GET" ? body : undefined });
+          const request = new Request(`http://${req.headers.host ?? "localhost"}${url}`, { method: req.method, headers, body: body && req.method !== "GET" ? body : undefined });
           const response = await mod.default(request);
           res.statusCode = response.status;
           response.headers.forEach((v, k) => res.setHeader(k, v));

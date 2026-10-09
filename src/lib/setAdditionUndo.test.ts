@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, type Question, type QuestionSet } from "../data/types
 import { saveAddedSet, undoSetAddition, restoreSetAddition } from "./setAdditionUndo";
 import { deleteBankSet, listBank } from "./bank";
 vi.mock("./admin", () => ({ isAdmin: () => true }));
-vi.mock("./bank", () => ({ deleteBankSet: vi.fn(async () => {}), listBank: vi.fn(async () => []) }));
+vi.mock("./bank", () => ({ ensureSetContent: vi.fn(async (id: string) => id), deleteBankSet: vi.fn(async () => {}), listBank: vi.fn(async () => []) }));
 const set = (id: string): QuestionSet => ({ id, name: id, createdAt: 1 });
 const q = (id: string): Question => ({ id: `q-${id}`, setId: id, order: 0, text: "Question", parts: [], presentations: ["cough"], tags: [], createdAt: 1 });
 const add = (id: string, batch = "batch") => saveAddedSet(set(id), [q(id)], { id: batch, label: "Imported files" });

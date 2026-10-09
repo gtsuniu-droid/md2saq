@@ -1,3 +1,5 @@
+import { deliverCatalogue, deliverContent, deliverImage, saveDelivery } from "../lib/bankDelivery";
+import type { SetPack } from "../../src/lib/setPack";
 import { setLinkCode } from "../../src/lib/shortSetLink";
 import { getStore } from "@netlify/blobs";
 import type { Config } from "@netlify/functions";
@@ -118,7 +120,7 @@ function entryFrom(id: string, pack: Pack, previous?: BankEntry): BankEntry {
     questionCount: pack.questions.length,
     presentations,
     uploadedAt: previous?.uploadedAt ?? Date.now(),
-    updatedAt: Date.now(),
+    updatedAt: Math.max(Date.now(), (previous?.updatedAt ?? previous?.uploadedAt ?? 0) + 1),
     key: previous?.key,
   };
 }
@@ -226,6 +228,14 @@ export default async (req: Request): Promise<Response> => {
   };
 
   if (req.method === "GET") {
+    if (url.searchParams.has("image")) return deliverImage(store, url.searchParams.get("image") ?? "");
+    if (url.searchParams.has("catalogue")) return deliverCatalogue(store, await loadIndex(), req);
+    if (url.searchParams.has("content")) {
+      const entry = (await loadIndex()).find(e => e.id === url.searchParams.get("content"));
+      if (!entry) return new Response("Not found", { status: 404 });
+      if (url.searchParams.get("v") !== String(entry.updatedAt ?? entry.uploadedAt)) return new Response("The set has changed. Refresh the library.", { status: 409 });
+      return deliverContent(store, entry, url.origin);
+    }
     if (url.searchParams.has("short")) {
       const code = url.searchParams.get("short") ?? "";
       if (!/^[A-Za-z0-9_-]{8}$/.test(code)) return new Response("Not found", { status: 404 });
@@ -261,16 +271,21 @@ export default async (req: Request): Promise<Response> => {
       const entry = entryFrom(same.id, r.pack, same);
       carryNumber(entry, same);
       const next = index.map((e) => (e.id === same.id ? entry : e));
-      await saveIndex(next);
+      renumber(next);
       (r.pack.set as { number?: number }).number = entry.number;
+      await saveDelivery(store, entry, r.pack as SetPack, url.origin);
       await store.setJSON(`sets/${same.id}`, r.pack);
+      await saveIndex(next);
       return json(entry);
     }
     const id = crypto.randomUUID();
     const entry: BankEntry = { ...entryFrom(id, r.pack), key: r.key };
-    await saveIndex([...index, entry]);
+    const next = [...index, entry];
+    renumber(next);
     (r.pack.set as { number?: number }).number = entry.number;
+    await saveDelivery(store, entry, r.pack as SetPack, url.origin);
     await store.setJSON(`sets/${id}`, r.pack);
+    await saveIndex(next);
     return json(entry, 201);
   }
 
@@ -284,9 +299,12 @@ export default async (req: Request): Promise<Response> => {
     if (r instanceof Response) return r;
     const entry = entryFrom(id, r.pack, previous);
     carryNumber(entry, previous);
-    await saveIndex(index.map((e) => (e.id === id ? entry : e)));
+    const next = index.map((e) => (e.id === id ? entry : e));
+    renumber(next);
     (r.pack.set as { number?: number }).number = entry.number;
+    await saveDelivery(store, entry, r.pack as SetPack, url.origin);
     await store.setJSON(`sets/${id}`, r.pack);
+    await saveIndex(next);
     return json(entry);
   }
 

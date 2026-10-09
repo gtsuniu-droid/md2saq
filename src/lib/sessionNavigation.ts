@@ -23,7 +23,7 @@ export function openedSetCount(session: Session, groups: SessionSetGroup[]): num
   return Math.min(groups.length, Math.max(1, session.openedSetCount ?? 1, current + 1));
 }
 
-/** Navigating backwards never hides sets already opened. No extra bank download is needed. */
+/** Navigating backwards never hides sets already opened. */
 export function sessionAtQuestion(session: Session, questions: Question[], index: number, activePart = ""): Session {
   const next = { ...session, index: Math.max(0, Math.min(index, session.questionIds.length - 1)), activePart };
   if (session.studyUnit === "sets") {

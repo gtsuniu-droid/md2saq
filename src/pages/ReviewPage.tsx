@@ -1,3 +1,5 @@
+import { loadLibrary } from "../lib/library";
+import { useSetContent } from "../lib/useSetContent";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
@@ -17,7 +19,7 @@ export default function ReviewPage() {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
   const data = useLiveQuery(async () => {
-    const [attempts, marks, questions, sets, settings] = await Promise.all([db.attempts.toArray(), db.marks.toArray(), db.questions.toArray(), db.sets.toArray(), getSettings()]);
+    const [attempts, marks, { questions, sets }, settings] = await Promise.all([db.attempts.toArray(), db.marks.toArray(), loadLibrary(), getSettings()]);
     const entries = historyEntries(attempts, marks, questions, sets, settings.cloudUser?.uid ?? "");
     return { entries, topics: reviewTopics(entries, questions), signedIn: !!settings.cloudUser };
   }, []);
@@ -68,6 +70,7 @@ function ScheduledReviewCard({ item, now, onRated }: { item: ReviewQueueItem; no
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const question = entry.question;
+  const content = useSetContent(question?.setId, entry.set?.bankUpdatedAt);
   const mark = entry.mark!;
   const notes = savedReviewNotes(entry);
   const rate = async (rating: ReviewRating) => {
@@ -80,11 +83,11 @@ function ScheduledReviewCard({ item, now, onRated }: { item: ReviewQueueItem; no
   return <article className="card review-topic">
     <div className="row spread"><h2>{topic}</h2><Link to={`/history/${entry.attempt.id}`}>{entry.label}</Link></div>
     {question && stemsOf(question).length > 0 && <details className="review-case"><summary>Case</summary>{stemsOf(question).map((stem, i) => <p className="pre" key={i}>{stem}</p>)}</details>}
-    <p className="pre">{entry.text}</p>
+    <p className="pre">{entry.text}</p>{content.error && <p role="alert">{content.error} <button onClick={content.retry}>Retry</button></p>}
     {(question?.images ?? []).map((image) => <figure className="qimg" key={image.id}><img src={image.dataUrl} alt={image.caption ?? ""} />{image.caption && <figcaption>{image.caption}</figcaption>}</figure>)}
     {question?.parts.map((part) => <p className="pre" key={part.label}><strong>{part.label}) </strong>{part.text}</p>)}
     <div className="review-reasons">{reasons.map((reason) => <span key={reason}>{reason}</span>)}</div>
-    {!revealed ? <button className="primary review-reveal" onClick={() => setRevealed(true)}>Show answer and notes</button> : <div className="review-revealed">
+    {!revealed ? <button className="primary review-reveal" disabled={!content.ready} onClick={() => setRevealed(true)}>{content.ready ? "Show answer and notes" : "Loading answer…"}</button> : <div className="review-revealed">
       {question && hasModelAnswer(question) && <ModelAnswerContent answer={question} />}
       {question && question.parts.length > 0 && answerParts(question).filter(hasModelAnswer).map((part) => <div key={part.label}><strong>{part.label})</strong><ModelAnswerContent answer={part} /></div>)}
       {notes && <div className="review-note-text"><strong>My notes</strong><p className="pre">{notes}</p></div>}

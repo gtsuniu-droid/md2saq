@@ -1,3 +1,6 @@
+import { embedBankMedia } from "./backupMedia";
+import { loadLibrary } from "./library";
+import { ensureQuestionContent, ensureSetContent } from "./bank";
 import { sameQuestion } from "./questionIdentity";
 import { belongsToAccount } from "./progressAccount";
 import { db, newId, patchSettings, getSettings } from "../data/db";
@@ -17,15 +20,11 @@ export interface ExportFile {
   notes?: PresentationNote[];
 }
 
-/** A set with its questions only, for sharing. */
-export interface SetPack {
-  format: "saq-practice-set";
-  version: 1;
-  set: QuestionSet;
-  questions: Question[];
-}
+export type { SetPack } from "./setPack";
+import type { SetPack } from "./setPack";
 
 export async function exportAll(): Promise<ExportFile> {
+  await ensureQuestionContent((await loadLibrary()).questions.map(q => q.id));
   const owner = (await getSettings()).cloudUser?.uid ?? "";
   const [sets, questions, attempts, marks, notes] = await Promise.all([
     db.sets.toArray(),
@@ -34,8 +33,9 @@ export async function exportAll(): Promise<ExportFile> {
     db.marks.filter((m) => belongsToAccount(m, owner)).toArray(),
     db.notes.filter((n) => n.ownerId === owner || n.ownerId === "").toArray(),
   ]);
+  const backup = await embedBankMedia<ExportFile>({ format: "saq-practice", version: 1, exportedAt: Date.now(), sets, questions, attempts, marks, notes });
   await patchSettings({ lastExportAt: Date.now() });
-  return { format: "saq-practice", version: 1, exportedAt: Date.now(), sets, questions, attempts, marks, notes };
+  return backup;
 }
 
 export async function importAll(data: ExportFile): Promise<{ sets: number; questions: number; attempts: number; marks: number; notes: number }> {
@@ -67,6 +67,7 @@ export async function importAll(data: ExportFile): Promise<{ sets: number; quest
 }
 
 export async function exportSet(setId: string): Promise<SetPack> {
+  await ensureSetContent(setId);
   const set = await db.sets.get(setId);
   if (!set) throw new Error("Set not found.");
   const questions = await db.questions.where("setId").equals(setId).sortBy("order");
@@ -151,7 +152,8 @@ export async function applyBankUpdate(localSetId: string, pack: SetPack, bankUpd
         if (legacy.length === 1) keep = legacy[0];
       }
       if (keep) kept.add(keep.id);
-      await db.questions.put({ ...q, id: keep?.id ?? newId(), bankQuestionId: canonicalId, setId: localSetId, order: i, createdAt: keep?.createdAt ?? Date.now() });
+      const id = keep?.id ?? (await db.questions.get(canonicalId) ? `bank:${local.bankId ?? localSetId}:${canonicalId}` : canonicalId);
+      await db.questions.put({ ...q, id, bankQuestionId: canonicalId, setId: localSetId, order: i, createdAt: keep?.createdAt ?? Date.now() });
     }
     for (const q of existing) if (!kept.has(q.id)) await db.questions.delete(q.id);
   });

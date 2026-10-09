@@ -1,3 +1,5 @@
+import LibraryStatus from "../components/LibraryStatus";
+import { useSetContent } from "../lib/useSetContent";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -14,12 +16,15 @@ import AmbossText from "../components/AmbossText";
 import ModelAnswerContent from "../components/ModelAnswerContent";
 import SetEditPage from "./SetEditPage";
 import { applyPersonalSetEdits, loadPersonalSetEdits, resetPersonalSetEdits } from "../lib/personalSetEdits";
+import { bankErrorMessage, deleteSetEverywhere } from "../lib/share";
 
 export default function BrowsePage() {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const detail = useRef<HTMLDivElement>(null);
   const data = useLiveQuery(async () => {
     const settings = await getSettings();
@@ -36,6 +41,8 @@ export default function BrowsePage() {
   // Keep the editor mounted if live updates change the matching list mid-edit.
   const active = editing ? data?.summaries.find((s) => s.set.id === editing) : selected;
 
+  const content = useSetContent(active?.set.id, active?.set.bankUpdatedAt);
+
   useEffect(() => { detail.current?.scrollTo(0, 0); setMessage(""); }, [active?.set.id]);
 
   function changeFilter(key: string, value: string) {
@@ -45,7 +52,8 @@ export default function BrowsePage() {
     setParams(next, { replace: true });
   }
   function select(id: string) {
-    if (editing) return;
+    if (editing || deleting) return;
+    setDeleteError("");
     const next = new URLSearchParams(params);
     next.set("set", id);
     setParams(next, { replace: true });
@@ -57,11 +65,35 @@ export default function BrowsePage() {
     nav("/paper");
   }
 
+  async function remove(summary: SetSummary) {
+    if (!data || !isAdmin(data.settings) || deleting) return;
+    setDeleteError("");
+    if (summary.set.bankId && !data.settings.bankPasscode) {
+      setDeleteError("Unlock Admin in Settings to delete a shared set.");
+      return;
+    }
+    if (!confirm(`Delete “${browseSetTitle(summary)}”${summary.set.bankId ? " for everyone" : ""}? This removes all ${summary.questions.length} questions in the set and their attempts on this device.`)) return;
+    const index = sets.findIndex(s => s.set.id === summary.set.id);
+    const nextSet = sets[index + 1] ?? sets[index - 1];
+    setDeleting(true);
+    try {
+      await deleteSetEverywhere(summary.set.id);
+      const next = new URLSearchParams(params);
+      if (nextSet) next.set("set", nextSet.set.id);
+      else next.delete("set");
+      setParams(next, { replace: true });
+    } catch (error) {
+      setDeleteError(`Could not delete: ${bankErrorMessage(error)}`);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return <div className={`browse-workspace${params.has("set") || editing ? " browse-detail-open" : ""}`}>
     <header className="browse-heading"><h1>Browse</h1>{data && isAdmin(data.settings) && !editing && <Link className="button small" to="/create">New set</Link>}</header>
-    <div className="browse-panes">
+    <LibraryStatus /><div className="browse-panes">
       <aside className="browse-library" aria-label="Set library">
-        <fieldset className="browse-filters" disabled={!!editing}>
+        <fieldset className="browse-filters" disabled={!!editing || deleting}>
           <input type="search" aria-label="Search sets and questions" placeholder="Search sets and questions" value={search} onChange={(e) => changeFilter("q", e.target.value)} />
           <select aria-label="Presentation" value={presentation} onChange={(e) => changeFilter("presentation", e.target.value)}>
             <option value="">All presentations</option>
@@ -73,7 +105,7 @@ export default function BrowsePage() {
         <div className="browse-count" role="status">{data ? `${sets.length} ${sets.length === 1 ? "set" : "sets"}` : "Loading…"}</div>
         <div className="browse-set-list" role="list" aria-label="Sets">
           {sets.map((summary, index) => <div role="listitem" key={summary.set.id}>
-            <button className={`browse-set-row${active?.set.id === summary.set.id ? " selected" : ""}`} disabled={!!editing} aria-current={active?.set.id === summary.set.id ? "true" : undefined}
+            <button className={`browse-set-row${active?.set.id === summary.set.id ? " selected" : ""}`} disabled={!!editing || deleting} aria-current={active?.set.id === summary.set.id ? "true" : undefined}
               onClick={() => select(summary.set.id)} onKeyDown={(event) => {
                 const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
                 if (!delta) return;
@@ -90,10 +122,11 @@ export default function BrowsePage() {
         </div>
       </aside>
       <section className="browse-detail" aria-label="Selected set">
+        {deleteError && <p className="browse-save-message field-error" role="alert">{deleteError} {data && !data.settings.bankPasscode && <Link to="/settings#admin">Settings</Link>}</p>}
         {active ? <>
           <header className="browse-detail-heading">
             <div><button className="small link browse-back" disabled={!!editing} onClick={() => { const next = new URLSearchParams(params); next.delete("set"); setParams(next, { replace: true }); }}>← Sets</button><h2>{browseSetTitle(active)}</h2><span className="muted">{active.questions.length} questions</span></div>
-            {!editing && <div className="row"><button className="small" disabled={!active.questions.length} onClick={() => start(active)}>Practice</button><button className="small" onClick={() => { select(active.set.id); setEditing(active.set.id); detail.current?.scrollTo(0, 0); }}>Edit</button></div>}
+            {!editing && <div className="row"><button className="small" disabled={deleting || (!content.ready || active.contentReady === false) || !active.questions.length} onClick={() => start(active)}>Practice</button><button className="small" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => { select(active.set.id); setEditing(active.set.id); detail.current?.scrollTo(0, 0); }}>Edit</button>{data && isAdmin(data.settings) && <button className="small danger" aria-label="Delete set" title="Delete set" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => void remove(active)}>{deleting ? "Deleting…" : "×"}</button>}</div>}
           </header>
           <div className="browse-detail-scroll" ref={detail}>
             {message && <p className={`browse-save-message${/not published|Could not/.test(message) ? " field-error" : ""}`} role={/not published|Could not/.test(message) ? "alert" : "status"}>{message}</p>}
@@ -102,7 +135,7 @@ export default function BrowsePage() {
               try { await resetPersonalSetEdits(data.settings.cloudUser?.uid ?? "", active.set.id); setMessage("Shared version restored."); }
               catch { setMessage("Could not reset your edits. Try again."); }
             }}>Reset</button></div>}
-            {editing ? <SetEditPage key={editing} embeddedSetId={editing} onDone={(note) => { setEditing(null); setMessage(note ?? ""); detail.current?.scrollTo(0, 0); }} /> : <BrowseContent key={active.set.id} summary={active} />}
+            {!content.ready || active.contentReady === false ? <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}</div> : editing ? <SetEditPage key={editing} embeddedSetId={editing} onDone={(note) => { setEditing(null); setMessage(note ?? ""); detail.current?.scrollTo(0, 0); }} /> : <BrowseContent key={active.set.id} summary={active} />}
           </div>
         </> : <div className="browse-empty">{data ? "Choose a set to view its questions." : "Loading…"}</div>}
       </section>

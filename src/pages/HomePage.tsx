@@ -1,3 +1,6 @@
+import LibraryStatus from "../components/LibraryStatus";
+import { loadLibrary } from "../lib/library";
+import { ensureQuestionContent, ensureSetContent } from "../lib/bank";
 import { buildExamPaper, examPresentationPool, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
 import { hasAnswerContent } from "../lib/answerContent";
 import AttemptHistory from "../components/AttemptHistory";
@@ -32,6 +35,8 @@ export default function HomePage() {
   const [selectedSets, setSelectedSets] = useState<Set<string>>(new Set());
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const [mode, setMode] = useState<"practice" | "exam">("practice");
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
   const [examError, setExamError] = useState("");
   const [minutes, setMinutes] = useState("");
   const [search, setSearch] = useState("");
@@ -43,12 +48,11 @@ export default function HomePage() {
   }, [session?.id]);
 
   const data = useLiveQuery(async () => {
-    const [questions, attempts, marks, settings, sets] = await Promise.all([
-      db.questions.toArray(),
+    const [{ questions, sets }, attempts, marks, settings] = await Promise.all([
+      loadLibrary(),
       db.attempts.toArray(),
       db.marks.toArray(),
       getSettings(),
-      db.sets.toArray(),
     ]);
     const ownerId = settings.cloudUser?.uid ?? "";
     return { questions, attempts: attempts.filter((a) => belongsToAccount(a, ownerId)), marks: marks.filter((m) => belongsToAccount(m, ownerId)), settings, sets };
@@ -102,22 +106,34 @@ export default function HomePage() {
   const suggestedMinutes = suggestedSessionMinutes(selectedQuestions, data.sets, data.settings.minutesPerMark, unit);
   const validMinutes = minutes.trim() === "" || (Number.isFinite(Number(minutes)) && Number(minutes) >= 0);
   const validCount = (unit === "sets" && chooseSets) || count.trim() === "" || (Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= poolCount);
-  const start = () => {
+  const start = async () => {
+    if (starting) return;
     if (!selectedQuestions.length || !validMinutes || !validCount) return;
     if (session && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
     const mins = minutes.trim() === "" ? suggestedMinutes : Number(minutes);
-    startSession(selectedQuestions.map((q) => q.id), mode, mins > 0 ? Math.round(mins * 60) : undefined, unit);
-    nav("/paper");
+    setStarting(true); setStartError("");
+    try {
+      await ensureSetContent(selectedQuestions[0].setId);
+      startSession(selectedQuestions.map((q) => q.id), mode, mins > 0 ? Math.round(mins * 60) : undefined, unit);
+      nav("/paper");
+    } catch (error) { setStartError(error instanceof Error ? error.message : "Could not load the set."); }
+    finally { setStarting(false); }
   };
 
   const examTopics = examPresentationPool(data.sets, data.questions).size;
-  const startExam = () => {
+  const startExam = async () => {
+    if (starting) return;
     setExamError("");
     const paper = buildExamPaper(data.sets, data.questions);
     if (!paper.length) { setExamError("At least six presentations with sets are needed."); return; }
     if (session && !confirm("Replace your unfinished session? Submitted answers will be kept.")) return;
-    startSession(paper.map((q) => q.id), "exam", EXAM_WRITING_SEC, "sets", { examFormat: "six-stem", readingSec: EXAM_READING_SEC });
-    nav("/paper");
+    setStarting(true);
+    try {
+      await ensureQuestionContent(paper.map(q => q.id));
+      startSession(paper.map((q) => q.id), "exam", EXAM_WRITING_SEC, "sets", { examFormat: "six-stem", readingSec: EXAM_READING_SEC });
+      nav("/paper");
+    } catch (error) { setExamError(error instanceof Error ? error.message : "Could not load the exam."); }
+    finally { setStarting(false); }
   };
   const readingLeft = session ? readingRemainingSec(session, Date.now()) : 0;
   const left = session ? readingLeft || remainingSec(session, Date.now()) : null;
@@ -127,7 +143,7 @@ export default function HomePage() {
 
   return (
     <div>
-      <header className="home-intro">
+      <LibraryStatus /><header className="home-intro">
         <div><h1>SAQ practice</h1><p className="muted">Choose a presentation, practise a case, and build your confidence.</p></div>
         <div className="home-shortcuts"><a href="#new-session">New session</a><a href="#history">View history</a></div>
       </header>
@@ -173,7 +189,7 @@ export default function HomePage() {
       </div>
 
       <div className="card home-card session-card" id="new-session" tabIndex={-1} aria-labelledby="new-session-heading">
-        <h2 className="section-heading" id="new-session-heading">New session</h2>
+        <h2 className="section-heading" id="new-session-heading">New session</h2>{startError && <p role="alert">{startError}</p>}{starting && <p role="status">Preparing questions…</p>}
         <div className="seg session-mode-picker" role="group" aria-label="Session mode">
           <button className={mode === "practice" ? "on" : ""} aria-pressed={mode === "practice"} onClick={() => setMode("practice")}>Practice</button>
           <button className={mode === "exam" ? "on" : ""} aria-pressed={mode === "exam"} onClick={() => setMode("exam")}>Exam</button>
@@ -183,7 +199,7 @@ export default function HomePage() {
           <p className="muted">Answers unlock after reading time. The clock keeps running if you leave.</p>
           {examTopics < EXAM_STEMS && <p role="status">{examTopics} of 6 presentations available. Add sets from {EXAM_STEMS - examTopics} more to start.</p>}
           {examError && <p className="field-error" role="alert">{examError}</p>}
-          <button className="primary" onClick={startExam} disabled={examTopics < EXAM_STEMS}>Start exam</button>
+          <button className="primary" onClick={startExam} disabled={starting || examTopics < EXAM_STEMS}>{starting ? "Preparing exam…" : "Start exam"}</button>
         </div> : <>
         <div className="session-unit-picker" role="group" aria-label="What would you like to practise?">
           <button className={unit === "sets" ? "selected" : ""} aria-pressed={unit === "sets"} onClick={() => { setUnit("sets"); setCount(""); }}><strong>Whole sets</strong><span>Complete cases, with every question in order.</span></button>
@@ -251,7 +267,7 @@ export default function HomePage() {
               {!!selectedQuestions.length && <p className="muted">Practice, {minutes === "0" ? "Untimed" : `${minutes || suggestedMinutes} minutes`}</p>}
               {!selectedQuestions.length && selected.size > 0 && <p className="muted">{unit === "sets" && chooseSets ? "Tick the sets you want to study." : "Try changing the unattempted filter or the number requested."}</p>}
             </div>
-            <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={start} disabled={!selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
+            <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={start} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
           </div>
         </>}
       </div>

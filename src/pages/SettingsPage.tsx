@@ -31,9 +31,12 @@ export default function SettingsPage() {
   const stamp = new Date().toISOString().slice(0, 10);
 
   const exportJson = async () => {
-    const data = await exportAll();
-    downloadText(`saq-practice-${stamp}.json`, JSON.stringify(data));
-    setMessage("Exported everything.");
+    setMessage("Preparing backup…");
+    try {
+      const data = await exportAll();
+      downloadText(`saq-practice-${stamp}.json`, JSON.stringify(data));
+      setMessage("Exported everything.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not complete the backup. Try again."); }
   };
   const exportAnki = async () => {
     const tsv = await exportLearningPointsTsv();
@@ -155,7 +158,7 @@ export default function SettingsPage() {
           <button onClick={async () => {
             try {
               const n = await syncFromBank();
-              setMessage(n ? `Imported ${n} new or updated set${n === 1 ? "" : "s"}.` : "Library is up to date.");
+              setMessage(n ? `Library updated: ${n} new or changed set${n === 1 ? "" : "s"}.` : "Library is up to date.");
             }
             catch { setMessage("The server is not reachable from here."); }
           }}>Check for new sets</button>

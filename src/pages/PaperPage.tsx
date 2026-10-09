@@ -1,3 +1,6 @@
+import { loadLibrary, readCatalogue } from "../lib/library";
+import { prefetchSet, syncFromBank } from "../lib/bank";
+import { useSetContent } from "../lib/useSetContent";
 import { hasAnswerContent } from "../lib/answerContent";
 import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
@@ -86,7 +89,10 @@ export default function PaperPage() {
     (async () => {
       // Questions deleted since the paper was started drop out of it.
       await recoverAnswerDrafts(session.id);
-      const found = await db.questions.bulkGet(session.questionIds);
+      if (!await readCatalogue()) await syncFromBank().catch(() => undefined);
+      const library = await loadLibrary();
+      const byId = new Map(library.questions.map(q => [q.id, q]));
+      const found = session.questionIds.map(id => byId.get(id));
       const keep = session.questionIds.map((_, i) => !!found[i]);
       let current = session;
       if (keep.some((k) => !k)) {
@@ -116,7 +122,7 @@ export default function PaperPage() {
       // Idempotent: reuse any attempt already created for this session and question
       // (StrictMode runs this effect twice in development).
       const refs = new Map<string, Awaited<ReturnType<typeof questionRef>>>();
-      for (const q of found) if (q) refs.set(q.id, await questionRef(q));
+      for (const q of found) if (q) refs.set(q.id, await questionRef(q, library.sets.find(s => s.id === q.setId)));
       const ids = await db.transaction("rw", db.attempts, async () => {
         const existing = await db.attempts.where("sessionId").equals(current.id).filter((a) => belongsToAccount(a, ownerRef.current)).toArray();
         const result = [...current.attemptIds];
@@ -168,16 +174,18 @@ export default function PaperPage() {
 
   const data = useLiveQuery(async () => {
     if (!session || !ready) return undefined;
-    const questions = await db.questions.bulkGet(session.questionIds);
+    const library = await loadLibrary();
+    const byId = new Map(library.questions.map(q => [q.id, q]));
+    const questions = session.questionIds.map(id => byId.get(id));
     const attempts = await db.attempts.bulkGet(session.attemptIds);
     // Never pair an answer with another question while a replacement/deletion is arriving.
     if (questions.some((q) => !q) || attempts.length !== questions.length || attempts.some((a) => !a || !belongsToAccount(a, ownerRef.current))) return undefined;
-    const sets = await db.sets.toArray();
+    const sets = library.sets;
     const marks = await db.marks.where("attemptId").anyOf(session.attemptIds.filter(Boolean)).filter((m) => belongsToAccount(m, ownerRef.current)).toArray();
     return {
       questions: questions.filter((q): q is Question => !!q),
       attempts: attempts.filter((a): a is Attempt => !!a && belongsToAccount(a, ownerRef.current)),
-      sets, marks,
+      sets, marks, pending: library.pending,
     };
   }, [session?.id, ready, session?.attemptIds.join(",")]);
 
@@ -194,6 +202,12 @@ export default function PaperPage() {
   const index = session?.index ?? 0;
   const question = data?.questions[index];
   const attempt = data?.attempts[index];
+  const content = useSetContent(question?.setId, data?.sets.find(s => s.id === question?.setId)?.bankUpdatedAt);
+  useEffect(() => {
+    if (!content.ready || !data || !question) return;
+    const next = data.questions.slice(index + 1).find(q => q.setId !== question.setId);
+    prefetchSet(next?.setId);
+  }, [content.ready, question?.setId, data?.questions.map(q => q.id).join(",")]);
   const remaining = session ? remainingSec(session, now) : null;
   const readingLeft = session ? readingRemainingSec(session, now) : 0;
   const reading = readingLeft > 0;
@@ -367,7 +381,8 @@ export default function PaperPage() {
     setTimeout(() => document.getElementById(`part-${i}-${label || "q"}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   };
 
-  if (!session || !data || !question || !attempt) return null;
+  if (!session || !data || !question || !attempt) return <p role="status">Loading session…</p>;
+  if (!content.ready || data.pending.has(question.setId)) return <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}<button onClick={() => nav("/")}>Save & exit</button></div>;
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
   const setMode = session.studyUnit === "sets";
   const setGroups = sessionSetGroups(session, data.questions);
@@ -477,7 +492,7 @@ export default function PaperPage() {
             const showText = stemsOf(q).length > 0 || q.parts.length === 0;
             return (
               <div key={q.id} className={"question-block" + (qi === index ? " current" : "")} id={`part-${qi}-q`}
-                onMouseDownCapture={() => { if (qi !== index) setCurrent(qi); }}>
+                onMouseDownCapture={(event) => { if (!(event.target as Element).closest("button,a,input,select") && qi !== index) setCurrent(qi); }}>
                 {(
                   <div className="qhead">
                     <span>{groupIndices.length > 1 ? questionNumber(qi) : ""}</span>

@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router";
 import { db, patchSettings } from "../data/db";
 import PasscodeGate from "../components/PasscodeGate";
 import { CreateTools } from "./CreatePage";
-import { BankPasscodeError, listBank, syncFromBank, type BankEntry } from "../lib/bank";
+import { BankPasscodeError, ensureSetContent, listBank, syncFromBank, type BankEntry } from "../lib/bank";
 import { formatDate } from "../lib/questions";
 import { loadSummaries } from "../lib/sets";
 import { fullLabel } from "../lib/tree";
@@ -183,6 +183,7 @@ function MasterContents() {
     setBusy("tag");
     try {
       for (const id of selected) {
+        await ensureSetContent(id);
         const set = await db.sets.get(id);
         if (!set) continue;
         const merged = [...(set.tags ?? [])];

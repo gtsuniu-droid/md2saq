@@ -167,3 +167,27 @@ describe("publishing the same set twice", () => {
     expect(list.sets).toHaveLength(1);
   });
 });
+
+describe("catalogue delivery routes", () => {
+  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
+  it("publishes a catalogue and versioned content together, and invalidates it after editing/deleting", async () => {
+    const created = await (await post({ format: "saq-practice-text", name: "Case", text: "1. Question?\nAnswer:\nFull answer" })).json() as { id: string; updatedAt: number };
+    const initial = await get("?catalogue=1");
+    expect(initial.status).toBe(200);
+    const catalogue = await initial.json() as { entries: { id: string; revision: number }[] };
+    expect(catalogue.entries[0]).toMatchObject({ id: created.id, revision: created.updatedAt });
+    const content = await get(`?content=${created.id}&v=${created.updatedAt}`);
+    expect(content.status).toBe(200);
+    expect(content.headers.get("cache-control")).toContain("immutable");
+    const edited = await content.json() as { set: { name: string } };
+    edited.set.name = "Changed";
+    const updated = await handler(new Request(`http://x/api/bank?id=${created.id}`, { method: "PUT", headers: { "x-passcode": "secret", "content-type": "application/json" }, body: JSON.stringify(edited) }));
+    expect(updated.status).toBe(200);
+    expect((await get(`?content=${created.id}&v=${created.updatedAt}`)).status).toBe(409);
+    const latest = await get("?catalogue=1");
+    expect(latest.headers.get("etag")).not.toBe(initial.headers.get("etag"));
+    expect(await latest.text()).toContain("Changed");
+    await handler(new Request(`http://x/api/bank?id=${created.id}`, { method: "DELETE", headers: { "x-passcode": "secret" } }));
+    expect((await (await get("?catalogue=1")).json()).entries).toHaveLength(0);
+  });
+});

@@ -1,3 +1,4 @@
+import ContentGate from "./components/ContentGate";
 import { setProgressAccount } from "./lib/progressAccount";
 import { useEffect } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
@@ -146,7 +147,8 @@ export default function App() {
       const settings = await getSettings();
       if (settings.autoImportBank === false || /^\/(shared|s)\//.test(window.location.pathname)) return;
       try {
-        if ((await syncFromBank()) ?? 0) await numberUnnumberedSets();
+        await syncFromBank();
+        requestSync(0);
       } catch {
         /* offline or local dev */
       }
@@ -177,16 +179,16 @@ export default function App() {
           <Route path="/browse" element={<BrowsePage />} />
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/review" element={<ReviewPage />} />
-          <Route path="/set/:id" element={<SetPage />} />
-          <Route path="/set/:id/edit" element={<SetEditPage />} />
-          <Route path="/question/:id" element={<QuestionPage />} />
+          <Route path="/set/:id" element={<ContentGate kind="set"><SetPage /></ContentGate>} />
+          <Route path="/set/:id/edit" element={<ContentGate kind="set"><SetEditPage /></ContentGate>} />
+          <Route path="/question/:id" element={<ContentGate kind="question"><QuestionPage /></ContentGate>} />
           <Route path="/s/:code" element={<SharedPage />} />
           <Route path="/shared/:bankId" element={<SharedPage />} />
           <Route path="/shared/:bankId/question/:questionId" element={<SharedPage />} />
           <Route path="/paper" element={<PaperPage key={session?.id} />} />
-          <Route path="/mark/:attemptId" element={<MarkPage />} />
-          <Route path="/history/:attemptId" element={<SetAttemptPage />} />
-          <Route path="/session/:id" element={<SessionReviewPage />} />
+          <Route path="/mark/:attemptId" element={<ContentGate kind="attempt"><MarkPage /></ContentGate>} />
+          <Route path="/history/:attemptId" element={<ContentGate kind="attempt"><SetAttemptPage /></ContentGate>} />
+          <Route path="/session/:id" element={<ContentGate kind="session"><SessionReviewPage /></ContentGate>} />
           <Route path="/admin" element={<Navigate to="/settings#admin" replace />} />
           <Route path="/master" element={<Navigate to="/settings#admin" replace />} />
           <Route path="/bank" element={<Navigate to="/settings#admin" replace />} />

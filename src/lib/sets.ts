@@ -1,3 +1,4 @@
+import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
 import { db, getSettings } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
@@ -17,6 +18,7 @@ export interface Sitting {
 }
 
 export interface SetSummary {
+  contentReady?: boolean;
   set: QuestionSet;
   questions: Question[];
   marks: number;
@@ -87,14 +89,13 @@ export function summarise(sets: QuestionSet[], questions: Question[], attempts: 
 }
 
 export async function loadSummaries(): Promise<SetSummary[]> {
-  const [sets, questions, attempts, marks] = await Promise.all([
-    db.sets.toArray(),
-    db.questions.toArray(),
+  const [{ sets, questions, pending }, attempts, marks] = await Promise.all([
+    loadLibrary(),
     db.attempts.toArray(),
     db.marks.toArray(),
   ]);
   const ownerId = (await getSettings()).cloudUser?.uid ?? "";
-  return summarise(sets, questions, attempts.filter((a) => belongsToAccount(a, ownerId)), marks.filter((m) => belongsToAccount(m, ownerId)));
+  return summarise(sets, questions, attempts.filter((a) => belongsToAccount(a, ownerId)), marks.filter((m) => belongsToAccount(m, ownerId))).map(summary => ({ ...summary, contentReady: !pending.has(summary.set.id) }));
 }
 
 /** Default timer for a set: the paper's own suggestion, else marks times minutes per mark. */
@@ -120,7 +121,7 @@ export function setLabel(set: QuestionSet): string {
 
 /** Every set on the device with the group it is numbered in. */
 async function groupedSets(): Promise<{ set: QuestionSet; group: string; number?: number }[]> {
-  const [sets, questions] = await Promise.all([db.sets.toArray(), db.questions.toArray()]);
+  const { sets, questions } = await loadLibrary();
   const bySet = new Map<string, Question[]>();
   for (const q of questions) bySet.set(q.setId, [...(bySet.get(q.setId) ?? []), q]);
   return sets.map((set) => ({ set, group: numberingGroup(set.tags, bySet.get(set.id) ?? [], set.primaryPresentation), number: set.number }));
