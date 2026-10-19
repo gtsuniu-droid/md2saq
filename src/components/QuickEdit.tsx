@@ -8,6 +8,7 @@ import { deleteQuestion } from "../lib/deleteQuestion";
 import { sharedStemGroups, updateSharedStem } from "../lib/sharedStems";
 import QuestionTextEditor from "./QuestionTextEditor";
 import ModelAnswerEditor, { useModelAnswerImages } from "./ModelAnswerEditor";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface Props {
   question: Question;
@@ -39,6 +40,7 @@ export default function QuickEdit({ question, mode = "question", onClose, onDele
   const { addingImages, onBusyChange } = useModelAnswerImages();
   const [busy, setBusy] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [publishFailed, setPublishFailed] = useState(false);
   const [savedQuestion, setSavedQuestion] = useState(question);
@@ -149,7 +151,7 @@ export default function QuickEdit({ question, mode = "question", onClose, onDele
 
   const remove = async () => {
     if (busy || addingImages || !isAdmin(await getSettings())) return;
-    if (!confirm("Delete this whole question and its subquestions? Its attempts on this device will also be removed. The other questions and their stems will stay.")) return;
+    setConfirmingDelete(false);
     setBusy(true); setMessage(null);
     try {
       await deleteQuestion(question.id);
@@ -246,10 +248,13 @@ export default function QuickEdit({ question, mode = "question", onClose, onDele
             <button className="primary" onClick={save} disabled={busy || addingImages}>{addingImages ? "Adding pictures…" : busy ? "Saving…" : publishFailed && !dirty ? "Retry publishing" : settings?.bankPasscode ? "Save and publish" : "Save"}</button>
             <button onClick={close} disabled={busy || addingImages}>{publishFailed && !dirty ? "Close" : "Cancel"}</button>
             <span style={{ flex: 1 }} />
-            {!stemOnly && <button className="danger" onClick={() => void remove()} disabled={busy || addingImages}>Delete question</button>}
+            {!stemOnly && <button className="danger" onClick={() => setConfirmingDelete(true)} disabled={busy || addingImages}>Delete question</button>}
           </div>
         </div>
       </aside>
+      <ConfirmDialog open={confirmingDelete} title={`Delete question ${question.order + 1}?`} confirmLabel="Delete question" destructive onCancel={() => setConfirmingDelete(false)} onConfirm={() => void remove()}>
+        <p>The whole question, its subquestions and its attempts on this device are removed. The other questions and their case stems stay.</p>
+      </ConfirmDialog>
     </>
   );
 }

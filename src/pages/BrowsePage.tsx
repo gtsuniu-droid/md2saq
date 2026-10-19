@@ -17,6 +17,10 @@ import ModelAnswerContent from "../components/ModelAnswerContent";
 import SetEditPage from "./SetEditPage";
 import { applyPersonalSetEdits, loadPersonalSetEdits, resetPersonalSetEdits } from "../lib/personalSetEdits";
 import { bankErrorMessage, deleteSetEverywhere } from "../lib/share";
+import { BankPasscodeError, verifyPasscode } from "../lib/bank";
+import { patchSettings } from "../data/db";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useLocation } from "react-router";
 
 export default function BrowsePage() {
   const nav = useNavigate();
@@ -25,6 +29,11 @@ export default function BrowsePage() {
   const [message, setMessage] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<SetSummary | null>(null);
+  const [passcode, setPasscode] = useState("");
+  const [replacing, setReplacing] = useState<SetSummary | null>(null);
+  const location = useLocation();
+  const flash = (location.state as { message?: string } | null)?.message;
   const detail = useRef<HTMLDivElement>(null);
   const data = useLiveQuery(async () => {
     const settings = await getSettings();
@@ -43,7 +52,8 @@ export default function BrowsePage() {
 
   const content = useSetContent(active?.set.id, active?.set.bankUpdatedAt);
 
-  useEffect(() => { detail.current?.scrollTo(0, 0); setMessage(""); }, [active?.set.id]);
+  useEffect(() => { detail.current?.scrollTo(0, 0); setMessage((m) => (m.startsWith("Deleted ") ? m : "")); }, [active?.set.id]);
+  useEffect(() => { if (flash) { setMessage(flash); window.history.replaceState({}, ""); } }, [flash]);
 
   function changeFilter(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -58,26 +68,38 @@ export default function BrowsePage() {
     next.set("set", id);
     setParams(next, { replace: true });
   }
-  function start(summary: SetSummary) {
+  function begin(summary: SetSummary) {
     if (!data) return;
-    if (loadSession() && !confirm("Replace your unfinished session? Submitted answers will be kept.")) return;
     startSession(summary.questions.map((q) => q.id), "practice", Math.round(suggestedMinutesFor(summary, data.settings.minutesPerMark) * 60), "sets");
     nav("/paper");
   }
+  function start(summary: SetSummary) {
+    if (loadSession()) { setReplacing(summary); return; }
+    begin(summary);
+  }
+
+  const needsPasscode = !!pendingDelete?.set.bankId && !data?.settings.bankPasscode;
 
   async function remove(summary: SetSummary) {
     if (!data || !isAdmin(data.settings) || deleting) return;
     setDeleteError("");
-    if (summary.set.bankId && !data.settings.bankPasscode) {
-      setDeleteError("Unlock Admin in Settings to delete a shared set.");
-      return;
-    }
-    if (!confirm(`Delete “${browseSetTitle(summary)}”${summary.set.bankId ? " for everyone" : ""}? This removes all ${summary.questions.length} questions in the set and their attempts on this device.`)) return;
     const index = sets.findIndex(s => s.set.id === summary.set.id);
     const nextSet = sets[index + 1] ?? sets[index - 1];
     setDeleting(true);
     try {
+      if (summary.set.bankId && !data.settings.bankPasscode) {
+        const code = passcode.trim();
+        try { await verifyPasscode(code); }
+        catch (error) {
+          if (error instanceof BankPasscodeError) throw new Error("That passcode was not accepted.");
+          if (!/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) throw error;
+        }
+        await patchSettings({ bankPasscode: code });
+      }
       await deleteSetEverywhere(summary.set.id);
+      setPendingDelete(null);
+      setPasscode("");
+      setMessage(`Deleted ${browseSetTitle(summary)}.`);
       const next = new URLSearchParams(params);
       if (nextSet) next.set("set", nextSet.set.id);
       else next.delete("set");
@@ -122,11 +144,11 @@ export default function BrowsePage() {
         </div>
       </aside>
       <section className="browse-detail" aria-label="Selected set">
-        {deleteError && <p className="browse-save-message field-error" role="alert">{deleteError} {data && !data.settings.bankPasscode && <Link to="/settings#admin">Settings</Link>}</p>}
+
         {active ? <>
           <header className="browse-detail-heading">
             <div><button className="small link browse-back" disabled={!!editing} onClick={() => { const next = new URLSearchParams(params); next.delete("set"); setParams(next, { replace: true }); }}>← Sets</button><h2>{browseSetTitle(active)}</h2><span className="muted">{active.questions.length} questions</span></div>
-            {!editing && <div className="row"><button className="small" disabled={deleting || (!content.ready || active.contentReady === false) || !active.questions.length} onClick={() => start(active)}>Practice</button><button className="small" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => { select(active.set.id); setEditing(active.set.id); detail.current?.scrollTo(0, 0); }}>Edit</button>{data && isAdmin(data.settings) && <button className="small danger" aria-label="Delete set" title="Delete set" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => void remove(active)}>{deleting ? "Deleting…" : "×"}</button>}</div>}
+            {!editing && <div className="row"><button className="small primary" disabled={deleting || (!content.ready || active.contentReady === false) || !active.questions.length} onClick={() => start(active)}>Practise</button><Link className="button small" to={`/set/${active.set.id}`}>Details</Link><button className="small" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => { select(active.set.id); setEditing(active.set.id); detail.current?.scrollTo(0, 0); }}>{data && isAdmin(data.settings) ? "Edit" : "Edit my copy"}</button>{data && isAdmin(data.settings) && <button className="small danger" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => { setDeleteError(""); setPasscode(""); setPendingDelete(active); }}>Delete</button>}</div>}
           </header>
           <div className="browse-detail-scroll" ref={detail}>
             {message && <p className={`browse-save-message${/not published|Could not/.test(message) ? " field-error" : ""}`} role={/not published|Could not/.test(message) ? "alert" : "status"}>{message}</p>}
@@ -137,9 +159,25 @@ export default function BrowsePage() {
             }}>Reset</button></div>}
             {!content.ready || active.contentReady === false ? <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}</div> : editing ? <SetEditPage key={editing} embeddedSetId={editing} onDone={(note) => { setEditing(null); setMessage(note ?? ""); detail.current?.scrollTo(0, 0); }} /> : <BrowseContent key={active.set.id} summary={active} />}
           </div>
-        </> : <div className="browse-empty">{data ? "Choose a set to view its questions." : "Loading…"}</div>}
+        </> : <div className="browse-empty">{message && <p className="browse-save-message" role="status" style={{ margin: "0 0 .8rem" }}>{message}</p>}{data ? "Choose a set to view its questions." : "Loading…"}</div>}
       </section>
     </div>
+
+    <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const s = replacing!; setReplacing(null); begin(s); }}>
+      <p>You have a paper in progress. Starting this set replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
+    </ConfirmDialog>
+
+    <ConfirmDialog open={pendingDelete !== null} title={pendingDelete ? `Delete ${browseSetTitle(pendingDelete)}?` : "Delete set?"} confirmLabel="Delete set" destructive busy={deleting} error={deleteError || null} confirmDisabled={needsPasscode && !passcode.trim()} onCancel={() => { setPendingDelete(null); setDeleteError(""); }} onConfirm={() => { if (pendingDelete) void remove(pendingDelete); }}>
+      {pendingDelete && <>
+        <p>This removes:</p>
+        <ul>
+          <li><strong>{pendingDelete.questions.length} question{pendingDelete.questions.length === 1 ? "" : "s"}</strong> and any attempts on them on this device</li>
+          {pendingDelete.set.bankId && <li>The set from the <strong>shared library, for everyone</strong></li>}
+        </ul>
+        <p>This cannot be undone.</p>
+        {needsPasscode && <label>Admin passcode<input type="password" autoFocus value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Needed to change the shared library" /></label>}
+      </>}
+    </ConfirmDialog>
   </div>;
 }
 

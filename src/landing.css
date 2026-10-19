@@ -1,0 +1,105 @@
+/* Landing page: a calm, white product page in front of the practice app. */
+.landing {
+  --l-bg: #ffffff;
+  --l-fg: #0b0d12;
+  --l-muted: #5b6475;
+  --l-border: #e8eaee;
+  --l-soft: #f6f7f9;
+  --l-blue: #1f5eff;
+  --l-blue-ink: #ffffff;
+  --l-ink: #0b0d12;
+  --l-ink-fg: #ffffff;
+  min-height: 100%;
+  background: var(--l-bg);
+  color: var(--l-fg);
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+}
+@media (prefers-color-scheme: dark) {
+  .landing { --l-bg: #0f1218; --l-fg: #f1f3f6; --l-muted: #9aa3b2; --l-border: #262c38; --l-soft: #161b24; --l-blue: #5b8cff; --l-blue-ink: #0b0d12; --l-ink: #f1f3f6; --l-ink-fg: #0b0d12; }
+}
+.landing a { color: inherit; text-decoration: none; }
+.landing h1, .landing h2 { margin: 0; color: var(--l-fg); text-transform: none; letter-spacing: -.03em; }
+.landing p { margin: 0; }
+
+/* Navigation: brand, one link, one way in. */
+.landing-nav { display: flex; align-items: center; gap: 1.5rem; padding: 0 clamp(1.25rem, 4vw, 3rem); min-height: 68px; }
+.landing-brand { display: inline-flex; align-items: center; gap: .6rem; font-weight: 600; font-size: 1rem; letter-spacing: -.02em; margin-right: auto; }
+.landing-nav-link { color: var(--l-muted); font-size: .95rem; }
+.landing-nav-link:hover { color: var(--l-fg); }
+.landing-login { font-weight: 500; font-size: .95rem; padding: .5rem .95rem; border-radius: 999px; border: 1px solid var(--l-border); white-space: nowrap; transition: background .15s ease, border-color .15s ease; }
+.landing-login:hover { background: var(--l-soft); border-color: var(--l-muted); }
+.landing-login span { display: inline-block; margin-left: .2rem; }
+
+/* Hero: one line, one sentence, one button, then the product. */
+.landing-hero { max-width: 1120px; margin: 0 auto; padding: clamp(3.5rem, 9vw, 7rem) clamp(1.25rem, 4vw, 3rem) 0; text-align: center; }
+.landing-hero h1 { font-size: clamp(2.6rem, 6.4vw, 4.9rem); line-height: 1.04; font-weight: 700; letter-spacing: -.045em; max-width: 14ch; margin: 0 auto; }
+.landing-word { display: inline-block; will-change: transform; }
+.landing-lede { font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.6; color: var(--l-muted); margin: 1.5rem auto 2.2rem; max-width: 46ch; }
+.landing-cta-row { display: flex; align-items: center; justify-content: center; gap: 1.5rem; flex-wrap: wrap; }
+.landing-cta { display: inline-flex; align-items: center; gap: .6rem; background: var(--l-blue); color: var(--l-blue-ink); font-weight: 600; font-size: 1.05rem; padding: .95rem 1.6rem; border-radius: 999px; transition: transform .15s ease, box-shadow .15s ease; }
+.landing-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 30px color-mix(in srgb, var(--l-blue) 35%, transparent); }
+.landing-cta span { transition: transform .15s ease; }
+.landing-cta:hover span { transform: translateX(3px); }
+.landing-secondary { color: var(--l-muted); font-weight: 500; }
+.landing-secondary:hover { color: var(--l-fg); }
+.landing-hero-shot { margin: clamp(3rem, 6vw, 4.5rem) auto 0; transform-style: preserve-3d; }
+.landing-stats { display: flex; justify-content: center; gap: 2.5rem; flex-wrap: wrap; margin: 1.6rem 0 0; color: var(--l-muted); font-size: .92rem; }
+.landing-stats b { color: var(--l-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Real captures of the app in a light window frame. */
+.landing-shot { margin: 0; border: 1px solid var(--l-border); border-radius: 16px; overflow: hidden; background: var(--l-bg); box-shadow: 0 40px 100px -20px #0b0d1226, 0 2px 6px #0b0d100d; text-align: left; }
+.landing-shot-bar { display: flex; align-items: center; gap: .4rem; padding: .6rem .9rem; background: var(--l-soft); border-bottom: 1px solid var(--l-border); }
+.landing-shot-bar span { width: 10px; height: 10px; border-radius: 50%; background: var(--l-border); }
+.landing-shot-bar em { font-style: normal; font-size: .72rem; color: var(--l-muted); margin-left: .5rem; }
+.landing-shot img { display: block; width: 100%; height: auto; }
+
+/* Institution logos, quiet and grey until hovered. */
+.landing-logos { max-width: 1120px; margin: 0 auto; padding: 4rem clamp(1.25rem, 4vw, 3rem) 0; text-align: center; }
+.landing-logos p { font-size: .78rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--l-muted); margin-bottom: 1.5rem; }
+.landing-logos ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2rem clamp(2rem, 6vw, 5rem); }
+.landing-logos img { height: 64px; width: auto; max-width: 220px; object-fit: contain; filter: grayscale(1); opacity: .6; transition: filter .2s ease, opacity .2s ease; }
+.landing-logos li:hover img { filter: none; opacity: 1; }
+@media (prefers-color-scheme: dark) { .landing-logos img { filter: grayscale(1) invert(1); } .landing-logos li:hover img { filter: invert(1); } }
+
+/* Three features, each with the screen it describes. */
+.landing-features { max-width: 1120px; margin: 0 auto; padding: clamp(5rem, 10vw, 8rem) clamp(1.25rem, 4vw, 3rem) 0; display: grid; gap: clamp(5rem, 9vw, 7rem); }
+.landing-feature { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
+.landing-feature.reverse .landing-feature-copy { order: 2; }
+.landing-feature-copy { max-width: 38ch; }
+.landing-kicker { font-size: .78rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--l-blue); margin-bottom: .9rem; }
+.landing-feature h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); line-height: 1.15; font-weight: 700; margin-bottom: .9rem; }
+.landing-feature-copy p:last-child { color: var(--l-muted); line-height: 1.65; font-size: 1.02rem; }
+.landing-feature .landing-shot { transform-style: preserve-3d; }
+
+/* A short FAQ and a closing line. */
+.landing-faq { max-width: 720px; margin: 0 auto; padding: clamp(5rem, 10vw, 8rem) clamp(1.25rem, 4vw, 3rem) 0; }
+.landing-faq h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1.2rem; }
+.landing-faq details { border-top: 1px solid var(--l-border); padding: 1.1rem 0; }
+.landing-faq details:last-of-type { border-bottom: 1px solid var(--l-border); }
+.landing-faq summary { cursor: pointer; font-weight: 600; font-size: 1.02rem; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.landing-faq summary::-webkit-details-marker { display: none; }
+.landing-faq summary::after { content: "+"; color: var(--l-muted); font-weight: 400; font-size: 1.3rem; line-height: 1; }
+.landing-faq details[open] summary::after { content: "–"; }
+.landing-faq details p { margin-top: .7rem; color: var(--l-muted); line-height: 1.65; }
+.landing-close { text-align: center; padding: clamp(5rem, 10vw, 8rem) 1.25rem; }
+.landing-close h2 { font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 700; margin-bottom: 1.6rem; }
+.landing-footer { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; max-width: 1120px; margin: 0 auto; padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 3rem; border-top: 1px solid var(--l-border); color: var(--l-muted); font-size: .88rem; }
+.landing-footer .landing-brand { margin-right: 0; color: var(--l-fg); }
+.landing-footer nav { display: flex; gap: 1.25rem; }
+.landing-footer nav a:hover { color: var(--l-fg); }
+.landing-footer small { margin-left: auto; }
+
+@media (max-width: 860px) {
+  .landing-feature, .landing-feature.reverse { grid-template-columns: 1fr; gap: 1.8rem; }
+  .landing-feature.reverse .landing-feature-copy { order: 0; }
+  .landing-feature-copy { max-width: 52ch; }
+}
+@media (max-width: 600px) {
+  .landing-nav { min-height: 60px; gap: 1rem; }
+  .landing-nav-link { display: none; }
+  .landing-hero h1 { font-size: clamp(2.2rem, 11vw, 3rem); }
+  .landing-cta { width: 100%; justify-content: center; }
+  .landing-stats { gap: 1.2rem; }
+  .landing-footer small { margin-left: 0; }
+}

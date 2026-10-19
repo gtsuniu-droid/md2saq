@@ -13,6 +13,7 @@ import { bankErrorMessage, deleteSetEverywhere, pushToBank, savedPasscode } from
 import { moveSetToPresentation } from "../lib/movePresentation";
 import { presentationName } from "../data/presentations";
 import PresentationSelect from "../components/PresentationSelect";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 /**
  * The single place for building the bank: add sets (drop or paste), edit,
@@ -38,6 +39,8 @@ function MasterContents() {
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
   const [bulkTag, setBulkTag] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: "set" | "questions" | "status" | "added" | "updated"; direction: "asc" | "desc" }>({ key: "set", direction: "asc" });
   const bankById = useMemo(() => new Map((bank ?? []).map((e) => [e.id, e])), [bank]);
   const statusOf = (s: NonNullable<typeof summaries>[number]) => !s.set.bankId ? "not published" : !bank ? "" : !bankById.has(s.set.bankId) ? "not found on the server" : s.set.dirty ? "edits not published" : "published";
@@ -114,20 +117,23 @@ function MasterContents() {
   const removeMany = async (ids: string[]) => {
     const targets = summaries.filter((x) => ids.includes(x.set.id));
     if (targets.length === 0) return;
-    const what = targets.length === 1 ? fullLabel(targets[0]) : `${targets.length} sets`;
-    if (!confirm(`Delete ${what} for everyone, with every attempt and mark on this device?`)) return;
     setBusy("delete");
+    setDeleteError(null);
+    let done = 0;
     try {
-      for (const s of targets) await deleteSetEverywhere(s.set.id);
+      for (const s of targets) { await deleteSetEverywhere(s.set.id); done++; }
       setSelected(new Set());
+      setPendingDelete(null);
+      setMessage(`Deleted ${done === 1 ? fullLabel(targets[0]) : `${done} sets`}.`);
       await refreshBank();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
+      setDeleteError(`${done ? `Deleted ${done}, then stopped: ` : "Could not delete: "}${bankErrorMessage(e)}`);
     } finally {
       setBusy(null);
     }
   };
-  const remove = (setId: string) => removeMany([setId]);
+  const remove = (setId: string) => setPendingDelete([setId]);
+  const pendingTargets = pendingDelete ? summaries.filter((x) => pendingDelete.includes(x.set.id)) : [];
 
   const publishSelected = async () => {
     setBusy("push");
@@ -203,8 +209,9 @@ function MasterContents() {
         <h1 style={{ margin: 0 }}>Admin</h1>
         <span className="muted">{bank ? `${bank.length} sets published` : bankError ? "offline" : "checking…"}</span>
       </div>
+      <p className="admin-intro">Add, edit, move and delete sets for everyone. Changes publish straight away when the server can be reached.</p>
       {bankError && <p className="muted">{bankError}</p>}
-      {message && <p>{message}</p>}
+      {message && <p role="status">{message}</p>}
 
       <SetAdditionUndo disabled={busy !== null || adding} onChanged={() => void refreshBank()} />
       <details className="section" open={summaries.length === 0}>
@@ -226,7 +233,7 @@ function MasterContents() {
               <button className="small" onClick={tagSelected} disabled={busy !== null || !bulkTag.trim()}>Add tag</button>
               <PresentationSelect value="" onChange={moveSelected} disabled={busy !== null} placeholder="Move to presentation…" title="Each set takes the next number in that presentation" />
               <button className="small" onClick={publishSelected} disabled={busy !== null}>Publish selected</button>
-              <button className="small danger" onClick={() => removeMany([...selected])} disabled={busy !== null}>Delete selected</button>
+              <button className="small danger" onClick={() => { setDeleteError(null); setPendingDelete([...selected]); }} disabled={busy !== null}>Delete selected</button>
               <button className="small link" onClick={() => setSelected(new Set())}>Clear</button>
             </>
           ) : (
@@ -256,7 +263,7 @@ function MasterContents() {
                   <td className="muted admin-date" title={addedAt(s) !== undefined ? new Date(addedAt(s)!).toLocaleString() : "Connect to the bank to see the original publish date"}>{addedAt(s) !== undefined ? formatDate(addedAt(s)!) : "—"}</td>
                   <td className="muted admin-date" title={new Date(updatedAt(s)).toLocaleString()}>{formatDate(updatedAt(s))}</td>
                   <td><div className="admin-set-actions">
-                    <button className="small" onClick={() => nav(`/set/${s.set.id}/edit#case-stems`)}>Edit stems & questions</button>
+                    <button className="small" onClick={() => nav(`/set/${s.set.id}/edit#case-stems`)}>Edit</button>
                     <button className="small danger" onClick={() => remove(s.set.id)} disabled={busy !== null}>Delete</button>
                   </div></td>
                 </tr>
@@ -267,6 +274,11 @@ function MasterContents() {
         {rows.length === 0 && summaries.length > 0 && <p className="muted">Nothing matches the filter.</p>}
       </details>
       {summaries.length === 0 && <p className="muted">No sets yet. Drop a folder or paste a paper above.</p>}
+
+      <ConfirmDialog open={pendingDelete !== null} title={pendingTargets.length === 1 ? `Delete ${fullLabel(pendingTargets[0])}?` : `Delete ${pendingTargets.length} sets?`} confirmLabel={pendingTargets.length === 1 ? "Delete set" : `Delete ${pendingTargets.length} sets`} destructive busy={busy === "delete"} error={deleteError} onCancel={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) void removeMany(pendingDelete); }}>
+        <p>Removed from the shared library for everyone, with every attempt and mark on them on this device. This cannot be undone.</p>
+        {pendingTargets.length > 1 && <ul>{pendingTargets.slice(0, 8).map((t) => <li key={t.set.id}>{fullLabel(t)}</li>)}{pendingTargets.length > 8 && <li>and {pendingTargets.length - 8} more</li>}</ul>}
+      </ConfirmDialog>
     </div>
   );
 }

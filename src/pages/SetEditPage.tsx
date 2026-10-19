@@ -52,6 +52,7 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
   const [draftWarning, setDraftWarning] = useState("");
+  const [undoStack, setUndoStack] = useState<{ label: string; questions: DraftQuestion[] }[]>([]);
   const [restored, setRestored] = useState(false);
   const savedSnapshot = useRef("");
   const draftBase = useRef<{ ownerId: string; set: QuestionSet } | null>(null);
@@ -134,7 +135,17 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
   const patchQ = (key: string, p: Partial<Question>) => setQuestions((qs) => qs.map((q) => (q.key === key ? { ...q, ...p } : q)));
   const patchPart = (key: string, pi: number, p: Partial<SubPart>) =>
     setQuestions((qs) => qs.map((q) => (q.key === key ? { ...q, parts: q.parts.map((x, i) => (i === pi ? { ...x, ...p } : x)) } : q)));
-  const removeQ = (key: string) => setQuestions((qs) => qs.filter((q) => q.key !== key));
+  const removeQ = (key: string) => {
+    const index = questions.findIndex((q) => q.key === key);
+    setUndoStack((stack) => [...stack, { label: `Question ${index + 1} removed`, questions }]);
+    setQuestions((qs) => qs.filter((q) => q.key !== key));
+  };
+  const undoRemoval = () => {
+    const last = undoStack[undoStack.length - 1];
+    if (!last) return;
+    setQuestions(last.questions);
+    setUndoStack((stack) => stack.slice(0, -1));
+  };
   const addQ = () =>
     setQuestions((qs) => [
       ...qs,
@@ -144,8 +155,12 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
     setQuestions((qs) =>
       qs.map((q) => (q.key === key ? { ...q, parts: [...q.parts, { label: String.fromCharCode(97 + q.parts.length), text: "" }] } : q)),
     );
-  const removePart = (key: string, pi: number) =>
-    setQuestions((qs) => qs.map((q) => (q.key === key ? { ...q, parts: q.parts.filter((_, i) => i !== pi) } : q)));
+  const removePart = (key: string, pi: number) => {
+    const q = questions.find((item) => item.key === key);
+    const index = questions.findIndex((item) => item.key === key);
+    setUndoStack((stack) => [...stack, { label: `Part ${partLabel(q?.parts[pi]?.label ?? String(pi + 1))} of question ${index + 1} removed`, questions }]);
+    setQuestions((qs) => qs.map((item) => (item.key === key ? { ...item, parts: item.parts.filter((_, i) => i !== pi) } : item)));
+  };
   const editStem = (groupId: string) => {
     const target = document.getElementById(groupId);
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -243,6 +258,7 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
     setMessage(null);
     try {
       const saved = await saveLocal();
+      setUndoStack([]);
       savedSnapshot.current = snapshot;
       recoverable.current = null;
       if (currentDraft) clearSetEditorDraft(data.ownerId, saved.id, currentDraft);
@@ -270,12 +286,16 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
 
   return (
     <div className={`set-editor${embedded ? " browse-editor" : ""}`}>
-      {!embedded && <><div className="muted"><Link to={`/set/${set.id}`} onClick={(event) => { if (!canLeave()) event.preventDefault(); }}>{setLabel(data.set)}</Link></div>
-      <h1 style={{ marginTop: "0.3rem" }}>Edit {setLabel(set)}</h1></>}
+      {!embedded && <header className="set-editor-head">
+        <div><div className="set-crumbs"><Link to="/browse">Browse</Link>, <Link to={`/set/${set.id}`} onClick={(event) => { if (!canLeave()) event.preventDefault(); }}>{setLabel(data.set)}</Link></div>
+        <h1>Edit {setLabel(set)}</h1></div>
+        <span className="muted">{questions.length} question{questions.length === 1 ? "" : "s"}{data.canPush ? ", publishes to everyone on save" : data.admin ? ", saves on this device" : ", your personal copy"}</span>
+      </header>}
       {restored && <p className="muted" role="status">Unsaved draft restored.</p>}
+      {undoStack.length > 0 && <div className="editor-undo" role="status"><span>{undoStack[undoStack.length - 1].label}. Nothing changes until you save.</span><span className="spacer" /><button className="small" onClick={undoRemoval}>Undo</button></div>}
 
       {data.admin && <details className="card">
-        <summary>Set details</summary>
+        <summary><span>Set details</span><span className="muted">{[set.primaryPresentation ? presentationName(set.primaryPresentation) : "No presentation", tags.length ? `${tags.length} tag${tags.length === 1 ? "" : "s"}` : "", set.suggestedMinutes ? `${set.suggestedMinutes} min` : ""].filter(Boolean).join(" · ")}</span></summary>
         <div className="stack" style={{ marginTop: "1rem" }}>
         <label htmlFor="set-editor-presentation">Primary presentation
           <select id="set-editor-presentation" value={set.primaryPresentation ?? ""} onChange={(e) => patchSet({ primaryPresentation: e.target.value || undefined })}>

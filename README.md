@@ -144,7 +144,7 @@ model answer.
 
 Every change an admin makes anywhere, on a set page, a question page, while sitting a paper or in Admin, publishes straight
 away when the passcode is on the device: edits, tags, moves and deletes. Deleting a published set removes it from the library
-for everyone, so it does not come back on the next sync. Admin, at the bottom of Settings behind the passcode, is the one place the shared library is built: drop a folder or paste
+for everyone, so it does not come back on the next sync. Admin, its own page behind the passcode, is the one place the shared library is built: drop a folder or paste
 a paper to add sets, Edit any set, Delete a set everywhere. Whatever is saved there is
 published straight away when the site can reach it, and everyone's
 library follows on their next open, matched by question position so attempts and marks
@@ -186,8 +186,12 @@ passcode is remembered per device and can be cleared from Settings.
   see an Edit button on the stem and on each question.
 - **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
   error tags, reflection, learning point.
-- **Settings**: minutes per mark, AMBOSS login, bank passcode, JSON backup and restore,
-  Anki export, and at the bottom the Admin section, behind the passcode.
+- **Settings**: practice timing, account and sync, AMBOSS login, library updates, JSON
+  backup and restore, Anki export, and a Danger zone. Admins also see a card linking to Admin.
+- **Admin** (`/admin`, admins only, behind the passcode): the one place the shared library is
+  built: add, edit, move and delete sets for everyone.
+- **Landing page** (`/`): a public front page describing the app; "Begin your practice" opens
+  Home at `/home`. Logos for the "Made for medical students at" row live in `public/landing/`.
 
 ## Pushing questions from your own generator
 

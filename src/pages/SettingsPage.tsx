@@ -1,191 +1,248 @@
 import { setProgressAccount } from "../lib/progressAccount";
 import AmbossSettings from "../components/AmbossSettings";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
+import { Link } from "react-router";
 import { db, patchSettings, getSettings } from "../data/db";
 import { DEFAULT_SETTINGS } from "../data/types";
 import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileText, type ExportFile } from "../lib/exportImport";
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
-import MasterPage from "./MasterPage";
-import { useEffect } from "react";
-import { useLocation } from "react-router";
 import { ambossLogout } from "../lib/amboss";
 import { cloudConfigured, signInWithGoogle, signOutCloud } from "../lib/firebase";
 import { isAdmin } from "../lib/admin";
 import { recordDeletes, resetCursors, syncNow } from "../lib/sync";
 
+function Row({ title, help, children, danger }: { title: string; help?: string; children?: React.ReactNode; danger?: boolean }) {
+  return (
+    <div className={`setting-row${danger ? " danger" : ""}`}>
+      <div><strong>{title}</strong>{help && <p>{help}</p>}</div>
+      {children && <div className="setting-control">{children}</div>}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const settings = useLiveQuery(async () => await getSettings(), []);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [libraryMsg, setLibraryMsg] = useState<string | null>(null);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [cloudMsg, setCloudMsg] = useState<string | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
-
-  const { hash } = useLocation();
-  useEffect(() => {
-    if (hash === "#admin" || hash === "#master") setTimeout(() => document.getElementById("admin")?.scrollIntoView({ block: "start" }), 300);
-  }, [hash]);
+  const [wiping, setWiping] = useState(false);
+  const [wipeCloud, setWipeCloud] = useState(false);
+  const [wipeBusy, setWipeBusy] = useState(false);
+  const [dangerMsg, setDangerMsg] = useState<string | null>(null);
 
   if (!settings) return null;
   const stamp = new Date().toISOString().slice(0, 10);
+  const admin = isAdmin(settings);
 
   const exportJson = async () => {
-    setMessage("Preparing backup…");
+    setBackupMsg("Preparing backup…");
     try {
       const data = await exportAll();
       downloadText(`saq-practice-${stamp}.json`, JSON.stringify(data));
-      setMessage("Exported everything.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not complete the backup. Try again."); }
+      setBackupMsg("Exported everything.");
+    } catch (error) { setBackupMsg(error instanceof Error ? error.message : "Could not complete the backup. Try again."); }
   };
   const exportAnki = async () => {
     const tsv = await exportLearningPointsTsv();
-    if (!tsv) return setMessage("No learning points yet.");
+    if (!tsv) return setBackupMsg("No learning points yet.");
     downloadText(`saq-learning-points-${stamp}.txt`, tsv, "text/tab-separated-values");
-    setMessage("Exported learning points. In Anki: File → Import, fields separated by Tab, front = question, back = learning point, third field = tags.");
+    setBackupMsg("Exported learning points. In Anki: File → Import, fields separated by Tab, front = question, back = learning point, third field = tags.");
   };
   const importJson = async (file: File) => {
     try {
       const data = JSON.parse(await readFileText(file)) as ExportFile;
       const n = await importAll(data);
-      setMessage(`Imported ${n.sets} sets, ${n.questions} questions, ${n.attempts} attempts, ${n.marks} marks, ${n.notes} notes.`);
+      setBackupMsg(`Imported ${n.sets} sets, ${n.questions} questions, ${n.attempts} attempts, ${n.marks} marks, ${n.notes} notes.`);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : String(e));
+      setBackupMsg(e instanceof Error ? e.message : String(e));
     }
   };
   const wipe = async () => {
-    if (!confirm("Delete every question, attempt and mark on this device? Export first if you want to keep them.")) return;
-    const goneAttempts = (await db.attempts.toCollection().primaryKeys()) as string[];
-    const goneMarks = (await db.marks.toCollection().primaryKeys()) as string[];
-    await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
-      await Promise.all([db.sets.clear(), db.questions.clear(), db.attempts.clear(), db.marks.clear()]);
-    });
-    if (settings.cloudUser && confirm("Also delete your synced answers and marks in the cloud? Cancel keeps them for your other devices.")) {
-      await recordDeletes("attempts", goneAttempts);
-      await recordDeletes("marks", goneMarks);
-      await syncNow().catch(() => undefined);
+    setWipeBusy(true);
+    try {
+      const goneAttempts = (await db.attempts.toCollection().primaryKeys()) as string[];
+      const goneMarks = (await db.marks.toCollection().primaryKeys()) as string[];
+      await db.transaction("rw", db.sets, db.questions, db.attempts, db.marks, async () => {
+        await Promise.all([db.sets.clear(), db.questions.clear(), db.attempts.clear(), db.marks.clear()]);
+      });
+      if (settings.cloudUser && wipeCloud) {
+        await recordDeletes("attempts", goneAttempts);
+        await recordDeletes("marks", goneMarks);
+        await syncNow().catch(() => undefined);
+      }
+      await ambossLogout();
+      setDangerMsg("Deleted. The saved AMBOSS login was removed from this device too.");
+      setWiping(false);
+    } finally {
+      setWipeBusy(false);
     }
-    await ambossLogout();
-    setMessage("Deleted. Saved AMBOSS login removed from this device.");
   };
+
+  const sections = [
+    { id: "practice", label: "Practice" },
+    { id: "account", label: "Account" },
+    { id: "amboss", label: "AMBOSS" },
+    { id: "library", label: "Question library" },
+    { id: "backup", label: "Backup" },
+    ...(admin ? [{ id: "admin", label: "Admin" }] : []),
+    { id: "danger", label: "Danger zone", danger: true },
+  ];
 
   return (
     <div>
-      <h1>Settings</h1>
-      <div className="card stack">
-        <div className="row">
-          <label style={{ margin: 0 }}>Minutes per mark</label>
-          <input type="number" step={0.25} min={0.25} value={settings.minutesPerMark}
-            onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
+      <header className="settings-head"><h1>Settings</h1><p>How practice is timed, where your work is kept, and what follows you between devices.</p></header>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {sections.map((s) => <a key={s.id} href={`#${s.id}`} className={s.danger ? "danger" : undefined}>{s.label}</a>)}
+        </nav>
+        <div>
+          <section className="settings-section" id="practice" aria-labelledby="settings-practice">
+            <h2 id="settings-practice">Practice</h2>
+            <p className="muted">Defaults for new sessions. You can override the time on each set.</p>
+            <div className="card">
+              <Row title="Minutes per mark" help="The suggested time for a paper is its total marks multiplied by this. A paper that states its own time uses that instead.">
+                <input aria-label="Minutes per mark" type="number" step={0.25} min={0.25} value={settings.minutesPerMark}
+                  onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
+              </Row>
+            </div>
+          </section>
 
-        </div>
-      </div>
+          <section className="settings-section" id="account" aria-labelledby="settings-account">
+            <h2 id="settings-account">Account</h2>
+            <p className="muted">Signed in, your attempts, marks, notes and settings follow you between devices. Questions always come from the shared bank.</p>
+            <div className="card">
+              {!cloudConfigured() ? (
+                <Row title="Cloud sync is not configured" help="This site has no sign-in set up, so everything stays on this device." />
+              ) : settings.cloudUser ? (
+                <>
+                  <Row title="Signed in">
+                    <span className="account-identity">
+                      {settings.cloudUser.photo ? <img src={settings.cloudUser.photo} alt="" referrerPolicy="no-referrer" /> : <span className="avatar-fallback">{(settings.cloudUser.name ?? settings.cloudUser.email ?? "?").charAt(0).toUpperCase()}</span>}
+                      <span><strong>{settings.cloudUser.name ?? "Google account"}</strong><span className="muted">{settings.cloudUser.email}</span></span>
+                    </span>
+                  </Row>
+                  <Row title="Sync" help="Runs on its own after sign-in, when the tab comes back into view, and shortly after anything is saved.">
+                    <button className="small" disabled={cloudBusy} onClick={async () => {
+                      setCloudBusy(true);
+                      try {
+                        const r = await syncNow();
+                        if (!r) setCloudMsg("Not signed in.");
+                        else if (r.pushed === 0 && r.pulled === 0 && r.unresolved === 0) setCloudMsg("Up to date.");
+                        else setCloudMsg(`Synced${r.pushed ? `, ${r.pushed} sent` : ""}${r.pulled ? `, ${r.pulled} received` : ""}${r.unresolved ? `, ${r.unresolved} waiting for their question set` : ""}.`);
+                      } catch (e) {
+                        setCloudMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+                      } finally {
+                        setCloudBusy(false);
+                      }
+                    }}>Sync now</button>
+                    <button className="small" disabled={cloudBusy} onClick={async () => {
+                      await signOutCloud();
+                      await setProgressAccount(null);
+                      setCloudMsg("Signed out. Your data stays on this device.");
+                    }}>Sign out</button>
+                  </Row>
+                </>
+              ) : (
+                <Row title="Not signed in" help="Sign in with Google to keep your progress across devices. Nothing is uploaded until you do.">
+                  <button className="primary" disabled={cloudBusy} onClick={async () => {
+                    setCloudBusy(true);
+                    setCloudMsg(null);
+                    try {
+                      const u = await signInWithGoogle();
+                      await setProgressAccount(u);
+                      await resetCursors();
+                      const r = await syncNow(u);
+                      const moved = r && (r.pushed || r.pulled) ? ` ${[r.pushed ? `${r.pushed} sent` : "", r.pulled ? `${r.pulled} received` : ""].filter(Boolean).join(", ")}.` : "";
+                      setCloudMsg(`Signed in as ${u.email ?? u.name ?? "Google account"}.${moved}`);
+                    } catch (e) {
+                      setCloudMsg(`Sign-in failed: ${e instanceof Error ? e.message : String(e)}`);
+                    } finally {
+                      setCloudBusy(false);
+                    }
+                  }}>Sign in with Google</button>
+                </Row>
+              )}
+              {cloudMsg && <p className="settings-message" role="status">{cloudMsg}</p>}
+            </div>
+          </section>
 
-      <h2>Account</h2>
-      <div className="card stack">
-        {!cloudConfigured() ? (
-          <p className="muted" style={{ margin: 0 }}>
-            Cloud sync is not configured.
-          </p>
-        ) : settings.cloudUser ? (
-          <div className="row spread">
-            <span className="row">
-              {settings.cloudUser.photo && <img src={settings.cloudUser.photo} alt="" referrerPolicy="no-referrer" style={{ width: 28, height: 28, borderRadius: "50%" }} />}
-              <span>Signed in as {settings.cloudUser.email ?? settings.cloudUser.name ?? "Google account"}</span>
-            </span>
-            <span className="row">
-              <button className="small" disabled={cloudBusy} onClick={async () => {
-                setCloudBusy(true);
-                try {
-                  const r = await syncNow();
-                  if (!r) setCloudMsg("Not signed in.");
-                  else if (r.pushed === 0 && r.pulled === 0 && r.unresolved === 0) setCloudMsg("Up to date.");
-                  else setCloudMsg(`Synced${r.pushed ? `, ${r.pushed} sent` : ""}${r.pulled ? `, ${r.pulled} received` : ""}${r.unresolved ? `, ${r.unresolved} waiting for their question set` : ""}.`);
-                } catch (e) {
-                  setCloudMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
-                } finally {
-                  setCloudBusy(false);
-                }
-              }}>Sync now</button>
-              <button className="small" disabled={cloudBusy} onClick={async () => {
-                await signOutCloud();
-                await setProgressAccount(null);
-                setCloudMsg("Signed out. Your data stays on this device.");
-              }}>Sign out</button>
-            </span>
+          <div className="settings-section" id="amboss">
+            <AmbossSettings settings={settings} />
           </div>
-        ) : (
-          <div className="row">
-            <button className="primary" disabled={cloudBusy} onClick={async () => {
-              setCloudBusy(true);
-              setCloudMsg(null);
-              try {
-                const u = await signInWithGoogle();
-                await setProgressAccount(u);
-                await resetCursors();
-                const r = await syncNow(u);
-                const moved = r && (r.pushed || r.pulled) ? ` ${[r.pushed ? `${r.pushed} sent` : "", r.pulled ? `${r.pulled} received` : ""].filter(Boolean).join(", ")}.` : "";
-                setCloudMsg(`Signed in as ${u.email ?? u.name ?? "Google account"}.${moved}`);
-              } catch (e) {
-                setCloudMsg(`Sign-in failed: ${e instanceof Error ? e.message : String(e)}`);
-              } finally {
-                setCloudBusy(false);
-              }
-            }}>Sign in with Google</button>
-            <span className="muted">Your answers, marks and settings then follow you between devices.</span>
-          </div>
-        )}
-        {cloudMsg && <p style={{ margin: 0 }}>{cloudMsg}</p>}
-      </div>
 
-      <AmbossSettings settings={settings} />
+          <section className="settings-section" id="library" aria-labelledby="settings-library">
+            <h2 id="settings-library">Question library</h2>
+            <p className="muted">Published sets reach every device. Your attempts stay attached when a set is updated.</p>
+            <div className="card">
+              <Row title="Keep my library up to date" help="Pull new and changed sets from the shared bank whenever the app opens.">
+                <input type="checkbox" aria-label="Keep my library up to date" checked={settings.autoImportBank !== false} onChange={(e) => patchSettings({ autoImportBank: e.target.checked })} />
+              </Row>
+              <Row title="Check now" help="Fetch anything published since the app last opened.">
+                <button className="small" onClick={async () => {
+                  try {
+                    const n = await syncFromBank();
+                    setLibraryMsg(n ? `Library updated: ${n} new or changed set${n === 1 ? "" : "s"}.` : "Library is up to date.");
+                  }
+                  catch { setLibraryMsg("The server is not reachable from here."); }
+                }}>Check for new sets</button>
+              </Row>
+              {libraryMsg && <p className="settings-message" role="status">{libraryMsg}</p>}
+            </div>
+          </section>
 
-      <h2>Question library</h2>
-      <div className="card stack">
-        <label style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "center", color: "var(--fg)" }}>
-          <input type="checkbox" checked={settings.autoImportBank !== false}
-            onChange={(e) => patchSettings({ autoImportBank: e.target.checked })} />
-          Keep my library in step with the published sets when the app opens
-        </label>
-        {isAdmin(settings) && <div className="row">
-          <label style={{ margin: 0 }}>Admin passcode</label>
-          <input type="password" placeholder="not saved" value={settings.bankPasscode ?? ""}
-            onChange={(e) => patchSettings({ bankPasscode: e.target.value || undefined })} />
-          <span className="muted">unlocks Admin; remembered on this device</span>
-          {settings.bankPasscode && <button className="small" onClick={() => patchSettings({ bankPasscode: undefined })}>Lock</button>}
-        </div>}
-        <div className="row">
-          <button onClick={async () => {
-            try {
-              const n = await syncFromBank();
-              setMessage(n ? `Library updated: ${n} new or changed set${n === 1 ? "" : "s"}.` : "Library is up to date.");
-            }
-            catch { setMessage("The server is not reachable from here."); }
-          }}>Check for new sets</button>
+          <section className="settings-section" id="backup" aria-labelledby="settings-backup">
+            <h2 id="settings-backup">Backup</h2>
+            <p className="muted">{settings.lastExportAt ? `Last export ${formatDate(settings.lastExportAt)}.` : "Never exported."} A backup holds your sets, attempts, marks and notes.</p>
+            <div className="card">
+              <Row title="Export everything" help="One JSON file you can import again here or on another device.">
+                <button className="small" onClick={exportJson}>Export JSON</button>
+                <button className="small" onClick={() => fileRef.current?.click()}>Import JSON</button>
+                <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />
+              </Row>
+              <Row title="Learning points for Anki" help="A tab-separated file: question, learning point, tags.">
+                <button className="small" onClick={exportAnki}>Export for Anki</button>
+              </Row>
+              {backupMsg && <p className="settings-message" role="status">{backupMsg}</p>}
+            </div>
+          </section>
+
+          {admin && (
+            <section className="settings-section" id="admin" aria-labelledby="settings-admin">
+              <h2 id="settings-admin">Admin</h2>
+              <p className="muted">The shared library is built on the Admin page: add, edit, move and delete sets for everyone.</p>
+              <div className="card">
+                <Row title="Admin passcode" help={settings.bankPasscode ? "Unlocked on this device. Every edit you make publishes straight away." : "Locked. The Admin page asks for the passcode and remembers it on this device."}>
+                  <span className={`status-pill${settings.bankPasscode ? " on" : ""}`}>{settings.bankPasscode ? "Unlocked" : "Locked"}</span>
+                  {settings.bankPasscode && <button className="small" onClick={() => patchSettings({ bankPasscode: undefined })}>Lock</button>}
+                  <Link className="button small" to="/admin">Open Admin</Link>
+                </Row>
+              </div>
+            </section>
+          )}
+
+          <section className="settings-section" id="danger" aria-labelledby="settings-danger">
+            <h2 id="settings-danger">Danger zone</h2>
+            <p className="muted">Nothing here can be undone. Export a backup first.</p>
+            <div className="card">
+              <Row title="Delete all data on this device" help="Removes every set, attempt and mark stored in this browser, and the saved AMBOSS login." danger>
+                <button className="danger" onClick={() => { setWipeCloud(false); setWiping(true); }}>Delete all data</button>
+              </Row>
+              {dangerMsg && <p className="settings-message" role="status">{dangerMsg}</p>}
+            </div>
+          </section>
         </div>
       </div>
 
-      <h2>Backup</h2>
-      <p className="muted">
-        {settings.lastExportAt ? `Last export ${formatDate(settings.lastExportAt)}.` : "Never exported."}
-      </p>
-      <div className="row">
-        <button onClick={exportJson}>Export everything (JSON)</button>
-        <button onClick={() => fileRef.current?.click()}>Import JSON</button>
-        <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) void importJson(f); e.target.value = ""; }} />
-        <button onClick={exportAnki}>Export learning points for Anki</button>
-      </div>
-      {message && <p>{message}</p>}
-
-      <h2>Danger</h2>
-      <button className="danger" onClick={wipe}>Delete all data on this device</button>
-
-      {isAdmin(settings) && (
-        <div id="admin" style={{ marginTop: "3rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
-          <MasterPage />
-        </div>
-      )}
+      <ConfirmDialog open={wiping} title="Delete all data on this device?" confirmLabel="Delete everything" destructive busy={wipeBusy} onCancel={() => setWiping(false)} onConfirm={() => void wipe()}>
+        <p>Every question set, attempt and mark in this browser will be deleted, along with the saved AMBOSS login. Published sets come back from the shared bank; your answers do not.</p>
+        {settings.cloudUser && <label className="check"><input type="checkbox" checked={wipeCloud} onChange={(e) => setWipeCloud(e.target.checked)} /><span>Also delete my synced answers and marks in the cloud. Leave this off to keep them for your other devices.</span></label>}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { useNavigate } from "react-router";
 import { db, newId } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
-import { answerParts, formatDuration, partLabel, stemsOf } from "../lib/questions";
+import { answerParts, formatClock, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, pauseSession, resumeSession, saveSession } from "../lib/session";
 import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/answerDrafts";
 import { canWriteAnswers, readingRemainingSec, overtimeSec, remainingSec, shouldAutoSubmit } from "../lib/sessionClock";
@@ -83,7 +83,7 @@ export default function PaperPage() {
   // Create attempts for the session's questions if they do not exist yet.
   useEffect(() => {
     if (!session) {
-      nav("/", { replace: true });
+      nav("/home", { replace: true });
       return;
     }
     (async () => {
@@ -104,7 +104,7 @@ export default function PaperPage() {
         }
         if (questionIds.length === 0) {
           saveSession(null, ownerRef.current);
-          nav("/", { replace: true });
+          nav("/home", { replace: true });
           return;
         }
         current = {
@@ -382,7 +382,7 @@ export default function PaperPage() {
   };
 
   if (!session || !data || !question || !attempt) return <p role="status">Loading session…</p>;
-  if (!content.ready || data.pending.has(question.setId)) return <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}<button onClick={() => nav("/")}>Save & exit</button></div>;
+  if (!content.ready || data.pending.has(question.setId)) return <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}<button onClick={() => nav("/home")}>Save & exit</button></div>;
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
   const setMode = session.studyUnit === "sets";
   const setGroups = sessionSetGroups(session, data.questions);
@@ -431,13 +431,18 @@ export default function PaperPage() {
   return (
     <>
       <div className="paper-top">
-        <span className="muted">{session.mode === "exam" ? "Exam" : "Practice"}, {setMode ? `Set ${setIndex + 1} of ${setGroups.length}, Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
-        {displayedRemaining !== null && (
-          <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : expired && session.mode === "practice" ? "Practice overtime" : "Writing time remaining"}>{expired && session.mode === "practice" ? `+${formatDuration(overtimeSec(session, now))}` : `${reading ? "Reading " : session.examFormat ? "Writing " : ""}${formatDuration(displayedRemaining)}`}</span>
+        <span className="paper-status">
+          <span className="paper-mode">{session.mode === "exam" ? "Exam" : "Practice"}</span>
+          {setMode && setGroups.length > 1 && <span>Set {setIndex + 1} of {setGroups.length}</span>}
+          <span>{setMode ? `Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
+        </span>
+        {displayedRemaining !== null && (expired && session.mode === "practice"
+          ? <span className="timer over" aria-label="Practice overtime"><small>Over time</small>{formatClock(overtimeSec(session, now))}</span>
+          : <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : "Writing time remaining"}>{(reading || session.examFormat) && <small>{reading ? "Reading" : "Writing"}</small>}{formatClock(displayedRemaining)}</span>
         )}
         <span style={{ flex: 1 }} />
         {!session.examFormat && <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />}
-        <button disabled={addingImages} onClick={() => nav("/")}>{session.examFormat ? "Exit" : "Save & exit"}</button>
+        <button disabled={addingImages} onClick={() => nav("/home")}>{session.examFormat ? "Exit" : "Save & exit"}</button>
         <button disabled={addingImages} onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
         {session.mode === "practice"
           ? <button onClick={() => nextQuestion(index)} disabled={submittingSet || addingImages}>{index + 1 >= data.questions.length ? "Session summary" : data.questions[index + 1].setId !== data.questions[index].setId ? "Next set" : "Next"}</button>
@@ -554,7 +559,7 @@ export default function PaperPage() {
           question={editing}
           mode={editingMode}
           onClose={() => setEditing(null)}
-          onDeleted={() => { setEditing(null); const current = loadSession(ownerRef.current); setSession(current); if (!current) nav("/"); }}
+          onDeleted={() => { setEditing(null); const current = loadSession(ownerRef.current); setSession(current); if (!current) nav("/home"); }}
 
         />
       )}

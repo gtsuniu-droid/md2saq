@@ -1,7 +1,7 @@
 import ContentGate from "./components/ContentGate";
 import { setProgressAccount } from "./lib/progressAccount";
 import { useEffect } from "react";
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { isAdmin } from "./lib/admin";
 import { db, getSettings } from "./data/db";
 import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
@@ -23,6 +23,8 @@ import SetAttemptPage from "./pages/SetAttemptPage";
 import ReviewPage from "./pages/ReviewPage";
 import SessionReviewPage from "./pages/SessionReviewPage";
 import SettingsPage from "./pages/SettingsPage";
+import AdminPage from "./pages/AdminPage";
+import LandingPage, { BrandMark } from "./pages/LandingPage";
 import AmbossPanel from "./components/AmbossPanel";
 import AmbossHover from "./components/AmbossHover";
 import { restoreAmbossSession } from "./lib/amboss";
@@ -155,26 +157,29 @@ export default function App() {
     })();
   }, []);
 
+  if (pathname === "/") return <LandingPage />;
+
   const full = pathname.startsWith("/paper");
+  const shell = full ? "page full" : pathname === "/home" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : pathname === "/settings" ? "page settings-shell" : pathname === "/admin" ? "page admin-shell" : "page wide-shell";
   return (
     <div className="app">
       <nav className="nav">
-        <NavLink to="/" className="brand">SAQ</NavLink>
-        <NavLink to="/" end>Home</NavLink>
+        <NavLink to="/home" className="brand"><BrandMark />SAQ Practice</NavLink>
+        <NavLink to="/home" end>Home</NavLink>
         <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/notes">Notes</NavLink>
         <NavLink to="/review">Review</NavLink>
-        <NavLink to="/settings" className={({ isActive }) => isActive && hash !== "#admin" ? "active" : ""}>Settings</NavLink>
-        {isAdmin(account) && <Link to="/settings#admin" className={pathname === "/settings" && hash === "#admin" ? "active" : undefined}>Admin</Link>}
+        <NavLink to="/settings">Settings</NavLink>
+        {isAdmin(account) && <NavLink to="/admin">Admin</NavLink>}
         {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue session</NavLink>}
         <span style={{ flex: 1 }} />
         {studying && !(session?.examFormat && pathname.startsWith("/paper")) && <button className="nav-notes" aria-expanded={notesOpen} onClick={() => setNotesOpen((open) => !open)}>{notesOpen ? "Hide reference notes" : "Reference notes"}</button>}
         <AccountButton />
       </nav>
       <div className="study-workspace">
-      <main className={full ? "page full" : pathname === "/" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : "page wide-shell"}>
+      <main className={shell}>
         <Routes key={`${account?.cloudUser?.uid ?? ""}:${sessionOwner()}`}>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/home" element={<HomePage />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/browse" element={<BrowsePage />} />
           <Route path="/notes" element={<NotesPage />} />
@@ -189,10 +194,11 @@ export default function App() {
           <Route path="/mark/:attemptId" element={<ContentGate kind="attempt"><MarkPage /></ContentGate>} />
           <Route path="/history/:attemptId" element={<ContentGate kind="attempt"><SetAttemptPage /></ContentGate>} />
           <Route path="/session/:id" element={<ContentGate kind="session"><SessionReviewPage /></ContentGate>} />
-          <Route path="/admin" element={<Navigate to="/settings#admin" replace />} />
-          <Route path="/master" element={<Navigate to="/settings#admin" replace />} />
-          <Route path="/bank" element={<Navigate to="/settings#admin" replace />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/master" element={<Navigate to="/admin" replace />} />
+          <Route path="/bank" element={<Navigate to="/admin" replace />} />
+          <Route path="/settings" element={hash === "#admin" || hash === "#master" ? <Navigate to="/admin" replace /> : <SettingsPage />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </main>
       {notesOpen && studying && !(session?.examFormat && pathname.startsWith("/paper")) && <NotesPanel onClose={() => setNotesOpen(false)} />}

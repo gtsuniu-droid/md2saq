@@ -1,5 +1,6 @@
 import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router";
@@ -21,6 +22,8 @@ export default function QuestionPage() {
   const { id = "" } = useParams();
   const nav = useNavigate();
   const [message, setMessage] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const data = useLiveQuery(async () => {
     const q = await db.questions.get(id);
     if (!q) return null;
@@ -40,9 +43,8 @@ export default function QuestionPage() {
 
   const remove = async () => {
     if (!isAdmin(await getSettings())) return;
-    const everyone = !!set?.bankId && admin;
-    if (!confirm(`Delete this question${everyone ? " from the set for everyone" : ""}, with its attempts?`)) return;
     const setId = q.setId;
+    setDeleteBusy(true);
     try {
       await deleteQuestion(id);
       let warning: string | undefined;
@@ -51,7 +53,8 @@ export default function QuestionPage() {
         catch (e) { warning = `Deleted here, not published: ${bankErrorMessage(e)} Publish local changes in Settings to retry.`; }
       }
       nav(`/set/${setId}`, { state: { message: warning } });
-    } catch (e) { setMessage(e instanceof Error ? e.message : "Could not delete this question."); }
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Could not delete this question."); setDeleting(false); }
+    finally { setDeleteBusy(false); }
   };
 
   return (
@@ -60,7 +63,7 @@ export default function QuestionPage() {
         <div className="muted"><Link to={`/set/${q.setId}`}>{set ? setLabel(set) : "Set"}</Link>, question {q.order + 1}</div>
         <QuestionCommunity key={`community-${q.id}`} question={q} set={set} />
         <ShareLinks key={q.id} set={set} />
-        {admin && <button className="danger small" onClick={remove}>Delete question</button>}
+        {admin && <button className="danger small" onClick={() => setDeleting(true)}>Delete question</button>}
       </div>
       {message && <p style={{ color: "var(--warn)" }}>{message}</p>}
       <div className="card" style={{ marginTop: "0.8rem" }}>
@@ -97,6 +100,10 @@ export default function QuestionPage() {
           </div>
         </details>
       )}
+
+      <ConfirmDialog open={deleting} title={`Delete question ${q.order + 1}?`} confirmLabel="Delete question" destructive busy={deleteBusy} onCancel={() => setDeleting(false)} onConfirm={() => void remove()}>
+        <p>The question, its subquestions and {attempts.length ? `its ${attempts.length} attempt${attempts.length === 1 ? "" : "s"}` : "any attempts"} on this device are removed. The other questions in the set stay, renumbered.{set?.bankId ? " The shared library updates for everyone." : ""}</p>
+      </ConfirmDialog>
 
       <h2>Attempts</h2>
       {attempts.length === 0 && <p className="muted">Not attempted yet.</p>}

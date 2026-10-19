@@ -1,4 +1,5 @@
 import ShareLinks from "../components/ShareLinks";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { primaryPresentation } from "../lib/primaryPresentation";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -23,6 +24,10 @@ export default function SetPage() {
   const [minutes, setMinutes] = useState("");
   const [moving, setMoving] = useState(false);
   const [moveMessage, setMoveMessage] = useState<string | null>(null);
+  const [replacing, setReplacing] = useState<"practice" | "exam" | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const data = useLiveQuery(async () => {
     const summaries = await loadSummaries();
     const summary = summaries.find((s) => s.set.id === id) ?? null;
@@ -34,24 +39,28 @@ export default function SetPage() {
     for (const m of [...marks].sort((a, b) => a.markedAt - b.markedAt)) lastByQuestion.set(m.questionId, { score: m.score, max: m.maxScore });
     const doneByQuestion = new Map<string, number>();
     for (const a of attempts) if (a.submittedAt) doneByQuestion.set(a.questionId, (doneByQuestion.get(a.questionId) ?? 0) + 1);
-    return { summary, settings, lastByQuestion, doneByQuestion, unlocked: !!settings.bankPasscode && isAdmin(settings) };
+    return { summary, settings, lastByQuestion, doneByQuestion, attempts: attempts.length, admin: isAdmin(settings), unlocked: !!settings.bankPasscode && isAdmin(settings) };
   }, [id]);
 
   if (data === undefined) return null;
   if (data === null) return <p>Set not found.</p>;
-  const { summary, settings, lastByQuestion, doneByQuestion, unlocked } = data;
+  const { summary, settings, lastByQuestion, doneByQuestion, admin, unlocked } = data;
   const { set, questions, sittings } = summary;
   const suggested = suggestedMinutesFor(summary, settings.minutesPerMark);
+  const presentation = primaryPresentation(set, questions);
 
-  const start = (mode: "practice" | "exam") => {
-    if (loadSession() && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
+  const begin = (mode: "practice" | "exam") => {
     const mins = minutes.trim() === "" ? suggested : Number(minutes);
     startSet(summary, mode, mins);
     nav("/paper");
   };
+  const start = (mode: "practice" | "exam") => {
+    if (loadSession()) { setReplacing(mode); return; }
+    begin(mode);
+  };
 
   const move = async (presentationId: string) => {
-    if (!presentationId || presentationId === primaryPresentation(set, questions)) return;
+    if (!presentationId || presentationId === presentation) return;
     setMoving(true);
     setMoveMessage(null);
     try {
@@ -74,42 +83,37 @@ export default function SetPage() {
   };
 
   const remove = async () => {
-    const everyone = !!set.bankId && unlocked;
-    if (!confirm(`Delete ${setLabel(set)}${everyone ? " for everyone" : ""}, with its ${questions.length} questions and every attempt on this device?`)) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
     try {
       await deleteSetEverywhere(set.id);
-      nav("/browse");
+      nav("/browse", { state: { message: `Deleted ${setLabel(set)}.` } });
     } catch (e) {
-      setMoveMessage(`Not deleted: ${bankErrorMessage(e)}`);
+      setDeleteError(`Not deleted: ${bankErrorMessage(e)}`);
+      setDeleteBusy(false);
     }
   };
 
+  const canDelete = admin && (!set.bankId || unlocked);
+  const meta = [
+    `${questions.length} question${questions.length === 1 ? "" : "s"}`,
+    summary.marks ? `${summary.marks} marks` : "",
+    presentation ? presentationName(presentation) : "",
+    set.number !== undefined && set.name && set.name !== setLabel(set) && !/^set\s*\d+$/i.test(set.name) ? set.name : "",
+    set.source ?? "",
+  ].filter(Boolean);
+
   return (
     <div>
-      <div className="muted"><Link to="/browse">Browse</Link>{set.collection ? <>, <Link to={`/browse?collection=${encodeURIComponent(set.collection)}`}>{set.collection}</Link></> : null}</div>
-      <h1 style={{ marginTop: "0.3rem" }}>{fullLabel(summary)}</h1>
-      {flash && <p style={{ color: flash.startsWith("Saved and") ? "var(--ok)" : "var(--warn)" }}>{flash}</p>}
-      <p className="muted" style={{ marginTop: "-0.8rem" }}>
-        {[
-          `${questions.length} question${questions.length === 1 ? "" : "s"}`,
-          summary.marks ? `${summary.marks} marks` : "",
-          primaryPresentation(set, questions) ? presentationName(primaryPresentation(set, questions)!) : "",
-          set.number !== undefined && set.name && set.name !== setLabel(set) && !/^set\s*\d+$/i.test(set.name) ? set.name : "",
-          set.source ?? "",
-        ].filter(Boolean).join(", ")}
-      </p>
-      {unlocked && (
-        <p className="row" style={{ marginTop: "-0.4rem" }}>
-          <label style={{ margin: 0 }}>Presentation</label>
-          <PresentationSelect value={primaryPresentation(set, questions) ?? ""} onChange={move} disabled={moving} placeholder="None" title="Move this set to a presentation. It takes the next number there." />
-          {moveMessage && <span className={moveMessage.includes("not published") ? "" : "muted"} style={moveMessage.includes("not published") ? { color: "var(--warn)" } : undefined}>{moveMessage}</span>}
-        </p>
-      )}
-      {set.tags && set.tags.length > 0 && (
-        <p className="muted" style={{ marginTop: "-0.4rem" }}>
-          {set.tags.map((t, i) => <span key={t}>{i > 0 ? ", " : ""}<Link to={`/browse?tag=${encodeURIComponent(t)}`}>{t}</Link></span>)}
-        </p>
-      )}
+      <header className="set-page-head">
+        <div className="set-crumbs"><Link to="/browse">Browse</Link>{set.collection ? <>, <Link to={`/browse?collection=${encodeURIComponent(set.collection)}`}>{set.collection}</Link></> : null}</div>
+        <h1>{fullLabel(summary)}</h1>
+        <p className="set-meta">{meta.map((m) => <span key={m}>{m}</span>)}</p>
+        {set.tags && set.tags.length > 0 && (
+          <div className="set-tags">{set.tags.map((t) => <Link key={t} to={`/browse?tag=${encodeURIComponent(t)}`}>{t}</Link>)}</div>
+        )}
+        {flash && <p className={`set-flash${flash.startsWith("Saved and") ? "" : " warn"}`} role="status">{flash}</p>}
+      </header>
       {set.instructions && (
         <details className="muted" style={{ marginTop: "0.4rem" }}>
           <summary style={{ cursor: "pointer" }}>Instructions</summary>
@@ -117,26 +121,40 @@ export default function SetPage() {
         </details>
       )}
 
-      <div className="card row" style={{ margin: "1.2rem 0" }}>
-        <button className="primary" onClick={() => start("practice")}>{sittings.length ? "Practise again" : "Practice"}</button>
-        <button onClick={() => start("exam")}>Exam</button>
-        <input aria-label="Practice time in minutes" type="number" min={0} placeholder={String(suggested)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />
-        <span className="muted">min{set.suggestedMinutes ? ", as the paper suggests" : ""}. 0 for no timer.</span>
-        <span style={{ flex: 1 }} />
+      <div className="set-actions">
+        <button className="primary" onClick={() => start("practice")}>{sittings.length ? "Practise again" : "Practise this set"}</button>
+        <button onClick={() => start("exam")}>Sit as exam</button>
+        <label className="timer">Time<input aria-label="Practice time in minutes" type="number" min={0} placeholder={String(suggested)} value={minutes} onChange={(e) => setMinutes(e.target.value)} />min</label>
+        <span className="spacer" />
         <ShareLinks key={set.id} set={set} />
-        {unlocked && <Link className="button small" to={`/set/${set.id}/edit#case-stems`}>Edit stems & questions</Link>}
-        {(!set.bankId || unlocked) && <button className="small danger" onClick={remove} title={set.bankId ? "Removes the set from the library for everyone" : undefined}>Delete</button>}
       </div>
-      <p className="muted">Practice lets you submit a whole set, then mark it or continue. Exam reveals nothing until the whole paper is submitted.</p>
+      <p className="set-actions-hint">Leave the time blank for the suggested {suggested} minutes{set.suggestedMinutes ? ", as the paper states" : ""}; 0 means no timer. Practice lets you mark as you go; an exam reveals nothing until the paper is submitted.</p>
+
+      {admin && (
+        <div className="card set-manage">
+          <span className="label">Manage</span>
+          {unlocked ? (
+            <>
+              <label className="set-move">Presentation<PresentationSelect value={presentation ?? ""} onChange={move} disabled={moving} placeholder="None" title="Move this set to a presentation. It takes the next number there." /></label>
+              <Link className="button small" to={`/set/${set.id}/edit#case-stems`}>Edit questions</Link>
+            </>
+          ) : (
+            <span className="muted">Unlock on the <Link to="/admin">Admin page</Link> to edit or move this set.</span>
+          )}
+          <span className="spacer" />
+          {canDelete && <button className="small danger" onClick={() => { setDeleteError(null); setDeleting(true); }}>Delete set</button>}
+          {moveMessage && <p className={`set-manage-note${moveMessage.includes("not published") ? " field-error" : " muted"}`} role="status">{moveMessage}</p>}
+        </div>
+      )}
 
       <h2>Questions</h2>
-      <table>
+      <table className="set-questions">
         <tbody>
           {questions.map((q) => {
             const lm = lastByQuestion.get(q.id);
             return (
               <tr key={q.id}>
-                <td style={{ width: "2.5rem" }} className="muted">{q.order + 1}</td>
+                <td style={{ width: "2.5rem" }}>{q.order + 1}</td>
                 <td>
                   <Link to={`/question/${q.id}`}>{truncate(q.text || q.parts[0]?.text || "", 140)}</Link>
                   {(q.parts.length > 0 || q.stems?.length) && (
@@ -174,6 +192,20 @@ export default function SetPage() {
           </table>
         </>
       )}
+
+      <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing!; setReplacing(null); begin(mode); }}>
+        <p>You have a paper in progress. Starting this set replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog open={deleting} title={`Delete ${setLabel(set)}?`} confirmLabel="Delete set" destructive busy={deleteBusy} error={deleteError} onCancel={() => setDeleting(false)} onConfirm={() => void remove()}>
+        <p>This removes:</p>
+        <ul>
+          <li><strong>{questions.length} question{questions.length === 1 ? "" : "s"}</strong>{set.name && set.name !== setLabel(set) ? ` from ${set.name}` : ""}</li>
+          {data.attempts > 0 && <li><strong>{data.attempts} attempt{data.attempts === 1 ? "" : "s"}</strong> and their marks on this device</li>}
+          {set.bankId && <li>The set from the <strong>shared library, for everyone</strong>. It will not come back on the next sync.</li>}
+        </ul>
+        <p>This cannot be undone.</p>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { useNavigate } from "react-router";
 import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import Heatmap from "../components/Heatmap";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { formatDuration, truncate, stemsOf } from "../lib/questions";
 import { discardSession, startSession } from "../lib/session";
 import { readingRemainingSec, remainingSec } from "../lib/sessionClock";
@@ -40,6 +41,8 @@ export default function HomePage() {
   const [examError, setExamError] = useState("");
   const [minutes, setMinutes] = useState("");
   const [search, setSearch] = useState("");
+  const [replacing, setReplacing] = useState<"practice" | "exam" | null>(null);
+  const [discarding, setDiscarding] = useState(false);
   const session = useSession();
   const inProgress = useLiveQuery(async () => {
     if (!session) return null;
@@ -106,10 +109,10 @@ export default function HomePage() {
   const suggestedMinutes = suggestedSessionMinutes(selectedQuestions, data.sets, data.settings.minutesPerMark, unit);
   const validMinutes = minutes.trim() === "" || (Number.isFinite(Number(minutes)) && Number(minutes) >= 0);
   const validCount = (unit === "sets" && chooseSets) || count.trim() === "" || (Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= poolCount);
-  const start = async () => {
+  const start = async (force = false) => {
     if (starting) return;
     if (!selectedQuestions.length || !validMinutes || !validCount) return;
-    if (session && !confirm("Start a new session and replace your unfinished paper? Submitted answers will be kept.")) return;
+    if (session && !force) { setReplacing("practice"); return; }
     const mins = minutes.trim() === "" ? suggestedMinutes : Number(minutes);
     setStarting(true); setStartError("");
     try {
@@ -121,12 +124,12 @@ export default function HomePage() {
   };
 
   const examTopics = examPresentationPool(data.sets, data.questions).size;
-  const startExam = async () => {
+  const startExam = async (force = false) => {
     if (starting) return;
     setExamError("");
     const paper = buildExamPaper(data.sets, data.questions);
     if (!paper.length) { setExamError("At least six presentations with sets are needed."); return; }
-    if (session && !confirm("Replace your unfinished session? Submitted answers will be kept.")) return;
+    if (session && !force) { setReplacing("exam"); return; }
     setStarting(true);
     try {
       await ensureQuestionContent(paper.map(q => q.id));
@@ -144,7 +147,7 @@ export default function HomePage() {
   return (
     <div>
       <LibraryStatus /><header className="home-intro">
-        <div><h1>SAQ practice</h1><p className="muted">Choose a presentation, practise a case, and build your confidence.</p></div>
+        <div><h1>{data.settings.cloudUser?.name ? `Welcome back, ${data.settings.cloudUser.name.split(" ")[0]}` : "Your practice"}</h1><p className="muted">Pick a presentation, sit a case, then mark it against the model answer.</p></div>
         <div className="home-shortcuts"><a href="#new-session">New session</a><a href="#history">View history</a></div>
       </header>
       {session && inProgress && (
@@ -165,7 +168,7 @@ export default function HomePage() {
           ) : (
             <button className="primary" onClick={() => nav("/paper")}>Continue session</button>
           )}
-          <button onClick={() => { if (confirm("Discard this unfinished session? Unsubmitted answers will be deleted. Submitted answers and marks will be kept.")) void discardSession(); }} title={session.mode === "practice" && done > 0 ? "Submitted questions stay answered" : undefined}>Discard</button>
+          <button onClick={() => setDiscarding(true)}>Discard</button>
         </div>
       )}
       <div className="card home-card home-progress-card">
@@ -199,7 +202,7 @@ export default function HomePage() {
           <p className="muted">Answers unlock after reading time. The clock keeps running if you leave.</p>
           {examTopics < EXAM_STEMS && <p role="status">{examTopics} of 6 presentations available. Add sets from {EXAM_STEMS - examTopics} more to start.</p>}
           {examError && <p className="field-error" role="alert">{examError}</p>}
-          <button className="primary" onClick={startExam} disabled={starting || examTopics < EXAM_STEMS}>{starting ? "Preparing exam…" : "Start exam"}</button>
+          <button className="primary" onClick={() => void startExam()} disabled={starting || examTopics < EXAM_STEMS}>{starting ? "Preparing exam…" : "Start exam"}</button>
         </div> : <>
         <div className="session-unit-picker" role="group" aria-label="What would you like to practise?">
           <button className={unit === "sets" ? "selected" : ""} aria-pressed={unit === "sets"} onClick={() => { setUnit("sets"); setCount(""); }}><strong>Whole sets</strong><span>Complete cases, with every question in order.</span></button>
@@ -267,11 +270,18 @@ export default function HomePage() {
               {!!selectedQuestions.length && <p className="muted">Practice, {minutes === "0" ? "Untimed" : `${minutes || suggestedMinutes} minutes`}</p>}
               {!selectedQuestions.length && selected.size > 0 && <p className="muted">{unit === "sets" && chooseSets ? "Tick the sets you want to study." : "Try changing the unattempted filter or the number requested."}</p>}
             </div>
-            <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={start} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
+            <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={() => void start()} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
           </div>
         </>}
       </div>
       <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
+
+      <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing; setReplacing(null); if (mode === "exam") void startExam(true); else void start(true); }}>
+        <p>You have a paper in progress. Starting a new one replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
+      </ConfirmDialog>
+      <ConfirmDialog open={discarding} title="Discard this session?" confirmLabel="Discard session" destructive onCancel={() => setDiscarding(false)} onConfirm={() => { setDiscarding(false); void discardSession(); }}>
+        <p>Unsubmitted answers are deleted. {done > 0 ? `The ${done} submitted ${done === 1 ? "answer" : "answers"} and any marks are kept.` : "Submitted answers and marks are always kept."}</p>
+      </ConfirmDialog>
     </div>
   );
 }

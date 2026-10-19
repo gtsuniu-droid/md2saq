@@ -35,7 +35,7 @@ export default function SessionReviewPage() {
 
   const finish = () => {
     if (session?.id === id && !unfinished.length) saveSession(null);
-    nav("/");
+    nav("/home");
   };
   const resume = (questionId: string) => {
     if (!session || session.id !== id) return;

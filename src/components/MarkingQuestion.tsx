@@ -1,3 +1,4 @@
+import { useState } from "react";
 import QuestionCommunity from "./QuestionCommunity";
 import CommentedAnswer from "./CommentedAnswer";
 import AnswerHtml from "./AnswerHtml";
@@ -37,6 +38,15 @@ export default function MarkingQuestion({ question, attempt, set, draft, previou
   const setPart = (label: string, patch: Partial<PartMark>) => {
     setParts(parts.map((p) => (p.label === label ? { ...p, ...patch } : p)));
   };
+  // What is typed in a score box, so it can be cleared and retyped without a leading 0 sticking around.
+  const [typing, setTyping] = useState<Record<string, string>>({});
+  const scoreField = (key: string, value: number, patch: (n: number) => void, max?: number, ariaLabel?: string) => (
+    <input aria-label={ariaLabel} type="number" inputMode="decimal" min={0} max={max} step="any" className="score-input"
+      value={typing[key] ?? String(value)}
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => { const raw = e.target.value; setTyping((t) => ({ ...t, [key]: raw })); const n = Number(raw); if (raw !== "" && Number.isFinite(n)) patch(Math.max(0, n)); else if (raw === "") patch(0); }}
+      onBlur={() => setTyping((t) => { const { [key]: _gone, ...rest } = t; void _gone; return rest; })} />
+  );
 
   const total = parts.reduce((a, p) => a + p.score, 0);
   const max = parts.reduce((a, p) => a + p.maxScore, 0);
@@ -93,9 +103,9 @@ export default function MarkingQuestion({ question, attempt, set, draft, previou
                 {hasModelAnswer(pi.part) ? <ModelAnswerContent answer={pi.part} /> : <p className="muted">{wholeModel ? "Refer to the model answer above and enter your score below." : "No model answer for this part. Enter your score below."}</p>}
                 <div className="row" style={{ marginTop: "0.6rem" }}>
                   <label style={{ margin: 0 }}>Score</label>
-                  <input aria-label={`Score${pi.part.label ? ` for part ${pi.part.label}` : ""}`} type="number" min={0} max={pm.maxScore || undefined} value={pm.score} onChange={(e) => setPart(pi.part.label, { score: Number(e.target.value) })} />
+                  {scoreField(`score:${pi.part.label}`, pm.score, (n) => setPart(pi.part.label, { score: n }), pm.maxScore || undefined, `Score${pi.part.label ? ` for part ${pi.part.label}` : ""}`)}
                   <span>/</span>
-                  <input aria-label={`Maximum score${pi.part.label ? ` for part ${pi.part.label}` : ""}`} type="number" min={0} value={pm.maxScore} onChange={(e) => setPart(pi.part.label, { maxScore: Number(e.target.value) })} />
+                  {scoreField(`max:${pi.part.label}`, pm.maxScore, (n) => setPart(pi.part.label, { maxScore: n }), undefined, `Maximum score${pi.part.label ? ` for part ${pi.part.label}` : ""}`)}
                 </div>
               </div>
             </div>

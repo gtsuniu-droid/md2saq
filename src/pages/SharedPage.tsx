@@ -25,13 +25,13 @@ export default function SharedPage() {
     return () => { active = false; };
   }, [routeBankId, code, retry]);
   if (!result || result.key !== requestKey) return <p role="status">Loading shared set…</p>;
-  if (!result.pack) return <div><h1>Shared set</h1><p role="alert">{result.error}</p><button onClick={() => setRetry(n => n + 1)}>Try again</button> <Link to="/">Home</Link></div>;
+  if (!result.pack) return <div><h1>Shared set</h1><p role="alert">{result.error}</p><button onClick={() => setRetry(n => n + 1)}>Try again</button> <Link to="/home">Home</Link></div>;
   const pack = result.pack;
   const bankId = result.bankId;
   const questions = [...pack.questions].sort((a, b) => a.order - b.order);
   const visible = questionId ? questions.filter(q => q.id === questionId) : questions;
   return <div className="shared-page">
-    <div className="row spread"><Link to="/">Home</Link>{questionId && <Link to={sharedPath(bankId)}>View whole set</Link>}</div>
+    <div className="row spread"><Link to="/home">Home</Link>{questionId && <Link to={sharedPath(bankId)}>View whole set</Link>}</div>
     <h1>{pack.set.name || "Shared set"}</h1>
     {pack.set.instructions && <p className="pre">{pack.set.instructions}</p>}
     {!visible.length && <p role="alert">{questionId ? "This question is no longer in the published set. You can still view the whole set." : "This set has no questions yet."}</p>}
