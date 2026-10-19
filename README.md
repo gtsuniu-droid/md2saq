@@ -213,6 +213,13 @@ passcode is remembered per device and can be cleared from Settings.
   Home at `/home`. Visitors who are signed in or have used the app before are sent straight
   to `/home`; `/welcome` always shows the landing page. Logos for the "Made for medical students at" row live in `public/landing/`.
 
+## Editing the bank from Claude (MCP)
+
+`mcp/` holds `saq-mcp`, a Model Context Protocol server that lets Claude Desktop or Claude
+Code read and edit the shared bank: list and search sets, read a set with question numbers,
+change a question, part, stem or the set's details, add a question or a whole paper, and
+delete with explicit confirmation. See `mcp/README.md` for setup.
+
 ## Pushing questions from your own generator
 
 The bank accepts plain text, parsed with the same rules as the Create page, so any script
