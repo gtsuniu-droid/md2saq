@@ -176,8 +176,8 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
 
       <section className="landing-faq landing-reveal" id="faq" aria-labelledby="faq-heading">
         <h2 id="faq-heading">Good to know</h2>
-        <details><summary>Where is my work stored?</summary><p>In your browser, on this device. Nothing leaves it unless you sign in to sync between devices or share a set with a link. You can export a backup from Settings at any time.</p></details>
-        <details><summary>Do I need an account?</summary><p>No. Sign in with Google only if you want your attempts, marks and settings to follow you between devices.</p></details>
+        <details><summary>Where is my work stored?</summary><p>In your browser on this device, and in your account once you sign in, so it is there on your other devices too. You can export a backup from Settings at any time.</p></details>
+        <details><summary>Do I need an account?</summary><p>Yes, after a short try: your first two questions are free without one. A free account, with Google or an email address, keeps your attempts, marks and notes, lets them follow you between devices, and lets you join the discussion on any question.</p></details>
         <details><summary>Where do the questions come from?</summary><p>From a shared bank of cases built around the core presentations. New sets arrive in your library automatically when the app opens.</p></details>
       </section>
 

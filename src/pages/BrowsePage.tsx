@@ -20,6 +20,8 @@ import { bankErrorMessage, deleteSetEverywhere } from "../lib/share";
 import { BankPasscodeError, verifyPasscode } from "../lib/bank";
 import { patchSettings } from "../data/db";
 import ConfirmDialog from "../components/ConfirmDialog";
+import AccountGate from "../components/AccountGate";
+import { useAccountGate } from "../lib/accountGate";
 import { useLocation } from "react-router";
 
 export default function BrowsePage() {
@@ -32,6 +34,8 @@ export default function BrowsePage() {
   const [pendingDelete, setPendingDelete] = useState<SetSummary | null>(null);
   const [passcode, setPasscode] = useState("");
   const [replacing, setReplacing] = useState<SetSummary | null>(null);
+  const gate = useAccountGate();
+  const [gateOpen, setGateOpen] = useState(false);
   const location = useLocation();
   const flash = (location.state as { message?: string } | null)?.message;
   const detail = useRef<HTMLDivElement>(null);
@@ -74,6 +78,7 @@ export default function BrowsePage() {
     nav("/paper");
   }
   function start(summary: SetSummary) {
+    if (gate.gated) { setGateOpen(true); return; }
     if (loadSession()) { setReplacing(summary); return; }
     begin(summary);
   }
@@ -163,6 +168,7 @@ export default function BrowsePage() {
       </section>
     </div>
 
+    <AccountGate open={gateOpen} guestSubmitted={gate.guestSubmitted} onClose={() => setGateOpen(false)} />
     <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const s = replacing!; setReplacing(null); begin(s); }}>
       <p>You have a paper in progress. Starting this set replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
     </ConfirmDialog>

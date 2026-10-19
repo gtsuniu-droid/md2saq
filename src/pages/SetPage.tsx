@@ -1,5 +1,7 @@
 import ShareLinks from "../components/ShareLinks";
 import ConfirmDialog from "../components/ConfirmDialog";
+import AccountGate from "../components/AccountGate";
+import { useAccountGate } from "../lib/accountGate";
 import { primaryPresentation } from "../lib/primaryPresentation";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -25,6 +27,8 @@ export default function SetPage() {
   const [moving, setMoving] = useState(false);
   const [moveMessage, setMoveMessage] = useState<string | null>(null);
   const [replacing, setReplacing] = useState<"practice" | "exam" | null>(null);
+  const gate = useAccountGate();
+  const [gateOpen, setGateOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -55,6 +59,7 @@ export default function SetPage() {
     nav("/paper");
   };
   const start = (mode: "practice" | "exam") => {
+    if (gate.gated) { setGateOpen(true); return; }
     if (loadSession()) { setReplacing(mode); return; }
     begin(mode);
   };
@@ -193,6 +198,7 @@ export default function SetPage() {
         </>
       )}
 
+      <AccountGate open={gateOpen} guestSubmitted={gate.guestSubmitted} onClose={() => setGateOpen(false)} />
       <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing!; setReplacing(null); begin(mode); }}>
         <p>You have a paper in progress. Starting this set replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
       </ConfirmDialog>

@@ -6,6 +6,13 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Firebase's sign-in handler, served from this domain so the Google window names this site.
+[[redirects]]
+  from = "/__/auth/*"
+  to = "https://saqmd2.firebaseapp.com/__/auth/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

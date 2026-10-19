@@ -4,8 +4,10 @@ A minimal site for practising short answer questions against a fixed list of cli
 presentations. Paste questions in, sit them under a timer in an exam-style layout, mark
 them against the model answer, and see which presentations you have covered.
 
-Everything is stored in the browser (IndexedDB). Nothing leaves your device except sets
-you deliberately share to the bank. Export a backup from Settings now and then.
+Everything is stored in the browser (IndexedDB) and, once signed in, in the person's account.
+A visitor may submit two questions without an account; after that, starting a new session or
+opening another set asks for a free account (Google, or email and password). Guest work is
+never removed: signing in attaches it to the account. Export a backup from Settings now and then.
 
 ## Run locally
 

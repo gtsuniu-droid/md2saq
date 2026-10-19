@@ -43,9 +43,13 @@ async function services() {
         import("firebase/auth"),
         import("firebase/firestore"),
       ]);
+      // On the live site the sign-in handler is proxied from our own domain (see netlify.toml),
+      // so the Google window says this site's name rather than the Firebase project's.
+      const host = typeof window !== "undefined" ? window.location.host : "";
+      const authDomain = /\.netlify\.app$/.test(host) ? host : config.authDomain;
       const app = initializeApp({
         apiKey: config.apiKey,
-        authDomain: config.authDomain,
+        authDomain,
         projectId: config.projectId,
         appId: config.appId,
       });

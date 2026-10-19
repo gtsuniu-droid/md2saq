@@ -17,6 +17,8 @@ import { canWriteAnswers, readingRemainingSec, overtimeSec, remainingSec, should
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
 import SetMarking from "../components/SetMarking";
+import AccountGate from "../components/AccountGate";
+import { useAccountGate } from "../lib/accountGate";
 import { isAdmin } from "../lib/admin";
 import { selectionOffsets, toggleRange, type Range } from "../lib/highlights";
 import { getSettings } from "../data/db";
@@ -35,6 +37,8 @@ export default function PaperPage() {
   const [now, setNow] = useState(Date.now());
   const [ready, setReady] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const gate = useAccountGate();
+  const [gateOpen, setGateOpen] = useState(false);
   const [submittingSet, setSubmittingSet] = useState(false);
   const [saveError, setSaveError] = useState("");
   const imageJobs = useRef(new Set<string>());
@@ -377,6 +381,12 @@ export default function PaperPage() {
 
   const goTo = (i: number, label = "") => {
     if (imageJobs.current.size) return;
+    if (gate.gated && session && data) {
+      // A guest may finish the set they are in; the next one needs an account.
+      const groups = sessionSetGroups(session, data.questions);
+      const target = groups.findIndex((g) => g.indices.includes(i));
+      if (target >= openedSetCount(session, groups)) { setGateOpen(true); return; }
+    }
     setSummaryOpen(false);
     setCurrent(i, label);
     setTimeout(() => document.getElementById(`part-${i}-${label || "q"}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
@@ -557,6 +567,7 @@ export default function PaperPage() {
         </div>
         </div>}
       </div>
+      <AccountGate open={gateOpen} guestSubmitted={gate.guestSubmitted} onClose={() => setGateOpen(false)} />
       {editing && (
         <QuickEdit
           question={editing}

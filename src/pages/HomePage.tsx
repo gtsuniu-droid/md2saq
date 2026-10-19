@@ -12,6 +12,8 @@ import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import Heatmap from "../components/Heatmap";
 import ConfirmDialog from "../components/ConfirmDialog";
+import AccountGate from "../components/AccountGate";
+import { useAccountGate } from "../lib/accountGate";
 import { formatDuration, truncate, stemsOf } from "../lib/questions";
 import { discardSession, startSession } from "../lib/session";
 import { readingRemainingSec, remainingSec } from "../lib/sessionClock";
@@ -43,6 +45,8 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [replacing, setReplacing] = useState<"practice" | "exam" | null>(null);
   const [discarding, setDiscarding] = useState(false);
+  const gate = useAccountGate();
+  const [gateOpen, setGateOpen] = useState(false);
   const session = useSession();
   const inProgress = useLiveQuery(async () => {
     if (!session) return null;
@@ -112,6 +116,7 @@ export default function HomePage() {
   const start = async (force = false) => {
     if (starting) return;
     if (!selectedQuestions.length || !validMinutes || !validCount) return;
+    if (gate.gated) { setGateOpen(true); return; }
     if (session && !force) { setReplacing("practice"); return; }
     const mins = minutes.trim() === "" ? suggestedMinutes : Number(minutes);
     setStarting(true); setStartError("");
@@ -129,6 +134,7 @@ export default function HomePage() {
     setExamError("");
     const paper = buildExamPaper(data.sets, data.questions);
     if (!paper.length) { setExamError("At least six presentations with sets are needed."); return; }
+    if (gate.gated) { setGateOpen(true); return; }
     if (session && !force) { setReplacing("exam"); return; }
     setStarting(true);
     try {
@@ -279,6 +285,7 @@ export default function HomePage() {
       <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing; setReplacing(null); if (mode === "exam") void startExam(true); else void start(true); }}>
         <p>You have a paper in progress. Starting a new one replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
       </ConfirmDialog>
+      <AccountGate open={gateOpen} guestSubmitted={gate.guestSubmitted} onClose={() => setGateOpen(false)} />
       <ConfirmDialog open={discarding} title="Discard this session?" confirmLabel="Discard session" destructive onCancel={() => setDiscarding(false)} onConfirm={() => { setDiscarding(false); void discardSession(); }}>
         <p>Unsubmitted answers are deleted. {done > 0 ? `The ${done} submitted ${done === 1 ? "answer" : "answers"} and any marks are kept.` : "Submitted answers and marks are always kept."}</p>
       </ConfirmDialog>

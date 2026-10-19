@@ -1507,3 +1507,4 @@ details.section > summary h2 { font-size: 1.15rem; }
 .setting-row.stacked { flex-direction: column; align-items: stretch; gap: .9rem; }
 .verify-bar { display: flex; align-items: center; justify-content: space-between; gap: .75rem 1rem; flex-wrap: wrap; padding: .55rem clamp(1rem, 2.5vw, 2.4rem); background: color-mix(in srgb, var(--warn) 12%, var(--card)); border-bottom: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border)); font-size: .88rem; }
 .verify-bar .row { gap: .4rem .6rem; }
+.account-gate h2 { font-size: 1.15rem; }

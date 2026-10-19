@@ -10,7 +10,11 @@
       "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "SAQ Practice",
-        "supportEmail": "gtsuniu@gmail.com"
+        "supportEmail": "gtsuniu@gmail.com",
+        "authorizedRedirectUris": [
+          "https://md2saq.netlify.app/__/auth/handler",
+          "https://saqmd2.firebaseapp.com/__/auth/handler"
+        ]
       }
     }
   }
