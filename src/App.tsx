@@ -166,7 +166,7 @@ export default function App() {
   return (
     <div className="app">
       <nav className="nav">
-        <NavLink to="/home" className="brand"><BrandMark />SAQ Practice</NavLink>
+        <NavLink to="/welcome" className="brand"><BrandMark />SAQ Practice</NavLink>
         <NavLink to="/home" end>Home</NavLink>
         <NavLink to="/browse">Browse</NavLink>
         <NavLink to="/notes">Notes</NavLink>
