@@ -1,4 +1,4 @@
-import { ADMIN_EMAILS } from "./admin";
+import { OWNER_EMAIL } from "./admin";
 import { cloudConfigured, communityServices, type CloudUser } from "./firebase";
 
 /** One record per Google account that has signed in, so admins can see who uses the site. */
@@ -56,7 +56,7 @@ export async function touchMember(user: CloudUser): Promise<Member["role"]> {
   }
 }
 
-/** Everyone who has signed in, most recent first. Admins only; the rules enforce it. */
+/** Everyone who has signed in, most recent first. The owner only; the rules enforce it. */
 export async function listMembers(): Promise<Member[]> {
   const { firestore } = await communityServices();
   const { collection, getDocs, limit, orderBy, query } = await import("firebase/firestore");
@@ -71,7 +71,7 @@ export async function setMemberRole(uid: string, admin: boolean): Promise<void> 
   await updateDoc(doc(firestore, COLLECTION, uid), { role: admin ? "admin" : deleteField() });
 }
 
-/** Accounts named in the build configuration cannot be demoted from the People list. */
+/** The owner account alone sees the People list; it can never be demoted. */
 export function isOwnerEmail(email?: string): boolean {
-  return !!email && ADMIN_EMAILS.includes(email.toLowerCase());
+  return !!email && email.toLowerCase() === OWNER_EMAIL;
 }

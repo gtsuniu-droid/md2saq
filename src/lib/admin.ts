@@ -9,6 +9,13 @@ import type { Settings } from "../data/types";
 const RAW = (import.meta.env.VITE_ADMIN_EMAILS as string | undefined) || "gtsuniu@gmail.com";
 export const ADMIN_EMAILS: string[] = RAW.split(/[,\s]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
 
+/** The one account that can see who has signed in and hand out the admin role. Fixed, not configurable. */
+export const OWNER_EMAIL = "gtsuniu@gmail.com";
+
+export function isOwner(settings: Pick<Settings, "cloudUser"> | undefined): boolean {
+  return settings?.cloudUser?.email?.toLowerCase() === OWNER_EMAIL;
+}
+
 export function adminRestricted(): boolean {
   return ADMIN_EMAILS.length > 0;
 }

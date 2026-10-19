@@ -41,33 +41,32 @@ service cloud.firestore {
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
-    // Who has signed in. People write their own profile; admins read the list and set roles.
+    // Who has signed in. People write their own profile; only the owner reads the list and sets roles.
     match /members/{uid} {
       function signedIn() { return request.auth != null; }
+      // Exactly one Google account, verified, signed in through Google.
       function owner() {
         return signedIn() && request.auth.token.email_verified == true
-          && request.auth.token.email == 'gtsuniu@gmail.com';
+          && request.auth.token.email == 'gtsuniu@gmail.com'
+          && request.auth.token.firebase.sign_in_provider == 'google.com';
       }
-      function admin() {
-        return owner() || (signedIn()
-          && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-          && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'admin');
-      }
+      // A person's own record carries the email Firebase verified for them, never a typed one.
       function ownProfile() {
         let d = request.resource.data;
         return request.auth.uid == uid
           && d.keys().hasOnly(['uid', 'email', 'name', 'photo', 'createdAt', 'lastSeenAt', 'role'])
           && d.uid == uid && d.email is string && d.email.size() <= 200
+          && (d.email == request.auth.token.email || d.email == '')
           && d.name is string && d.name.size() <= 200 && d.photo is string && d.photo.size() <= 2000
           && d.lastSeenAt == request.time;
       }
-      allow get: if signedIn() && (request.auth.uid == uid || admin());
-      allow list: if admin() && request.query.limit != null && request.query.limit <= 500;
+      allow get: if signedIn() && (request.auth.uid == uid || owner());
+      allow list: if owner() && request.query.limit != null && request.query.limit <= 500;
       allow create: if signedIn() && ownProfile() && request.resource.data.createdAt == request.time
         && !('role' in request.resource.data);
       allow update: if signedIn() && (
         (ownProfile() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'name', 'photo', 'lastSeenAt']))
-        || (admin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+        || (owner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
           && (!('role' in request.resource.data) || request.resource.data.role == 'admin')));
       allow delete: if false;
     }

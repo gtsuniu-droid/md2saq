@@ -31,6 +31,8 @@ export default function PeopleSection() {
   if (!settings) return null;
   if (!cloudConfigured()) return null;
   const me = settings.cloudUser;
+  // The list of accounts is the owner's alone; other admins never see it.
+  if (!me || !isOwnerEmail(me.email)) return null;
   const query = search.trim().toLowerCase();
   const shown = (members ?? []).filter((m) => !query || `${m.name ?? ""} ${m.email ?? ""}`.toLowerCase().includes(query));
   const admins = (members ?? []).filter((m) => m.role === "admin" || isOwnerEmail(m.email)).length;
@@ -49,8 +51,8 @@ export default function PeopleSection() {
 
   return <details className="section" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open && members === null && !loading) void load(); }}>
     <summary><h2>People</h2></summary>
-    <p className="muted" style={{ margin: ".2rem 0 .8rem" }}>Everyone who has signed in with Google. Admins see the Admin page and, with the passcode, can change the shared library.</p>
-    {!me ? <p className="muted">Sign in to see the list.</p> : <>
+    <p className="muted" style={{ margin: ".2rem 0 .8rem" }}>Everyone who has signed in with Google. Only you can see this list. Admins see the Admin page and, with the passcode, can change the shared library.</p>
+    <>
       <div className="row" style={{ marginBottom: ".6rem" }}>
         <input type="search" aria-label="Search people" placeholder="Search by name or email" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span className="muted">{members ? `${members.length} ${members.length === 1 ? "person" : "people"}, ${admins} admin${admins === 1 ? "" : "s"}` : loading ? "Loading…" : ""}</span>
@@ -76,7 +78,7 @@ export default function PeopleSection() {
           {!shown.length && <tr><td colSpan={5} className="muted">{members.length ? "Nobody matches." : "Nobody has signed in yet."}</td></tr>}
         </tbody>
       </table></div>}
-    </>}
+    </>
     <ConfirmDialog open={pending !== null} title={pending?.role === "admin" ? `Remove admin from ${pending?.name || pending?.email}?` : `Make ${pending?.name || pending?.email} an admin?`} confirmLabel={pending?.role === "admin" ? "Remove admin" : "Make admin"} destructive={pending?.role === "admin"} busy={busy} error={error || null} onCancel={() => setPending(null)} onConfirm={() => void change()}>
       <p>{pending?.role === "admin" ? "They keep practising as before but lose the Admin page and the editing controls the next time they sign in." : "They will see the Admin page and editing controls the next time they sign in. Give them the admin passcode separately; it is still required to change the shared library."}</p>
     </ConfirmDialog>
