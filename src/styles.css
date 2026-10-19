@@ -1480,3 +1480,11 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .people-table td { vertical-align: middle; }
 .people-table .account-identity img, .people-table .account-identity .avatar-fallback { width: 30px; height: 30px; font-size: .8rem; }
 .people-table .account-identity strong { font-weight: 500; }
+
+/* Admin sections: a clear chevron that turns when the section opens. */
+details.section > summary { margin: 1.6rem 0 .5rem; gap: .65rem; }
+details.section > summary::before { content: ""; width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235f6c7c' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5'/%3E%3C/svg%3E") center / 14px no-repeat; transition: transform .18s ease, background-color .15s ease; font-size: 0; }
+details.section[open] > summary::before { content: ""; transform: rotate(90deg); }
+details.section > summary:hover::before { background-color: var(--border); }
+details.section > summary h2 { font-size: 1.15rem; }
+@media (prefers-color-scheme: dark) { details.section > summary::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23a5b1c1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5'/%3E%3C/svg%3E"); } }
