@@ -1,24 +1,45 @@
 import { generateHTML } from "@tiptap/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
+import gsap from "gsap";
 import type { AnswerComment } from "../data/types";
-import { newId } from "../data/db";
+import { getSettings, newId } from "../data/db";
+import { useLiveQuery } from "dexie-react-hooks";
 import { EDITOR_EXTENSIONS } from "./Editor";
 import { commentSegments, deleteAnswerComment, validCommentAnchor, writeAnswerComment, type AnswerAnchor } from "../lib/answerComments";
 import { requestSync } from "../lib/sync";
 
-interface Props { attemptId: string; partLabel: string; doc: unknown; text?: string; comments: AnswerComment[] }
+interface Props {
+  attemptId: string;
+  partLabel: string;
+  doc: unknown;
+  text?: string;
+  comments: AnswerComment[];
+  /** Show comments in a margin beside the answer, like a word processor. */
+  margin?: boolean;
+}
+
+const CARD_GAP = 8;
 
 /** Comments belong to the submitted answer, independently of whether it has been marked. */
-export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments }: Props) {
+export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false }: Props) {
   const root = useRef<HTMLDivElement>(null);
+  const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
+  const author = <span className="comment-author">{me?.photo ? <img src={me.photo} alt="" referrerPolicy="no-referrer" /> : <span className="comment-avatar">{(me?.name ?? me?.email ?? "You").charAt(0).toUpperCase()}</span>}<span>{me?.name ?? me?.email ?? "You"}</span></span>;
+  const shell = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const cardRefs = useRef(new Map<string, HTMLDivElement>());
   const [selection, setSelection] = useState<AnswerAnchor | null>(null);
+  const [selectionTop, setSelectionTop] = useState(0);
   const [draft, setDraft] = useState<AnswerComment | null>(null);
   const [active, setActive] = useState<string | null>(null);
+  const activeRef = useRef<string | null>(null);
+  activeRef.current = active;
   const [showList, setShowList] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [tops, setTops] = useState<Record<string, number>>({});
+  const [marginHeight, setMarginHeight] = useState(0);
   const mine = comments.filter((c) => c.partLabel === partLabel);
   const current = mine.find((c) => c.id === active);
   const rendered = useMemo(() => {
@@ -42,6 +63,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
         const highlight = document.createElement("mark");
         highlight.className = "answer-comment-highlight";
         highlight.dataset.commentIds = JSON.stringify(segment.ids);
+        if (segment.ids.some((id) => id === activeRef.current)) highlight.classList.add("active");
         highlight.setAttribute("role", "button"); highlight.tabIndex = 0;
         highlight.setAttribute("aria-label", `Comment on: ${segment.text}`);
         highlight.textContent = segment.text;
@@ -51,12 +73,51 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       node.replaceWith(fragment);
     }
     return { html: container.innerHTML, plain };
-  }, [doc, text, comments, partLabel]);
+  }, [doc, text, comments, partLabel, active]);
   useEffect(() => { if (draft) input.current?.focus(); }, [draft?.id]);
   useEffect(() => { setSelection(null); setDraft(null); setActive(null); setShowList(false); setStatus(""); }, [attemptId, partLabel]);
 
+  // Margin layout: each card sits level with its highlight, pushed down only to avoid the one above.
+  const ordered = useMemo(() => [...mine].sort((a, b) => a.start - b.start), [mine]);
+  const cardOrder = useMemo(() => {
+    const items: { id: string; anchorTop: number }[] = ordered.map((c) => ({ id: c.id, anchorTop: tops[c.id] ?? 0 }));
+    if (draft && !mine.some((c) => c.id === draft.id)) items.push({ id: draft.id, anchorTop: selectionTop });
+    return items.sort((a, b) => a.anchorTop - b.anchorTop);
+  }, [ordered, tops, draft, mine, selectionTop]);
+  const [laid, setLaid] = useState<Record<string, number>>({});
+  useLayoutEffect(() => {
+    if (!margin || !root.current || !shell.current) return;
+    const base = shell.current.getBoundingClientRect().top;
+    const next: Record<string, number> = {};
+    root.current.querySelectorAll<HTMLElement>("[data-comment-ids]").forEach((el) => {
+      const ids = JSON.parse(el.dataset.commentIds ?? "[]") as string[];
+      const top = el.getBoundingClientRect().top - base;
+      for (const id of ids) if (next[id] === undefined || top < next[id]) next[id] = top;
+    });
+    setTops((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+  }, [margin, rendered.html, mine.length]);
+  useLayoutEffect(() => {
+    if (!margin) return;
+    let cursor = 0;
+    const next: Record<string, number> = {};
+    for (const item of cardOrder) {
+      const top = Math.max(item.anchorTop, cursor);
+      next[item.id] = top;
+      const height = cardRefs.current.get(item.id)?.offsetHeight ?? 0;
+      cursor = top + height + CARD_GAP;
+    }
+    setLaid((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+    setMarginHeight(cursor);
+  }, [margin, cardOrder, active, draft?.text, status]);
+  useEffect(() => {
+    if (!margin) return;
+    const cards = cardRefs.current;
+    const el = draft ? cards.get(draft.id) : null;
+    if (el) gsap.fromTo(el, { opacity: 0, x: 12 }, { opacity: 1, x: 0, duration: 0.25, ease: "power2.out" });
+  }, [margin, draft?.id]);
+
   const captureSelection = () => {
-    if (draft || !root.current || !text && !doc) return;
+    if (draft || !root.current || (!text && !doc)) return;
     const selected = window.getSelection();
     if (!selected?.rangeCount || selected.isCollapsed) { setSelection(null); return; }
     const range = selected.getRangeAt(0);
@@ -67,15 +128,23 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     while (start < end && /\s/.test(rendered.plain[start])) start++;
     while (end > start && /\s/.test(rendered.plain[end - 1])) end--;
     const anchor = { start, end, quote: rendered.plain.slice(start, end) };
-    setSelection(validCommentAnchor(rendered.plain, anchor) ? anchor : null);
+    const ok = validCommentAnchor(rendered.plain, anchor);
+    setSelection(ok ? anchor : null);
+    if (ok && shell.current) setSelectionTop(range.getBoundingClientRect().top - shell.current.getBoundingClientRect().top);
   };
   const openHighlight = (target: EventTarget) => {
     if (draft || window.getSelection()?.toString().trim()) return;
     const highlight = target instanceof Element ? target.closest<HTMLElement>("[data-comment-ids]") : null;
     if (highlight && root.current?.contains(highlight)) {
       const ids = JSON.parse(highlight.dataset.commentIds ?? "[]") as string[];
-      setActive(ids[0] ?? null); setShowList(ids.length > 1); setStatus("");
+      setActive(ids[0] ?? null); setShowList(!margin && ids.length > 1); setStatus("");
     }
+  };
+  const startDraft = () => {
+    if (!selection) return;
+    setDraft({ id: newId(), partLabel, ...selection, text: "", createdAt: 0, updatedAt: 0 });
+    setActive(null); setStatus("");
+    window.getSelection()?.removeAllRanges();
   };
   const save = async () => {
     if (!draft || busy || !draft.text.trim()) return;
@@ -83,33 +152,69 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     try {
       if (!validCommentAnchor(rendered.plain, draft)) throw new Error("The selected passage changed. Select it again before commenting.");
       await writeAnswerComment(attemptId, draft, draft.updatedAt || undefined);
-      requestSync(); setActive(draft.id); setDraft(null); setSelection(null); setStatus("Comment saved");
+      requestSync(); setActive(draft.id); setDraft(null); setSelection(null); setStatus(margin ? "" : "Comment saved");
     } catch (e) { setStatus(e instanceof Error ? e.message : "Could not save comment."); }
     finally { setBusy(false); }
   };
-  const remove = async () => {
-    if (!current || busy) return;
+  const remove = async (target = current) => {
+    if (!target || busy) return;
     setBusy(true);
-    try { await deleteAnswerComment(attemptId, current.id, current.updatedAt); requestSync(); setActive(null); setStatus("Comment removed"); }
+    try { await deleteAnswerComment(attemptId, target.id, target.updatedAt); requestSync(); setActive(null); setStatus(margin ? "" : "Comment removed"); }
     catch (e) { setStatus(e instanceof Error ? e.message : "Could not remove comment."); }
     finally { setBusy(false); }
   };
-  return <div className="commented-answer">
-    <div ref={root} className="answer-html" onPointerUp={captureSelection} onKeyUp={captureSelection} onClick={(e) => openHighlight(e.target)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } }} dangerouslySetInnerHTML={{ __html: rendered.html }} />
-    <div className="answer-comment-tools">
-      {selection && !draft && <button className="small" onMouseDown={(e) => e.preventDefault()} onClick={() => { setDraft({ id: newId(), partLabel, ...selection, text: "", createdAt: 0, updatedAt: 0 }); setActive(null); setStatus(""); window.getSelection()?.removeAllRanges(); }}>Add comment</button>}
-      {mine.length > 0 && <button className="small link" aria-expanded={showList} onClick={() => setShowList(!showList)}>Comments ({mine.length})</button>}
+
+  const answer = <div ref={root} className="answer-html" onPointerUp={captureSelection} onKeyUp={captureSelection} onClick={(e) => openHighlight(e.target)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } }} dangerouslySetInnerHTML={{ __html: rendered.html }} />;
+
+  const draftCard = (positioned: boolean) => draft && (
+    <div key={draft.id} ref={(el) => { if (el) cardRefs.current.set(draft.id, el); else cardRefs.current.delete(draft.id); }} className="answer-comment-card draft" role="region" aria-label="Write a comment" style={positioned ? { top: laid[draft.id] ?? selectionTop } : undefined}>
+      {positioned ? author : <blockquote>{draft.quote}</blockquote>}
+      <textarea ref={input} rows={1} aria-label="Comment" placeholder="Comment" value={draft.text} onChange={(e) => { setDraft({ ...draft, text: e.target.value }); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void save(); } if (e.key === "Escape" && !busy) setDraft(null); }} />
+      <div className="row comment-actions"><button className="small link" disabled={busy} onClick={() => setDraft(null)}>Cancel</button><button className="primary small" disabled={busy || !draft.text.trim()} onClick={() => void save()}>{busy ? "Saving…" : draft.updatedAt ? "Save" : "Comment"}</button></div>
     </div>
-    {showList && <div className="answer-comment-list">{mine.map((c) => <button className="small" key={c.id} onClick={() => { setActive(c.id); setDraft(null); }}><span>“{c.quote}”</span><span>{c.text}</span></button>)}</div>}
-    {draft ? <div className="answer-comment-card" role="region" aria-label="Write a comment">
-      <blockquote>{draft.quote}</blockquote>
-      <textarea ref={input} aria-label="Comment" placeholder="Write a comment…" value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void save(); } if (e.key === "Escape" && !busy) setDraft(null); }} />
-      <div className="row"><button className="primary small" disabled={busy || !draft.text.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save comment"}</button><button className="small" disabled={busy} onClick={() => setDraft(null)}>Cancel</button></div>
-    </div> : current && <div className="answer-comment-card" role="region" aria-label="Answer comment">
-      <blockquote>{current.quote}</blockquote><p className="pre">{current.text}</p>
-      {!validCommentAnchor(rendered.plain, current) && <p className="muted">The original passage has changed.</p>}
-      <div className="row"><button className="small" disabled={busy} onClick={() => { setDraft({ ...current }); setStatus(""); }}>Edit comment</button><button className="small link" disabled={busy} onClick={() => void remove()}>Remove comment</button><button className="small link" onClick={() => setActive(null)}>Close</button></div>
-    </div>}
-    {status && <p className="muted" role="status">{status}</p>}
+  );
+
+  if (!margin) {
+    return <div className="commented-answer">
+      {answer}
+      <div className="answer-comment-tools">
+        {selection && !draft && <button className="small" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>Add comment</button>}
+        {mine.length > 0 && <button className="small link" aria-expanded={showList} onClick={() => setShowList(!showList)}>Comments ({mine.length})</button>}
+      </div>
+      {showList && <div className="answer-comment-list">{mine.map((c) => <button className="small" key={c.id} onClick={() => { setActive(c.id); setDraft(null); }}><span>“{c.quote}”</span><span>{c.text}</span></button>)}</div>}
+      {draft ? draftCard(false) : current && <div className="answer-comment-card" role="region" aria-label="Answer comment">
+        <blockquote>{current.quote}</blockquote><p className="pre">{current.text}</p>
+        {!validCommentAnchor(rendered.plain, current) && <p className="muted">The original passage has changed.</p>}
+        <div className="row"><button className="small" disabled={busy} onClick={() => { setDraft({ ...current }); setStatus(""); }}>Edit comment</button><button className="small link" disabled={busy} onClick={() => void remove()}>Remove comment</button><button className="small link" onClick={() => setActive(null)}>Close</button></div>
+      </div>}
+      {status && <p className="muted" role="status">{status}</p>}
+    </div>;
+  }
+
+  return <div ref={shell} className="commented-answer with-margin">
+    <div className="commented-answer-text">
+      {answer}
+      {selection && !draft && <button className="small comment-add" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7l-3 2.5V11.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>Comment</button>}
+    </div>
+    <aside className="comment-margin" aria-label="Comments" style={{ minHeight: marginHeight }}>
+      {ordered.map((c) => {
+        const open = c.id === active && !draft;
+        const editing = draft?.id === c.id;
+        if (editing) return draftCard(true);
+        return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (tops[c.id] === undefined ? " orphan" : "")} style={{ top: laid[c.id] ?? tops[c.id] ?? 0 }} role="region" aria-label="Answer comment">
+          <button type="button" className="comment-card-body" onClick={() => { setActive(open ? null : c.id); setDraft(null); setStatus(""); }} aria-expanded={open}>
+            {author}
+            <p className="pre">{c.text}</p>
+          </button>
+          {open && <div className="row comment-actions">
+            {!validCommentAnchor(rendered.plain, c) && <span className="muted comment-note">“{c.quote}” has changed.</span>}
+            <button className="small link" disabled={busy} onClick={() => { setDraft({ ...c }); setStatus(""); }}>Edit</button>
+            <button className="small link" disabled={busy} onClick={() => void remove(c)}>Delete</button>
+          </div>}
+        </div>;
+      })}
+      {draft && !mine.some((c) => c.id === draft.id) && draftCard(true)}
+      {status && <p className="muted comment-status" role="status" style={{ top: marginHeight }}>{status}</p>}
+    </aside>
   </div>;
 }

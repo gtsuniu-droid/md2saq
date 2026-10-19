@@ -184,8 +184,11 @@ passcode is remembered per device and can be cleared from Settings.
   closing the tab) keeps it: the exam clock stops, and "Continue progress" in the nav or
   the card at the top of Home takes you back to where you were, or discards it. Admins
   see an Edit button on the stem and on each question.
-- **Mark**: confidence rating before the reveal, marking points to tick, per-part scores,
-  error tags, reflection, learning point.
+- **Mark**: happens where the set was answered. After Submit set, the same screen shows the
+  model answer and a score box under each answer, with a note, review flag and error tags
+  per question and one Save marks card at the end. Select words in an answer to add a
+  comment; comments sit in the margin beside the passage, as in a word processor. The
+  History link to `/mark/:attemptId` opens the identical layout for earlier sittings.
 - **Settings**: practice timing, account and sync, AMBOSS login, library updates, JSON
   backup and restore, Anki export, and a Danger zone. Admins also see a card linking to Admin.
 - **Admin** (`/admin`, admins only, behind the passcode): the one place the shared library is

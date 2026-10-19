@@ -16,6 +16,7 @@ import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/
 import { canWriteAnswers, readingRemainingSec, overtimeSec, remainingSec, shouldAutoSubmit } from "../lib/sessionClock";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
+import SetMarking from "../components/SetMarking";
 import { isAdmin } from "../lib/admin";
 import { selectionOffsets, toggleRange, type Range } from "../lib/highlights";
 import { getSettings } from "../data/db";
@@ -465,7 +466,9 @@ export default function PaperPage() {
           })}
           {setMode && openedGroups.length < setGroups.length && <p className="muted">{setGroups.length - openedGroups.length} sets still to open.</p>}
           <div className="row"><button onClick={() => setSummaryOpen(false)}>Back to question</button>{setMode && openedGroups.length < setGroups.length && <button className="primary" onClick={() => goTo(setGroups[openedGroups.length].indices[0])}>Open next set</button>}{unsubmitted === 0 && <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish session</button>}</div>
-        </section> : <div className="paper-split" ref={splitRef}>
+        </section> : session.mode === "practice" && setSubmitted ? <SetMarking key={currentSet.setId} attemptId={data.attempts[firstToMark].id} embedded
+          partId={(questionId, label) => `part-${data.questions.findIndex((q) => q.id === questionId)}-${label || "q"}`}
+          onAdvance={() => { if (setIndex + 1 < setGroups.length) goTo(setGroups[setIndex + 1].indices[0]); else { flushAll(); setSummaryOpen(true); } }} /> : <div className="paper-split" ref={splitRef}>
         <div className="paper-stem" style={{ flexBasis: `${stemPct}%` }} ref={stemRef}>
           <div className="col-head">
             <span>{groupLabel}</span>
