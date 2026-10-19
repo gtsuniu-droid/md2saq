@@ -1317,3 +1317,7 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .paper-top .timer.over small { color: var(--warn); }
 @media (max-width: 760px) { .setting-row > div:first-child { flex: none; } }
 .nav a.brand.active, .nav a.brand:hover { color: var(--fg); background: transparent; }
+
+/* Marking: the save bar is a plain footer after the last question, never over it. */
+.mark-set-save { position: static; margin-top: 1.5rem; padding: 1.1rem 1.25rem; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: none; }
+.mark-set-save strong { font-size: 1rem; }
