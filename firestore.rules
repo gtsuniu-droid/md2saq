@@ -27,7 +27,8 @@ service cloud.firestore {
       allow get: if signedIn() && validLocation();
       allow list: if signedIn() && channel in ['suggestions', 'discussion']
         && request.query.limit != null && request.query.limit <= 25;
-      allow create: if signedIn() && validLocation() && validPost()
+      // Posting needs a confirmed email address; reading does not.
+      allow create: if signedIn() && request.auth.token.email_verified == true && validLocation() && validPost()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.resolved == false;

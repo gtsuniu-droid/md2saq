@@ -10,9 +10,10 @@ import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileTe
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
 import { ambossLogout } from "../lib/amboss";
-import { cloudConfigured, signInWithGoogle, signOutCloud } from "../lib/firebase";
+import { cloudConfigured, signOutCloud } from "../lib/firebase";
+import SignInPanel from "../components/SignInPanel";
 import { isAdmin } from "../lib/admin";
-import { recordDeletes, resetCursors, syncNow } from "../lib/sync";
+import { recordDeletes, syncNow } from "../lib/sync";
 
 function Row({ title, help, children, danger }: { title: string; help?: string; children?: React.ReactNode; danger?: boolean }) {
   return (
@@ -123,7 +124,7 @@ export default function SettingsPage() {
                   <Row title="Signed in">
                     <span className="account-identity">
                       {settings.cloudUser.photo ? <img src={settings.cloudUser.photo} alt="" referrerPolicy="no-referrer" /> : <span className="avatar-fallback">{(settings.cloudUser.name ?? settings.cloudUser.email ?? "?").charAt(0).toUpperCase()}</span>}
-                      <span><strong>{settings.cloudUser.name ?? "Google account"}</strong><span className="muted">{settings.cloudUser.email}</span></span>
+                      <span><strong>{settings.cloudUser.name ?? settings.cloudUser.email ?? "Your account"}</strong><span className="muted">{settings.cloudUser.email}{settings.cloudUser.provider === "password" ? (settings.cloudUser.verified ? " · email account" : " · email not confirmed yet") : ""}</span></span>
                     </span>
                   </Row>
                   <Row title="Sync" help="Runs on its own after sign-in, when the tab comes back into view, and shortly after anything is saved.">
@@ -148,24 +149,10 @@ export default function SettingsPage() {
                   </Row>
                 </>
               ) : (
-                <Row title="Not signed in" help="Sign in with Google to keep your progress across devices. Nothing is uploaded until you do.">
-                  <button className="primary" disabled={cloudBusy} onClick={async () => {
-                    setCloudBusy(true);
-                    setCloudMsg(null);
-                    try {
-                      const u = await signInWithGoogle();
-                      await setProgressAccount(u);
-                      await resetCursors();
-                      const r = await syncNow(u);
-                      const moved = r && (r.pushed || r.pulled) ? ` ${[r.pushed ? `${r.pushed} sent` : "", r.pulled ? `${r.pulled} received` : ""].filter(Boolean).join(", ")}.` : "";
-                      setCloudMsg(`Signed in as ${u.email ?? u.name ?? "Google account"}.${moved}`);
-                    } catch (e) {
-                      setCloudMsg(`Sign-in failed: ${e instanceof Error ? e.message : String(e)}`);
-                    } finally {
-                      setCloudBusy(false);
-                    }
-                  }}>Sign in with Google</button>
-                </Row>
+                <div className="setting-row stacked">
+                  <div><strong>Not signed in</strong><p>Sign in to keep your progress across devices. Nothing is uploaded until you do.</p></div>
+                  <SignInPanel onDone={(u) => setCloudMsg(`Signed in as ${u.email ?? u.name ?? "your account"}.`)} />
+                </div>
               )}
               {cloudMsg && <p className="settings-message" role="status">{cloudMsg}</p>}
             </div>

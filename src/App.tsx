@@ -28,10 +28,11 @@ import LandingPage, { BrandMark } from "./pages/LandingPage";
 import AmbossPanel from "./components/AmbossPanel";
 import AmbossHover from "./components/AmbossHover";
 import { restoreAmbossSession } from "./lib/amboss";
-import { cloudConfigured, onCloudUser, signInWithGoogle, signOutCloud, type CloudUser } from "./lib/firebase";
+import { authErrorMessage, cloudConfigured, onCloudUser, refreshVerification, resendVerification, signOutCloud, type CloudUser } from "./lib/firebase";
+import SignInPanel from "./components/SignInPanel";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
-import { recordDeletes, requestSync, resetCursors, startSyncLoop, syncNow } from "./lib/sync";
+import { recordDeletes, requestSync, startSyncLoop, syncNow } from "./lib/sync";
 import { touchMember } from "./lib/members";
 import { setAdminRole } from "./lib/adminRole";
 import { patchSettings } from "./data/db";
@@ -39,7 +40,6 @@ import { patchSettings } from "./data/db";
 function AccountButton() {
   const settings = useLiveQuery(getSettings, []);
   const nav = useNavigate();
-  const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -85,19 +85,50 @@ function AccountButton() {
     );
   }
   return (
-    <button className="small nav-signin" disabled={busy} onClick={async () => {
-      setBusy(true);
-      try {
-        const user = await signInWithGoogle();
-        await setProgressAccount(user);
-        await resetCursors();
-        void syncNow(user).catch(() => undefined);
-      } catch {
-        /* the Settings page shows the reason if it keeps failing */
-      } finally {
-        setBusy(false);
-      }
-    }}>Sign in</button>
+    <>
+      <button className="small nav-signin" onClick={() => setOpen(true)}>Sign in</button>
+      {open && <SignInDialog onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** The sign-in panel in a modal, from the Sign in button in the bar. */
+function SignInDialog({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const d = ref.current; if (d && !d.open) d.showModal(); return () => { if (d?.open) d.close(); }; }, []);
+  return (
+    <dialog ref={ref} className="confirm-dialog signin-dialog" aria-labelledby="signin-title" onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+      <div className="confirm-dialog-body">
+        <div className="row spread"><h2 id="signin-title">Sign in</h2><button type="button" className="small link" aria-label="Close" onClick={onClose}>×</button></div>
+        <p className="muted signin-why">Your attempts, marks and notes then follow you between devices, and you can join the discussion on any question.</p>
+        <SignInPanel onDone={() => onClose()} />
+      </div>
+    </dialog>
+  );
+}
+
+/** Shown to email accounts until the address is confirmed. */
+function VerifyBar({ user }: { user: CloudUser }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const check = async () => {
+    setBusy(true); setNote("");
+    try {
+      const fresh = await refreshVerification();
+      if (fresh?.verified) await setProgressAccount(fresh);
+      else setNote("Not confirmed yet. Open the link in the email we sent, then try again.");
+    } catch (e) { setNote(authErrorMessage(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="verify-bar" role="status">
+      <span>Confirm your email to post comments: we sent a link to <strong>{user.email}</strong>.</span>
+      <span className="row">
+        <button className="small" disabled={busy} onClick={() => void check()}>I've confirmed it</button>
+        <button className="small link" disabled={busy} onClick={() => void (async () => { setBusy(true); setNote(""); try { await resendVerification(); setNote("Sent again."); } catch (e) { setNote(authErrorMessage(e)); } finally { setBusy(false); } })()}>Resend</button>
+        {note && <span className="muted">{note}</span>}
+      </span>
+    </div>
   );
 }
 
@@ -108,6 +139,14 @@ export default function App() {
   const [notesOpen, setNotesOpen] = useState(false);
   const studying = /^\/(mark|paper|question|set|session|history)(\/|$)/.test(pathname);
   useEffect(() => { document.querySelector("main")?.scrollTo(0, 0); }, [pathname]);
+
+  // An email address confirmed in another tab shows as confirmed here on the next return.
+  useEffect(() => {
+    if (account?.cloudUser?.verified !== false) return;
+    const onReturn = () => { if (document.visibilityState === "visible") void refreshVerification().then((fresh) => { if (fresh?.verified) void setProgressAccount(fresh); }); };
+    document.addEventListener("visibilitychange", onReturn);
+    return () => document.removeEventListener("visibilitychange", onReturn);
+  }, [account?.cloudUser?.verified]);
 
   useEffect(() => {
     const reconnect = () => { if (navigator.onLine) void restoreAmbossSession().catch(() => undefined); };
@@ -188,6 +227,7 @@ export default function App() {
         {studying && !(session?.examFormat && pathname.startsWith("/paper")) && <button className="nav-notes" aria-expanded={notesOpen} onClick={() => setNotesOpen((open) => !open)}>{notesOpen ? "Hide reference notes" : "Reference notes"}</button>}
         <AccountButton />
       </nav>
+      {account?.cloudUser && account.cloudUser.verified === false && !full && <VerifyBar user={account.cloudUser} />}
       <div className="study-workspace">
       <main className={shell}>
         <Routes key={`${account?.cloudUser?.uid ?? ""}:${sessionOwner()}`}>

@@ -1486,3 +1486,24 @@ details.section[open] > summary::before { content: ""; transform: rotate(90deg);
 details.section > summary:hover::before { background-color: var(--surface); }
 details.section > summary h2 { font-size: 1.15rem; }
 @media (prefers-color-scheme: dark) { details.section > summary::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23e7edf4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5'/%3E%3C/svg%3E"); } }
+
+/* Sign-in: Google first, email underneath, one small form. */
+.signin-panel { display: grid; gap: .9rem; max-width: 360px; }
+.signin-panel h3 { margin: 0; font-size: 1.05rem; }
+.signin-google { display: flex; align-items: center; justify-content: center; gap: .6rem; width: 100%; font-weight: 600; background: var(--card); }
+.signin-google svg { width: 18px; height: 18px; }
+.signin-divider { display: flex; align-items: center; gap: .75rem; color: var(--muted); font-size: .8rem; }
+.signin-divider::before, .signin-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.signin-form { display: grid; gap: .6rem; }
+.signin-form label { margin: 0; display: grid; gap: .25rem; }
+.signin-form input { width: 100%; }
+.signin-form small { font-size: .75rem; }
+.signin-form .primary { margin-top: .2rem; }
+.signin-links { display: flex; gap: .25rem 1rem; flex-wrap: wrap; }
+.signin-links button { padding-inline: 0; color: var(--brand); }
+.signin-dialog { width: min(420px, calc(100vw - 2rem)); }
+.signin-dialog h2 { margin: 0; }
+.signin-why { margin: .4rem 0 1rem; font-size: .88rem; }
+.setting-row.stacked { flex-direction: column; align-items: stretch; gap: .9rem; }
+.verify-bar { display: flex; align-items: center; justify-content: space-between; gap: .75rem 1rem; flex-wrap: wrap; padding: .55rem clamp(1rem, 2.5vw, 2.4rem); background: color-mix(in srgb, var(--warn) 12%, var(--card)); border-bottom: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border)); font-size: .88rem; }
+.verify-bar .row { gap: .4rem .6rem; }

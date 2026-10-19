@@ -227,7 +227,7 @@ export interface Settings {
   /** Also underline while sitting a paper (default off: no AMBOSS in the exam). */
   ambossOnPaper: boolean;
   /** Signed-in cloud account, for display. */
-  cloudUser?: { uid: string; email?: string; name?: string; photo?: string };
+  cloudUser?: { uid: string; email?: string; name?: string; photo?: string; verified?: boolean; provider?: string };
 }
 
 /** Device-only credential record. Never included in settings, sync or backups. */

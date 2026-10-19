@@ -53,7 +53,10 @@ Setup, once, about ten minutes:
    then trigger a deploy. These values are safe to be public; the rules do the protecting.
    For local development put the same four in a `.env.local` file (see `.env.example`).
 
-Then Settings shows "Sign in with Google". Sync runs after sign-in, whenever the tab
+Then the Sign in button and Settings offer Google or an email address and password. Email
+accounts get a confirmation link from Firebase; until it is opened they can practise and sync
+but not post comments or suggestions. Password resets also go by email. The Email/Password
+provider is enabled through `firebase.json` (`firebase deploy --only auth`). Sync runs after sign-in, whenever the tab
 comes back into view, every two minutes, and a few seconds after anything is typed into
 a paper or a mark is saved; "Sync now" forces it. Records modified since the last sync
 go up, newer records come down, newest wins. A record from another device finds its
