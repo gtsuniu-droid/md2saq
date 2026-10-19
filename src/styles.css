@@ -1473,3 +1473,6 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .mark-score input[type="number"]::placeholder { color: var(--muted); opacity: .6; }
 .mark-model-edit { min-height: 26px; font-size: .78rem; color: var(--teal); }
 .mark-model-edit:hover:not(:disabled) { color: var(--teal); background: color-mix(in srgb, var(--teal) 12%, transparent); }
+
+/* A blank line typed in an answer or note stays a blank line when read back. */
+.note-rich p:empty::before, .answer-html p:empty::before, .question-rich p:empty::before { content: "\00a0"; }

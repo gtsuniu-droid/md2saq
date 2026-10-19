@@ -36,6 +36,7 @@ function LogoStrip() {
 const SHOTS = {
   paper: { width: 2000, height: 1040 },
   amboss: { width: 2000, height: 1040 },
+  marking: { width: 2000, height: 1040 },
   home: { width: 682, height: 1060 },
   browse: { width: 2000, height: 1040 },
 } as const;
@@ -147,15 +148,23 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
           </div>
           <Screenshot name="amboss" caption="Browse, with AMBOSS open" alt="The browse screen with an AMBOSS reference panel open on the right showing the Abscess article, its picture and definition." />
         </article>
-        <article className="landing-feature tall reverse">
+        <article className="landing-feature reverse">
+          <div className="landing-feature-copy">
+            <p className="landing-kicker">Mark</p>
+            <h2>Thorough marked answers that teach.</h2>
+            <p>Every question comes with a full model answer: the diagnoses to consider, the history and examination findings that earn the marks, and why. Score yourself line by line, and each marked case adds to your knowledge base and sharpens your clinical thinking.</p>
+          </div>
+          <Screenshot name="marking" caption="Marking a set" alt="The marking screen: the case stem on the left and a full model answer on the right, listing the marks available for each diagnosis, history finding and examination finding." />
+        </article>
+        <article className="landing-feature tall">
           <div className="landing-feature-copy">
             <p className="landing-kicker">Practise</p>
-            <h2>Pick a presentation. Sit the case. Mark it.</h2>
-            <p>Choose whole cases or single questions from the presentations you want to cover, answer against the clock, then score yourself part by part against the model answer. Your progress for every presentation is on the same screen.</p>
+            <h2>Pick a presentation. Sit the case.</h2>
+            <p>Choose whole cases or single questions from the presentations you want to cover and answer against the clock. Your progress for every presentation is on the same screen, so you always know what to do next.</p>
           </div>
           <Screenshot name="home" caption="Choosing what to practise" alt="The home screen: answered count, score and practice calendar, then the session builder listing presentations with how many sets are marked in each." />
         </article>
-        <article className="landing-feature">
+        <article className="landing-feature reverse">
           <div className="landing-feature-copy">
             <p className="landing-kicker">Read</p>
             <h2>Every case in the library, one click away.</h2>
