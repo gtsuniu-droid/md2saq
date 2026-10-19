@@ -1476,3 +1476,7 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 
 /* A blank line typed in an answer or note stays a blank line when read back. */
 .note-rich p:empty::before, .answer-html p:empty::before, .question-rich p:empty::before { content: "\00a0"; }
+.people-table { min-width: 640px; }
+.people-table td { vertical-align: middle; }
+.people-table .account-identity img, .people-table .account-identity .avatar-fallback { width: 30px; height: 30px; font-size: .8rem; }
+.people-table .account-identity strong { font-weight: 500; }

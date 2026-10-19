@@ -153,6 +153,15 @@ stay attached. If the server was unreachable, "Publish local changes" catches up
 The editor reorders questions by dragging their handle and attaches pictures to a stem
 or a question; pictures are resized on the way in and travel with the set.
 
+## People and admins
+
+Every Google sign-in is recorded in Firestore at `members/{uid}` (name, email, picture, first
+and last seen). The Admin page's **People** section lists them and lets an admin make someone
+an admin or remove that again; the role is read at each sign-in and cached in settings. The
+accounts in `VITE_ADMIN_EMAILS` are always admins and cannot be demoted from the list. A new
+admin still needs the bank passcode to change the shared library. The `members` rules in
+`firestore.rules` must be deployed to the Firebase project for the list to load.
+
 ## Admin passcode and admin account
 
 Set `VITE_ADMIN_EMAILS` (in Netlify and `.env.local`) to the Google account emails that

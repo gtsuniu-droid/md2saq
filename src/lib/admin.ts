@@ -13,7 +13,12 @@ export function adminRestricted(): boolean {
   return ADMIN_EMAILS.length > 0;
 }
 
-export function isAdmin(settings: Pick<Settings, "cloudUser"> | undefined): boolean {
+/**
+ * Admins are the accounts named in VITE_ADMIN_EMAILS plus anyone given the admin role
+ * from the People list on the Admin page (kept in Firestore, cached in settings on
+ * sign-in). The passcode still guards every change to the shared library.
+ */
+export function isAdmin(settings: Pick<Settings, "cloudUser" | "cloudRole"> | undefined): boolean {
   const email = settings?.cloudUser?.email?.toLowerCase();
-  return !!email && ADMIN_EMAILS.includes(email);
+  return (!!email && ADMIN_EMAILS.includes(email)) || (!!settings?.cloudUser && settings.cloudRole === "admin");
 }

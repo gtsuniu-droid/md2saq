@@ -14,6 +14,7 @@ import { moveSetToPresentation } from "../lib/movePresentation";
 import { presentationName } from "../data/presentations";
 import PresentationSelect from "../components/PresentationSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
+import PeopleSection from "../components/PeopleSection";
 
 /**
  * The single place for building the bank: add sets (drop or paste), edit,
@@ -218,6 +219,8 @@ function MasterContents() {
         <summary><h2>Add</h2></summary>
         <CreateTools embedded onSavingChange={setAdding} onSaved={() => void refreshBank()} />
       </details>
+
+      <PeopleSection />
 
       <details className="section" open>
         <summary><h2>Sets</h2></summary>

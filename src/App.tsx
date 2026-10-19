@@ -32,6 +32,8 @@ import { cloudConfigured, onCloudUser, signInWithGoogle, signOutCloud, type Clou
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
 import { recordDeletes, requestSync, resetCursors, startSyncLoop, syncNow } from "./lib/sync";
+import { touchMember } from "./lib/members";
+import { patchSettings } from "./data/db";
 
 function AccountButton() {
   const settings = useLiveQuery(getSettings, []);
@@ -123,7 +125,13 @@ export default function App() {
     void onCloudUser(async (u) => {
       await setProgressAccount(u);
       user = u;
-      if (u) void syncNow(u).catch(() => undefined);
+      if (u) {
+        void syncNow(u).catch(() => undefined);
+        // Record the sign-in and pick up any admin role granted from the People list.
+        void touchMember(u).then((role) => patchSettings({ cloudRole: role }));
+      } else {
+        void patchSettings({ cloudRole: undefined });
+      }
     }).then((fn) => { unsub = fn; });
     return () => {
       stopLoop();
