@@ -37,7 +37,7 @@ const SHOTS = {
   paper: { width: 2000, height: 1040 },
   amboss: { width: 2000, height: 1040 },
   home: { width: 682, height: 1060 },
-  browse: { width: 2880, height: 1800 },
+  browse: { width: 2000, height: 1040 },
 } as const;
 
 function Screenshot({ name, alt, caption, eager }: { name: keyof typeof SHOTS; alt: string; caption: string; eager?: boolean }) {
@@ -63,8 +63,8 @@ function useLandingMotion(root: React.RefObject<HTMLDivElement | null>, ready: b
       gsap.timeline({ defaults: { ease: "power3.out" } })
         .from(".landing-nav > *", { y: -10, opacity: 0, duration: 0.5, stagger: 0.08 })
         .from(".landing-hero h1", { y: 28, opacity: 0, duration: 0.9 }, "-=0.2")
-        .from(".landing-lede, .landing-cta-row", { y: 18, opacity: 0, duration: 0.6, stagger: 0.12 }, "-=0.5")
-        .from(".landing-hero-shot", { y: 60, opacity: 0, rotateX: 5, transformPerspective: 1400, duration: 1.1, ease: "power4.out" }, "-=0.5");
+        .from(".landing-lede, .landing-cta-row, .landing-stats", { y: 18, opacity: 0, duration: 0.6, stagger: 0.12 }, "-=0.5")
+        .from(".landing-hero-shot", { x: 40, opacity: 0, rotateY: -6, transformPerspective: 1400, duration: 1.1, ease: "power4.out" }, "-=0.8");
 
       gsap.to(".landing-hero-shot .landing-shot", { yPercent: -5, ease: "none", scrollTrigger: { trigger: ".landing-hero-shot", start: "top 60%", end: "bottom top", scrub: 0.6 } });
 
@@ -118,33 +118,27 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
       </header>
 
       <section className="landing-hero">
-        <h1>Strengthen your clinical thinking</h1>
-        <p className="landing-lede">Timed short-answer cases for medical finals. Sit the paper, mark yourself against the model answer, and watch your coverage grow.</p>
-        <div className="landing-cta-row">
-          <Link to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
-          <Link to="/browse" className="landing-secondary">Browse the library</Link>
+        <div className="landing-hero-copy">
+          <h1>Strengthen your clinical thinking</h1>
+          <p className="landing-lede">Timed short-answer cases for medical finals that train your differential diagnosis, history taking and clinical reasoning. Writing the answer yourself, then marking it against the model, is how it sticks.</p>
+          <div className="landing-cta-row">
+            <Link to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
+            <Link to="/browse" className="landing-secondary">Browse the library</Link>
+          </div>
+          <p className="landing-stats" aria-label="Library size">
+            <span><b data-count={corePresentations}>{corePresentations}</b> core presentations</span>
+            {info && info.sets > 0 && <><span><b data-count={info.sets}>{info.sets}</b> {info.sets === 1 ? "case" : "cases"}</span><span><b data-count={info.questions}>{info.questions}</b> questions</span></>}
+          </p>
         </div>
         <div className="landing-hero-shot">
           <Screenshot name="paper" eager caption="Sitting a paper" alt="The paper screen: question parts listed down the left, the case stem in the middle, and an answer box for each part on the right, with the timer at the top." />
         </div>
-        <p className="landing-stats" aria-label="Library size">
-          <span><b data-count={corePresentations}>{corePresentations}</b> core presentations</span>
-          {info && info.sets > 0 && <><span><b data-count={info.sets}>{info.sets}</b> {info.sets === 1 ? "case" : "cases"}</span><span><b data-count={info.questions}>{info.questions}</b> questions</span></>}
-        </p>
       </section>
 
       <LogoStrip />
 
       <section className="landing-features" id="features" aria-label="What it does">
-        <article className="landing-feature tall">
-          <div className="landing-feature-copy">
-            <p className="landing-kicker">Practise</p>
-            <h2>Pick a presentation. Sit the case. Mark it.</h2>
-            <p>Choose whole cases or single questions from the presentations you want to cover, answer against the clock, then score yourself part by part against the model answer. Your progress for every presentation is on the same screen.</p>
-          </div>
-          <Screenshot name="home" caption="Choosing what to practise" alt="The home screen: answered count, score and practice calendar, then the session builder listing presentations with how many sets are marked in each." />
-        </article>
-        <article className="landing-feature reverse">
+        <article className="landing-feature wide">
           <div className="landing-feature-copy">
             <p className="landing-kicker">AMBOSS, built in</p>
             <h2>The reference opens beside the question.</h2>
@@ -152,6 +146,14 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
             <p className="landing-fineprint">Needs an AMBOSS subscription. Your login stays on your device.</p>
           </div>
           <Screenshot name="amboss" caption="Browse, with AMBOSS open" alt="The browse screen with an AMBOSS reference panel open on the right showing the Abscess article, its picture and definition." />
+        </article>
+        <article className="landing-feature tall reverse">
+          <div className="landing-feature-copy">
+            <p className="landing-kicker">Practise</p>
+            <h2>Pick a presentation. Sit the case. Mark it.</h2>
+            <p>Choose whole cases or single questions from the presentations you want to cover, answer against the clock, then score yourself part by part against the model answer. Your progress for every presentation is on the same screen.</p>
+          </div>
+          <Screenshot name="home" caption="Choosing what to practise" alt="The home screen: answered count, score and practice calendar, then the session builder listing presentations with how many sets are marked in each." />
         </article>
         <article className="landing-feature">
           <div className="landing-feature-copy">
@@ -171,7 +173,8 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
       </section>
 
       <section className="landing-close landing-reveal">
-        <h2>Ready when you are.</h2>
+        <h2>Reading feels productive. Answering is what sticks.</h2>
+        <p>Every case makes you commit to a differential, ask the right history questions and justify a plan, then shows you what you missed. That is the learning.</p>
         <Link to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
       </section>
 
