@@ -191,7 +191,8 @@ passcode is remembered per device and can be cleared from Settings.
 - **Admin** (`/admin`, admins only, behind the passcode): the one place the shared library is
   built: add, edit, move and delete sets for everyone.
 - **Landing page** (`/`): a public front page describing the app; "Begin your practice" opens
-  Home at `/home`. Logos for the "Made for medical students at" row live in `public/landing/`.
+  Home at `/home`. Visitors who are signed in or have used the app before are sent straight
+  to `/home`; `/welcome` always shows the landing page. Logos for the "Made for medical students at" row live in `public/landing/`.
 
 ## Pushing questions from your own generator
 

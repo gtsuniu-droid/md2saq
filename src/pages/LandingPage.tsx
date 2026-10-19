@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { SplitText } from "gsap/SplitText";
 import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import { loadLibrary } from "../lib/library";
@@ -34,30 +33,37 @@ function LogoStrip() {
 }
 
 /** A real capture of the app, in a light window frame. Files live in public/landing. */
-function Screenshot({ name, alt, caption, eager }: { name: string; alt: string; caption: string; eager?: boolean }) {
+const SHOTS = {
+  paper: { width: 2000, height: 1040 },
+  amboss: { width: 2000, height: 1040 },
+  home: { width: 682, height: 1060 },
+  browse: { width: 2880, height: 1800 },
+} as const;
+
+function Screenshot({ name, alt, caption, eager }: { name: keyof typeof SHOTS; alt: string; caption: string; eager?: boolean }) {
+  const size = SHOTS[name];
   return (
     <figure className="landing-shot">
       <div className="landing-shot-bar" aria-hidden="true"><span /><span /><span /><em>{caption}</em></div>
-      <img src={`/landing/${name}.png`} alt={alt} width="2880" height="1800" loading={eager ? "eager" : "lazy"} />
+      <img src={`/landing/${name}.png`} alt={alt} width={size.width} height={size.height} loading={eager ? "eager" : "lazy"} />
     </figure>
   );
 }
 
 /**
- * Motion with GSAP: SplitText for the headline, a timeline for the hero, a scrubbed lift on
+ * Motion with GSAP: a timeline for the hero, a scrubbed lift on
  * the hero capture, ScrollTrigger reveals further down and counters for the library numbers.
  * Skipped entirely when the visitor prefers reduced motion.
  */
 function useLandingMotion(root: React.RefObject<HTMLDivElement | null>, ready: boolean) {
   useEffect(() => {
     if (!ready || !root.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    gsap.registerPlugin(ScrollTrigger, SplitText);
+    gsap.registerPlugin(ScrollTrigger);
     const ctx = gsap.context(() => {
-      const headline = new SplitText(".landing-hero h1", { type: "words", wordsClass: "landing-word" });
       gsap.timeline({ defaults: { ease: "power3.out" } })
         .from(".landing-nav > *", { y: -10, opacity: 0, duration: 0.5, stagger: 0.08 })
-        .from(headline.words, { yPercent: 100, opacity: 0, duration: 0.8, stagger: 0.07 }, "-=0.2")
-        .from(".landing-lede, .landing-cta-row", { y: 18, opacity: 0, duration: 0.6, stagger: 0.12 }, "-=0.4")
+        .from(".landing-hero h1", { y: 28, opacity: 0, duration: 0.9 }, "-=0.2")
+        .from(".landing-lede, .landing-cta-row", { y: 18, opacity: 0, duration: 0.6, stagger: 0.12 }, "-=0.5")
         .from(".landing-hero-shot", { y: 60, opacity: 0, rotateX: 5, transformPerspective: 1400, duration: 1.1, ease: "power4.out" }, "-=0.5");
 
       gsap.to(".landing-hero-shot .landing-shot", { yPercent: -5, ease: "none", scrollTrigger: { trigger: ".landing-hero-shot", start: "top 60%", end: "bottom top", scrub: 0.6 } });
@@ -81,7 +87,11 @@ function useLandingMotion(root: React.RefObject<HTMLDivElement | null>, ready: b
   }, [root, ready]);
 }
 
-export default function LandingPage() {
+/**
+ * The public front page. With autoEnter, visitors who are signed in or have used the app
+ * before skip it and land on Home; /welcome always shows it.
+ */
+export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const info = useLiveQuery(async () => {
     const [{ sets, questions }, settings, attempts] = await Promise.all([loadLibrary(), getSettings(), db.attempts.count()]);
@@ -89,15 +99,20 @@ export default function LandingPage() {
     for (const q of questions) for (const p of q.presentations) presentations.add(p);
     return { sets: sets.length, questions: questions.length, presentations: presentations.size, user: settings.cloudUser, attempts };
   }, []);
-  useLandingMotion(root, info !== undefined);
-  const returning = !!info && (info.attempts > 0 || !!info.user || !!loadSession());
+  let entered = false;
+  try { entered = localStorage.getItem("saq-practice:entered") === "1"; } catch { /* private mode */ }
+  const returning = !!info && (info.attempts > 0 || !!info.user || !!loadSession() || entered);
+  const skip = autoEnter && returning;
+  useLandingMotion(root, info !== undefined && !skip);
+  if (info === undefined && autoEnter) return <div className="landing" aria-busy="true" />;
+  if (skip) return <Navigate to="/home" replace />;
   const corePresentations = PRESENTATIONS.filter((p) => !p.parent).length;
   const cta = returning ? "Continue your practice" : "Begin your practice";
 
   return (
     <div className="landing" ref={root}>
       <header className="landing-nav">
-        <Link to="/" className="landing-brand"><BrandMark />SAQ Practice</Link>
+        <Link to="/welcome" className="landing-brand"><BrandMark />SAQ Practice</Link>
         <Link to="/browse" className="landing-nav-link">Library</Link>
         <Link to="/home" className="landing-login">{info?.user ? "Open practice" : "Student login"} <span aria-hidden="true">↗</span></Link>
       </header>
@@ -121,21 +136,22 @@ export default function LandingPage() {
       <LogoStrip />
 
       <section className="landing-features" id="features" aria-label="What it does">
-        <article className="landing-feature">
+        <article className="landing-feature tall">
           <div className="landing-feature-copy">
-            <p className="landing-kicker">Sit</p>
-            <h2>A paper that behaves like the real one.</h2>
-            <p>Staged case stems, sub-parts and marks, with a timer that keeps running. Leave and come back; your drafts are kept where you left them.</p>
+            <p className="landing-kicker">Practise</p>
+            <h2>Pick a presentation. Sit the case. Mark it.</h2>
+            <p>Choose whole cases or single questions from the presentations you want to cover, answer against the clock, then score yourself part by part against the model answer. Your progress for every presentation is on the same screen.</p>
           </div>
-          <Screenshot name="paper" caption="Sitting a paper" alt="The paper screen with the case stem beside the answer boxes." />
+          <Screenshot name="home" caption="Choosing what to practise" alt="The home screen: answered count, score and practice calendar, then the session builder listing presentations with how many sets are marked in each." />
         </article>
         <article className="landing-feature reverse">
           <div className="landing-feature-copy">
-            <p className="landing-kicker">Mark</p>
-            <h2>Mark yourself honestly, then move on.</h2>
-            <p>Rate your confidence before the reveal, score each part against the model answer, tag the error and keep one learning point. Weak cases come back for review.</p>
+            <p className="landing-kicker">AMBOSS, built in</p>
+            <h2>The reference opens beside the question.</h2>
+            <p>Connect your AMBOSS account and every clinical term in a stem, question or model answer becomes a link. Hover for the definition, open the article or its images in a side panel, and get back to your answer without leaving the page. It works in notes and while marking too.</p>
+            <p className="landing-fineprint">Needs an AMBOSS subscription. Your login stays on your device.</p>
           </div>
-          <Screenshot name="home" caption="Choosing what to practise" alt="The home screen: progress for the period, then the session builder listing presentations with how many sets are marked in each." />
+          <Screenshot name="amboss" caption="Browse, with AMBOSS open" alt="The browse screen with an AMBOSS reference panel open on the right showing the Abscess article, its picture and definition." />
         </article>
         <article className="landing-feature">
           <div className="landing-feature-copy">

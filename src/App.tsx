@@ -157,7 +157,9 @@ export default function App() {
     })();
   }, []);
 
-  if (pathname === "/") return <LandingPage />;
+  // The front page is for newcomers; anyone signed in or who has practised before goes straight in.
+  if (pathname === "/" || pathname === "/welcome") return <LandingPage autoEnter={pathname === "/"} />;
+  if (pathname === "/home") try { localStorage.setItem("saq-practice:entered", "1"); } catch { /* private mode */ }
 
   const full = pathname.startsWith("/paper");
   const shell = full ? "page full" : pathname === "/home" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : pathname === "/settings" ? "page settings-shell" : pathname === "/admin" ? "page admin-shell" : "page wide-shell";
