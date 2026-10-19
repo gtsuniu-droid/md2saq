@@ -34,7 +34,7 @@
 /* Hero: one line, one sentence, one button, then the product. */
 .landing-hero { display: grid; justify-items: center; max-width: 1120px; margin: 0 auto; padding: clamp(3.5rem, 9vw, 7rem) clamp(1.25rem, 4vw, 3rem) 0; text-align: center; }
 .landing-hero h1 { font-size: clamp(2.6rem, 6.4vw, 4.9rem); line-height: 1.04; font-weight: 700; letter-spacing: -.045em; max-width: 14ch; text-wrap: balance; }
-.landing-lede { font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.6; color: var(--l-muted); margin: 1.5rem 0 2.2rem; max-width: 46ch; text-wrap: balance; }
+.landing-lede { font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.65; color: var(--l-muted); margin: clamp(1.8rem, 3vw, 2.6rem) 0 clamp(2.4rem, 4vw, 3.4rem); max-width: 46ch; text-wrap: balance; }
 .landing-cta-row { display: flex; align-items: center; justify-content: center; gap: 1.5rem; flex-wrap: wrap; }
 .landing-cta { display: inline-flex; align-items: center; gap: .6rem; background: var(--l-blue); color: var(--l-blue-ink); font-weight: 600; font-size: 1.05rem; padding: .95rem 1.6rem; border-radius: 999px; transition: transform .15s ease, box-shadow .15s ease; }
 .landing-cta:hover { transform: translateY(-1px); box-shadow: 0 12px 30px color-mix(in srgb, var(--l-blue) 35%, transparent); }
@@ -42,7 +42,7 @@
 .landing-cta:hover span { transform: translateX(3px); }
 .landing-secondary { color: var(--l-muted); font-weight: 500; }
 .landing-secondary:hover { color: var(--l-fg); }
-.landing-hero-shot { width: 100%; margin: clamp(3rem, 6vw, 4.5rem) 0 0; transform-style: preserve-3d; }
+.landing-hero-shot { width: 100%; margin: clamp(3.5rem, 7vw, 5.5rem) 0 0; transform-style: preserve-3d; }
 .landing-stats { display: flex; justify-content: center; gap: 2.5rem; flex-wrap: wrap; margin: 1.6rem 0 0; color: var(--l-muted); font-size: .92rem; }
 .landing-stats b { color: var(--l-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
 
