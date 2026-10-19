@@ -158,7 +158,8 @@ or a question; pictures are resized on the way in and travel with the set.
 Every Google sign-in is recorded in Firestore at `members/{uid}` (name, email, picture, first
 and last seen). The Admin page's **People** section is visible to one fixed owner account
 (`OWNER_EMAIL` in `src/lib/admin.ts`, enforced again by the Firestore rules, which also require
-a verified Google sign-in). It lists everyone and lets the owner make someone an admin or remove that again; the role is read at each sign-in and cached in settings. The
+a verified Google sign-in). It lists everyone and lets the owner make someone an admin or remove that again; the role is read from Firestore at each sign-in and held in memory
+only, so nothing stored on a device can grant it. The
 accounts in `VITE_ADMIN_EMAILS` are always admins and cannot be demoted from the list. A new
 admin still needs the bank passcode to change the shared library. The `members` rules in
 `firestore.rules` must be deployed to the Firebase project for the list to load.

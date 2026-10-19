@@ -33,6 +33,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
 import { recordDeletes, requestSync, resetCursors, startSyncLoop, syncNow } from "./lib/sync";
 import { touchMember } from "./lib/members";
+import { setAdminRole } from "./lib/adminRole";
 import { patchSettings } from "./data/db";
 
 function AccountButton() {
@@ -127,10 +128,11 @@ export default function App() {
       user = u;
       if (u) {
         void syncNow(u).catch(() => undefined);
-        // Record the sign-in and pick up any admin role granted from the People list.
-        void touchMember(u).then((role) => patchSettings({ cloudRole: role }));
+        // Record the sign-in and read any admin role granted from the People list. The role
+        // stays in memory; touching settings makes the screens that depend on it re-render.
+        void touchMember(u).then((role) => { setAdminRole(u.uid, role); return patchSettings({}); });
       } else {
-        void patchSettings({ cloudRole: undefined });
+        setAdminRole("", undefined);
       }
     }).then((fn) => { unsub = fn; });
     return () => {

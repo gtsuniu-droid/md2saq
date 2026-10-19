@@ -1,4 +1,5 @@
 import type { Settings } from "../data/types";
+import { adminRoleFor } from "./adminRole";
 
 /**
  * Who may see the Admin section. Comes from VITE_ADMIN_EMAILS, a comma-separated
@@ -22,10 +23,10 @@ export function adminRestricted(): boolean {
 
 /**
  * Admins are the accounts named in VITE_ADMIN_EMAILS plus anyone given the admin role
- * from the People list on the Admin page (kept in Firestore, cached in settings on
- * sign-in). The passcode still guards every change to the shared library.
+ * from the People list on the Admin page. That role lives in Firestore and is read at
+ * sign-in into memory only. The passcode still guards every change to the shared library.
  */
-export function isAdmin(settings: Pick<Settings, "cloudUser" | "cloudRole"> | undefined): boolean {
+export function isAdmin(settings: Pick<Settings, "cloudUser"> | undefined): boolean {
   const email = settings?.cloudUser?.email?.toLowerCase();
-  return (!!email && ADMIN_EMAILS.includes(email)) || (!!settings?.cloudUser && settings.cloudRole === "admin");
+  return (!!email && ADMIN_EMAILS.includes(email)) || adminRoleFor(settings?.cloudUser?.uid) === "admin";
 }

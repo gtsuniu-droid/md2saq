@@ -228,8 +228,6 @@ export interface Settings {
   ambossOnPaper: boolean;
   /** Signed-in cloud account, for display. */
   cloudUser?: { uid: string; email?: string; name?: string; photo?: string };
-  /** Role granted to this account by an admin, refreshed at every sign-in. Device-only. */
-  cloudRole?: "admin";
 }
 
 /** Device-only credential record. Never included in settings, sync or backups. */
