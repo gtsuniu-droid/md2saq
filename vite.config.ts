@@ -9,7 +9,7 @@ function netlifyFunctionsDev(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
         const url = req.url ?? "";
-        const m = /^\/api\/([a-z]+)(\?.*)?$/.exec(url);
+        const m = /^\/api\/([a-z-]+)(\/[^?]*)?(\?.*)?$/.exec(url);
         if (!m) return next();
         try {
           const mod = (await server.ssrLoadModule(`/netlify/functions/${m[1]}.ts`)) as { default: (r: Request) => Promise<Response> };
@@ -34,6 +34,8 @@ function netlifyFunctionsDev(): Plugin {
 
 export default defineConfig({
   plugins: [react(), netlifyFunctionsDev()],
+  // A quick Cloudflare tunnel (npx cloudflared tunnel --url http://localhost:5173) lets claude.ai or ChatGPT reach the dev server.
+  server: { allowedHosts: [".trycloudflare.com"] },
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],

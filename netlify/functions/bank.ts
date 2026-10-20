@@ -88,7 +88,7 @@ function packFromText(u: TextUpload) {
   return {
     format: "saq-practice-set" as const,
     version: 1 as const,
-    set: { id: setId, name: u.name === "Untitled set" && meta.title ? meta.title : u.name, source: u.source, suggestedMinutes: meta.minutes, createdAt: now },
+    set: { id: setId, name: u.name === "Untitled set" && meta.title ? meta.title : u.name, source: u.source, suggestedMinutes: meta.minutes, createdAt: now, primaryPresentation: extra[0] },
     questions: parsed.map((q, i) => ({
       id: crypto.randomUUID(),
       setId,

@@ -4,6 +4,7 @@ import { useSetContent } from "../lib/useSetContent";
 import { hasAnswerContent } from "../lib/answerContent";
 import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
+import AmbossSearch from "../components/AmbossSearch";
 import { useLiveQuery } from "dexie-react-hooks";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -18,6 +19,7 @@ import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
 import SetMarking from "../components/SetMarking";
 import AccountGate from "../components/AccountGate";
+import FixWithClaude from "../components/FixWithClaude";
 import { useAccountGate } from "../lib/accountGate";
 import { isAdmin } from "../lib/admin";
 import { selectionOffsets, toggleRange, type Range } from "../lib/highlights";
@@ -452,6 +454,7 @@ export default function PaperPage() {
           : <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : "Writing time remaining"}>{(reading || session.examFormat) && <small>{reading ? "Reading" : "Writing"}</small>}{formatClock(displayedRemaining)}</span>
         )}
         <span style={{ flex: 1 }} />
+        {session.mode === "practice" && !session.examFormat && <AmbossSearch />}
         {!session.examFormat && <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />}
         <button disabled={addingImages} onClick={() => nav("/home")}>{session.examFormat ? "Exit" : "Save & exit"}</button>
         <button disabled={addingImages} onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
@@ -517,6 +520,7 @@ export default function PaperPage() {
                     <span style={{ flex: 1 }} />
                     {a.submittedAt && <span className="muted">submitted</span>}
                     <QuestionCommunity question={q} set={data.sets.find(s => s.id === q.setId)} disabled={session.mode === "exam" && unsubmitted > 0} />
+                    {admin && <FixWithClaude set={data.sets.find(s => s.id === q.setId)} question={q} />}
                     {admin && <button className="small" onClick={() => { setEditingMode("question"); setEditing(q); }} title="Edit this question (admin)">Edit question</button>}
                   </div>
                 )}

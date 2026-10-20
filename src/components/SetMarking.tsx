@@ -11,6 +11,7 @@ import AutoTextarea from "./AutoTextarea";
 import CommentedAnswer from "./CommentedAnswer";
 import ModelAnswerContent from "./ModelAnswerContent";
 import QuestionCommunity from "./QuestionCommunity";
+import FixWithClaude from "./FixWithClaude";
 import { belongsToAccount } from "../lib/progressAccount";
 import { setAttemptReview } from "../lib/setAttemptReview";
 import { introducedStems, markingDraft, reconcileMarkingParts, type MarkingDraft } from "../lib/markingSet";
@@ -301,6 +302,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
         <span>{order + 1}</span>
         <span style={{ flex: 1 }} />
         <QuestionCommunity key={question.id} question={question} set={set} />
+        {admin && <FixWithClaude set={set} question={question} />}
         {admin && <button className="small" onClick={() => onEdit(question)}>Edit question</button>}
       </div>
       {showText && (

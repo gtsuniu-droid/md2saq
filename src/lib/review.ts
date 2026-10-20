@@ -5,7 +5,7 @@ import { presentationName } from "../data/presentations";
 
 export const WEAK_SCORE_PERCENT = 60;
 export function savedReviewNotes(entry: HistoryEntry): string {
-  return [entry.mark?.notes, entry.mark?.reflection, entry.mark?.learningPoint, ...(entry.attempt.answerComments ?? []).map((c) => `“${c.quote}”\n${c.text}`)].filter((text) => text?.trim()).join("\n\n");
+  return [entry.mark?.notes, entry.mark?.reflection, entry.mark?.learningPoint, ...(entry.attempt.answerComments ?? []).map((c) => c.quote ? `“${c.quote}”\n${c.text}` : c.text)].filter((text) => text?.trim()).join("\n\n");
 }
 
 /** Latest marked attempt per question: a successful unaided retry replaces old weaknesses. */

@@ -1,0 +1,629 @@
+[
+  {
+    "id": "abdominal-pain",
+    "name": "Abdominal pain",
+    "synonyms": [
+      "abdominal pain",
+      "abdo pain",
+      "epigastric",
+      "flank pain",
+      "rif",
+      "rif pain",
+      "lif pain",
+      "ruq",
+      "luq",
+      "suprapubic",
+      "peritonitis",
+      "peritonism"
+    ],
+    "parent": null
+  },
+  {
+    "id": "abnormal-speech",
+    "name": "Abnormal speech and communication",
+    "synonyms": [
+      "speech",
+      "dysarthria",
+      "dysphasia",
+      "aphasia",
+      "slurred",
+      "unclear communication"
+    ],
+    "parent": null
+  },
+  {
+    "id": "altered-bowel-habit",
+    "name": "Altered bowel habit",
+    "synonyms": [
+      "bowel habit",
+      "change in bowel",
+      "altered bowel"
+    ],
+    "parent": null
+  },
+  {
+    "id": "altered-sleep",
+    "name": "Altered sleep",
+    "synonyms": [
+      "sleep",
+      "insomnia",
+      "hypersomnia",
+      "snoring",
+      "sleep apnoea",
+      "obstructive sleep"
+    ],
+    "parent": null
+  },
+  {
+    "id": "altered-urinary-volume",
+    "name": "Altered urinary volume",
+    "synonyms": [
+      "anuria",
+      "oliguria",
+      "polyuria",
+      "urine output",
+      "urinary volume"
+    ],
+    "parent": null
+  },
+  {
+    "id": "cognitive-impairment",
+    "name": "Cognitive impairment",
+    "synonyms": [
+      "cognitive",
+      "dementia",
+      "memory loss",
+      "forgetful",
+      "mmse",
+      "moca"
+    ],
+    "parent": null
+  },
+  {
+    "id": "chest-pain",
+    "name": "Chest pain",
+    "synonyms": [
+      "chest pain",
+      "chest tightness",
+      "angina",
+      "pleuritic"
+    ],
+    "parent": null
+  },
+  {
+    "id": "confusion",
+    "name": "Confusion",
+    "synonyms": [
+      "confusion",
+      "confused",
+      "delirium",
+      "delirious",
+      "disorientated",
+      "disoriented"
+    ],
+    "parent": null
+  },
+  {
+    "id": "constipation",
+    "name": "Constipation",
+    "synonyms": [
+      "constipation",
+      "constipated",
+      "obstipation"
+    ],
+    "parent": null
+  },
+  {
+    "id": "cough",
+    "name": "Cough",
+    "synonyms": [
+      "cough",
+      "coughing",
+      "productive cough"
+    ],
+    "parent": null
+  },
+  {
+    "id": "diarrhoea",
+    "name": "Diarrhoea",
+    "synonyms": [
+      "diarrhoea",
+      "diarrhea",
+      "loose stools",
+      "loose stool"
+    ],
+    "parent": null
+  },
+  {
+    "id": "dizziness",
+    "name": "Dizziness",
+    "synonyms": [
+      "dizziness",
+      "dizzy",
+      "vertigo",
+      "lightheaded",
+      "light-headed",
+      "presyncope"
+    ],
+    "parent": null
+  },
+  {
+    "id": "dysphagia",
+    "name": "Dysphagia",
+    "synonyms": [
+      "dysphagia",
+      "difficulty swallowing",
+      "odynophagia"
+    ],
+    "parent": null
+  },
+  {
+    "id": "dyspnoea",
+    "name": "Dyspnoea",
+    "synonyms": [
+      "dyspnoea",
+      "dyspnea",
+      "shortness of breath",
+      "short of breath",
+      "breathless",
+      "sob",
+      "orthopnoea"
+    ],
+    "parent": null
+  },
+  {
+    "id": "falls",
+    "name": "Falls",
+    "synonyms": [
+      "fall",
+      "falls",
+      "fell",
+      "mechanical fall"
+    ],
+    "parent": null
+  },
+  {
+    "id": "fertility-visit",
+    "name": "Fertility visit",
+    "synonyms": [
+      "fertility",
+      "subfertility",
+      "infertility",
+      "trying to conceive",
+      "ivf"
+    ],
+    "parent": null
+  },
+  {
+    "id": "fever",
+    "name": "Fever",
+    "synonyms": [
+      "fever",
+      "febrile",
+      "pyrexia",
+      "temperature of",
+      "rigors",
+      "sepsis"
+    ],
+    "parent": null
+  },
+  {
+    "id": "haematemesis",
+    "name": "Haematemesis",
+    "synonyms": [
+      "haematemesis",
+      "hematemesis",
+      "vomiting blood",
+      "coffee ground",
+      "coffee-ground"
+    ],
+    "parent": null
+  },
+  {
+    "id": "haematuria",
+    "name": "Haematuria",
+    "synonyms": [
+      "haematuria",
+      "hematuria",
+      "blood in urine",
+      "blood in the urine"
+    ],
+    "parent": null
+  },
+  {
+    "id": "haemoptysis",
+    "name": "Haemoptysis",
+    "synonyms": [
+      "haemoptysis",
+      "hemoptysis",
+      "coughing up blood",
+      "coughing blood"
+    ],
+    "parent": null
+  },
+  {
+    "id": "headache",
+    "name": "Headache",
+    "synonyms": [
+      "headache",
+      "migraine",
+      "thunderclap",
+      "head ache"
+    ],
+    "parent": null
+  },
+  {
+    "id": "hearing-loss",
+    "name": "Hearing loss",
+    "synonyms": [
+      "hearing loss",
+      "deafness",
+      "hard of hearing",
+      "tinnitus",
+      "hearing"
+    ],
+    "parent": null
+  },
+  {
+    "id": "high-blood-pressure",
+    "name": "High blood pressure",
+    "synonyms": [
+      "hypertension",
+      "hypertensive",
+      "high blood pressure",
+      "elevated blood pressure",
+      "bp of 1"
+    ],
+    "parent": null
+  },
+  {
+    "id": "jaundice",
+    "name": "Jaundice",
+    "synonyms": [
+      "jaundice",
+      "jaundiced",
+      "icterus",
+      "yellow",
+      "bilirubin"
+    ],
+    "parent": null
+  },
+  {
+    "id": "joint-pain",
+    "name": "Joint pain",
+    "synonyms": [
+      "joint pain",
+      "arthralgia",
+      "arthritis",
+      "hip pain",
+      "knee pain",
+      "neck pain",
+      "shoulder pain",
+      "pelvic instability",
+      "sacroiliac",
+      "painful joint"
+    ],
+    "parent": null
+  },
+  {
+    "id": "joint-swelling",
+    "name": "Joint swelling",
+    "synonyms": [
+      "joint swelling",
+      "swollen joint",
+      "swollen knee",
+      "effusion",
+      "hot swollen"
+    ],
+    "parent": null
+  },
+  {
+    "id": "lack-of-energy",
+    "name": "Lack of energy",
+    "synonyms": [
+      "lethargy",
+      "lethargic",
+      "fatigue",
+      "fatigued",
+      "tiredness",
+      "tired",
+      "malaise",
+      "lack of energy",
+      "low energy",
+      "non-specific"
+    ],
+    "parent": null
+  },
+  {
+    "id": "loss-of-consciousness",
+    "name": "Loss of consciousness",
+    "synonyms": [
+      "loss of consciousness",
+      "unconscious",
+      "syncope",
+      "collapse",
+      "collapsed",
+      "blackout",
+      "black out",
+      "transient loss",
+      "anaesthetised",
+      "gcs",
+      "unresponsive"
+    ],
+    "parent": null
+  },
+  {
+    "id": "low-blood-pressure",
+    "name": "Low blood pressure",
+    "synonyms": [
+      "hypotension",
+      "hypotensive",
+      "low blood pressure",
+      "shock",
+      "shocked"
+    ],
+    "parent": null
+  },
+  {
+    "id": "muscle-weakness",
+    "name": "Muscle weakness",
+    "synonyms": [
+      "weakness",
+      "weak",
+      "paresis",
+      "paralysis",
+      "hemiparesis",
+      "myopathy",
+      "foot drop"
+    ],
+    "parent": null
+  },
+  {
+    "id": "musculoskeletal-pain",
+    "name": "Musculoskeletal pain",
+    "synonyms": [
+      "musculoskeletal",
+      "bone pain",
+      "muscle ache",
+      "muscle pain",
+      "myalgia",
+      "lower limb pain",
+      "loin pain",
+      "pelvic floor",
+      "perineum",
+      "perineal"
+    ],
+    "parent": null
+  },
+  {
+    "id": "back-pain",
+    "name": "Back pain",
+    "synonyms": [
+      "back pain",
+      "lower back",
+      "low back",
+      "lumbar",
+      "sciatica",
+      "cauda equina"
+    ],
+    "parent": "musculoskeletal-pain"
+  },
+  {
+    "id": "palpitations",
+    "name": "Palpitations",
+    "synonyms": [
+      "palpitations",
+      "palpitation",
+      "racing heart",
+      "heart racing",
+      "fluttering",
+      "irregular heartbeat"
+    ],
+    "parent": null
+  },
+  {
+    "id": "polydipsia",
+    "name": "Polydipsia",
+    "synonyms": [
+      "polydipsia",
+      "thirst",
+      "thirsty",
+      "drinking a lot"
+    ],
+    "parent": null
+  },
+  {
+    "id": "rectal-bleeding",
+    "name": "Rectal bleeding",
+    "synonyms": [
+      "rectal bleeding",
+      "pr bleeding",
+      "pr bleed",
+      "blood in stool",
+      "blood in the stool",
+      "melaena",
+      "melena",
+      "haematochezia",
+      "bleeding from the back passage",
+      "bright red blood"
+    ],
+    "parent": null
+  },
+  {
+    "id": "sensory-disturbance",
+    "name": "Sensory disturbance",
+    "synonyms": [
+      "numbness",
+      "numb",
+      "tingling",
+      "paraesthesia",
+      "paresthesia",
+      "pins and needles",
+      "sensory loss",
+      "sensory disturbance",
+      "altered sensation"
+    ],
+    "parent": null
+  },
+  {
+    "id": "sore-throat",
+    "name": "Sore throat",
+    "synonyms": [
+      "sore throat",
+      "pharyngitis",
+      "tonsillitis",
+      "throat pain",
+      "odynophagia"
+    ],
+    "parent": null
+  },
+  {
+    "id": "swelling",
+    "name": "Swelling",
+    "synonyms": [
+      "swelling",
+      "swollen",
+      "oedema",
+      "edema",
+      "peripheral oedema",
+      "leg swelling",
+      "ankle swelling",
+      "lower limb swelling",
+      "lump"
+    ],
+    "parent": null
+  },
+  {
+    "id": "trauma",
+    "name": "Trauma",
+    "synonyms": [
+      "trauma",
+      "laceration",
+      "head injury",
+      "soft tissue injury",
+      "fracture",
+      "fractured",
+      "dislocation",
+      "dislocated",
+      "injury",
+      "injured",
+      "mva",
+      "motor vehicle",
+      "assault",
+      "stabbed",
+      "stab wound"
+    ],
+    "parent": null
+  },
+  {
+    "id": "tremor",
+    "name": "Tremor",
+    "synonyms": [
+      "tremor",
+      "shaking",
+      "shaky hands",
+      "parkinson"
+    ],
+    "parent": null
+  },
+  {
+    "id": "urinary-symptoms",
+    "name": "Urinary symptoms",
+    "synonyms": [
+      "frequency",
+      "dysuria",
+      "nocturia",
+      "luts",
+      "lower urinary tract",
+      "incontinence",
+      "incontinent",
+      "urgency",
+      "urinary symptoms",
+      "uti",
+      "hesitancy",
+      "poor stream"
+    ],
+    "parent": null
+  },
+  {
+    "id": "vision-loss",
+    "name": "Vision loss",
+    "synonyms": [
+      "vision loss",
+      "visual loss",
+      "loss of vision",
+      "blurred vision",
+      "blurry vision",
+      "diplopia",
+      "double vision",
+      "can't see",
+      "cannot see",
+      "visual disturbance",
+      "amaurosis"
+    ],
+    "parent": null
+  },
+  {
+    "id": "vomiting",
+    "name": "Vomiting",
+    "synonyms": [
+      "vomiting",
+      "vomit",
+      "nausea",
+      "nauseous",
+      "emesis"
+    ],
+    "parent": null
+  },
+  {
+    "id": "weight-gain",
+    "name": "Weight gain",
+    "synonyms": [
+      "weight gain",
+      "gained weight",
+      "gaining weight",
+      "obesity",
+      "obese"
+    ],
+    "parent": null
+  },
+  {
+    "id": "weight-loss",
+    "name": "Weight loss",
+    "synonyms": [
+      "weight loss",
+      "lost weight",
+      "losing weight",
+      "cachexia",
+      "unintentional weight"
+    ],
+    "parent": null
+  },
+  {
+    "id": "wheeze-stridor",
+    "name": "Wheeze/stridor",
+    "synonyms": [
+      "wheeze",
+      "wheezing",
+      "stridor",
+      "respiratory distress",
+      "noisy breathing",
+      "asthma"
+    ],
+    "parent": null
+  },
+  {
+    "id": "wounds",
+    "name": "Wounds",
+    "synonyms": [
+      "wound",
+      "wounds",
+      "ulcer",
+      "ulceration",
+      "pressure injury",
+      "pressure sore",
+      "dehiscence"
+    ],
+    "parent": null
+  }
+]

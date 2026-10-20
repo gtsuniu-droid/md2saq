@@ -1,5 +1,15 @@
+import { createHash } from "node:crypto";
 import type { BankEntry, SetPack } from "./types.js";
 import type { Config } from "./config.js";
+import { setLabel } from "./util.js";
+import { presentationMatches } from "./presentations.js";
+
+/** The 8-character code on a set's share link, derived only from its bank id. */
+export function setCode(bankId: string): string {
+  return createHash("sha256").update(bankId).digest().subarray(0, 6).toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+const simplify = (s: string) => s.toLowerCase().replace(/[—–-]/g, " ").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 
 export class BankError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -27,11 +37,18 @@ export class PasscodeMissingError extends Error {
  * admin passcode. Packs are cached per bank id and revision for the life of the
  * process, so repeated reads and searches do not re-download the whole bank.
  */
-export class BankClient {
-  private packs = new Map<string, { revision: number; pack: SetPack }>();
-  private indexCache: { at: number; entries: BankEntry[] } | null = null;
+/** Direct access to the bank's storage, for the hosted server; the local server reads over HTTP. */
+export interface BankReader {
+  index(): Promise<BankEntry[]>;
+  pack(bankId: string): Promise<SetPack | null>;
+}
 
-  constructor(private readonly config: Config) {}
+// Shared across instances so a warm serverless function does not re-download the bank.
+const PACKS = new Map<string, { revision: number; pack: SetPack }>();
+let INDEX: { at: number; entries: BankEntry[] } | null = null;
+
+export class BankClient {
+  constructor(private readonly config: Config, private readonly reader?: BankReader) {}
 
   private url(query: Record<string, string> = {}): string {
     const u = new URL("/api/bank", this.config.siteUrl);
@@ -55,10 +72,14 @@ export class BankClient {
 
   /** The index, newest change first. Cached for ten seconds so a search does not hit the site twice. */
   async listEntries(fresh = false): Promise<BankEntry[]> {
-    if (!fresh && this.indexCache && Date.now() - this.indexCache.at < 10_000) return this.indexCache.entries;
-    const res = await this.check(await fetch(this.url()), "Listing the bank");
-    const { sets } = (await res.json()) as { sets: BankEntry[] };
-    this.indexCache = { at: Date.now(), entries: sets };
+    if (!fresh && INDEX && Date.now() - INDEX.at < 10_000) return INDEX.entries;
+    let sets: BankEntry[];
+    if (this.reader) sets = [...(await this.reader.index())].sort((a, b) => (b.updatedAt ?? b.uploadedAt) - (a.updatedAt ?? a.uploadedAt));
+    else {
+      const res = await this.check(await fetch(this.url()), "Listing the bank");
+      sets = ((await res.json()) as { sets: BankEntry[] }).sets;
+    }
+    INDEX = { at: Date.now(), entries: sets };
     return sets;
   }
 
@@ -68,14 +89,48 @@ export class BankClient {
     return found;
   }
 
-  async getPack(bankId: string): Promise<SetPack> {
-    const entry = await this.entry(bankId);
+  /**
+   * Find a set by whatever the user has: its short code (share link), its bank id, or a
+   * label such as "Dyspnoea set 3", "dyspnoea 3" or "Abdominal pain — Set 01".
+   */
+  async resolve(ref: string, fresh = false): Promise<BankEntry> {
+    const wanted = ref.trim();
+    const entries = await this.listEntries(fresh);
+    const exact = entries.find((e) => e.id === wanted || setCode(e.id) === wanted || setCode(e.id).toLowerCase() === wanted.toLowerCase());
+    if (exact) return exact;
+    const text = simplify(wanted);
+    const numberMatch = /(\d+)\s*$/.exec(text);
+    const number = numberMatch ? Number(numberMatch[1]) : undefined;
+    const words = text.replace(/\bset\b/g, "").replace(/\d+\s*$/, "").trim();
+    const candidates = entries.filter((e) => {
+      const where = e.group ?? e.presentations[0] ?? "";
+      const byPlace = !words || presentationMatches(where, words) || e.presentations.some((id) => presentationMatches(id, words)) || simplify(e.source ?? "").includes(words) || simplify(e.name).includes(words);
+      const byNumber = number === undefined || e.number === number;
+      return byPlace && byNumber;
+    });
+    if (candidates.length === 1) return candidates[0];
+    const latest = await this.listEntries(true);
+    const retry = latest.find((e) => e.id === wanted || setCode(e.id) === wanted);
+    if (retry) return retry;
+    if (candidates.length > 1) throw new BankError(`"${wanted}" matches ${candidates.length} sets: ${candidates.slice(0, 6).map((e) => `${setLabel(e)} [${setCode(e.id)}]`).join("; ")}. Give the code or the full label.`, 409);
+    throw new BankError(`No set matches "${wanted}". listSets shows every set with its code and label; try the presentation name and number, e.g. "dyspnoea 3".`, 404);
+  }
+
+  /** The set's current content. Pass fresh before a write, so a change made elsewhere seconds ago is not overwritten. */
+  async getPack(ref: string, fresh = false): Promise<SetPack> {
+    const entry = await this.resolve(ref, fresh);
+    const bankId = entry.id;
     const revision = entry.updatedAt ?? entry.uploadedAt;
-    const cached = this.packs.get(bankId);
+    const cached = PACKS.get(bankId);
     if (cached && cached.revision === revision) return cached.pack;
-    const res = await this.check(await fetch(this.url({ id: bankId })), `Reading set ${bankId}`);
-    const pack = (await res.json()) as SetPack;
-    this.packs.set(bankId, { revision, pack });
+    let pack: SetPack | null;
+    if (this.reader) pack = await this.reader.pack(bankId);
+    else {
+      const res = await this.check(await fetch(this.url({ id: bankId })), `Reading set ${bankId}`);
+      pack = (await res.json()) as SetPack;
+    }
+    if (!pack) throw new BankError(`Set ${bankId}: its content is missing from the bank.`, 404);
+    PACKS.set(bankId, { revision, pack });
     return pack;
   }
 
@@ -84,7 +139,7 @@ export class BankClient {
     const entries = await this.listEntries();
     const out: { entry: BankEntry; pack: SetPack }[] = new Array(entries.length);
     let next = 0;
-    await Promise.all(Array.from({ length: Math.min(6, entries.length) }, async () => {
+    await Promise.all(Array.from({ length: Math.min(12, entries.length) }, async () => {
       while (next < entries.length) {
         const i = next++;
         out[i] = { entry: entries[i], pack: await this.getPack(entries[i].id) };
@@ -102,20 +157,20 @@ export class BankClient {
   async updatePack(bankId: string, pack: SetPack): Promise<BankEntry> {
     const res = await this.check(await fetch(this.url({ id: bankId }), { method: "PUT", headers: this.writeHeaders(), body: JSON.stringify(pack) }), `Saving set ${bankId}`);
     const entry = (await res.json()) as BankEntry;
-    this.packs.set(bankId, { revision: entry.updatedAt ?? entry.uploadedAt, pack });
-    this.indexCache = null;
+    PACKS.set(bankId, { revision: entry.updatedAt ?? entry.uploadedAt, pack });
+    INDEX = null;
     return entry;
   }
 
   async createFromText(body: { name: string; text: string; source?: string; presentations?: string[]; key?: string }): Promise<BankEntry & { duplicate?: boolean }> {
     const res = await this.check(await fetch(this.url(), { method: "POST", headers: this.writeHeaders(), body: JSON.stringify({ format: "saq-practice-text", ...body }) }), "Adding a set");
-    this.indexCache = null;
+    INDEX = null;
     return (await res.json()) as BankEntry & { duplicate?: boolean };
   }
 
   async deleteSet(bankId: string): Promise<void> {
     await this.check(await fetch(this.url({ id: bankId }), { method: "DELETE", headers: this.writeHeaders() }), `Deleting set ${bankId}`);
-    this.packs.delete(bankId);
-    this.indexCache = null;
+    PACKS.delete(bankId);
+    INDEX = null;
   }
 }

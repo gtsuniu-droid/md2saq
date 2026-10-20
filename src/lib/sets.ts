@@ -115,7 +115,7 @@ export function startSet(summary: SetSummary, mode: "practice" | "exam", minutes
 }
 
 /** How a set is referred to everywhere: "Set 01", or its name until it has a number. */
-export function setLabel(set: QuestionSet): string {
+export function setLabel(set: Pick<QuestionSet, "number" | "name">): string {
   return set.number !== undefined ? setNumberLabel(set.number) : set.name || "Set";
 }
 
@@ -156,4 +156,17 @@ export async function numberUnnumberedSets(): Promise<void> {
       await db.sets.update(x.set.id, { name: setNumberLabel(x.number) });
     }
   }
+}
+
+/** Strip bookkeeping prefixes such as "Case 02:" or "Set 3 -" that generators put in front of a title. */
+export function cleanTitle(text: string | undefined): string {
+  return (text ?? "").replace(/^\s*(?:case|set|station|scenario)\s*\d*\s*[:.\-–—]?\s*/i, "").trim();
+}
+
+/** The case title students see: the source title, else a non-generic name. Empty when there is nothing descriptive. */
+export function setTitle(set: Pick<QuestionSet, "name" | "source" | "number">): string {
+  const fromSource = cleanTitle(set.source);
+  if (fromSource) return fromSource;
+  const generic = /^(set|case)\s*\d*$/i.test(set.name.trim()) || set.name.trim() === setLabel(set);
+  return generic ? "" : cleanTitle(set.name);
 }

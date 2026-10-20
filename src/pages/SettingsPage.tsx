@@ -12,6 +12,7 @@ import { syncFromBank } from "../lib/bank";
 import { ambossLogout } from "../lib/amboss";
 import { cloudConfigured, signOutCloud } from "../lib/firebase";
 import SignInPanel from "../components/SignInPanel";
+import ClaudeConnect from "../components/ClaudeConnect";
 import { isAdmin } from "../lib/admin";
 import { recordDeletes, syncNow } from "../lib/sync";
 
@@ -89,6 +90,7 @@ export default function SettingsPage() {
     { id: "account", label: "Account" },
     { id: "amboss", label: "AMBOSS" },
     { id: "library", label: "Question library" },
+    ...(cloudConfigured() ? [{ id: "claude", label: "AI assistants" }] : []),
     { id: "backup", label: "Backup" },
     ...(admin ? [{ id: "admin", label: "Admin" }] : []),
     { id: "danger", label: "Danger zone", danger: true },
@@ -181,6 +183,14 @@ export default function SettingsPage() {
               {libraryMsg && <p className="settings-message" role="status">{libraryMsg}</p>}
             </div>
           </section>
+
+          {cloudConfigured() && (
+            <section className="settings-section" id="claude" aria-labelledby="settings-claude">
+              <h2 id="settings-claude">AI assistants</h2>
+              <p className="muted">Let Claude or ChatGPT read the question bank, search it, and (for admins) edit questions and answers, straight from the chat.</p>
+              <ClaudeConnect />
+            </section>
+          )}
 
           <section className="settings-section" id="backup" aria-labelledby="settings-backup">
             <h2 id="settings-backup">Backup</h2>

@@ -1,6 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { BankError, PasscodeMissingError, ReadOnlyModeError } from "./client.js";
 import type { BankEntry, Question, SetPack, SubPart } from "./types.js";
+import { presentationName } from "./presentations.js";
 
 /** Success: the object as JSON text plus structuredContent, so clients can show either. */
 export function ok(data: Record<string, unknown>): CallToolResult {
@@ -22,9 +23,7 @@ export function setLabel(entry: Pick<BankEntry, "number" | "name" | "presentatio
   return where ? `${presentationName(where)} — ${number}` : number;
 }
 
-export function presentationName(id: string): string {
-  return id.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
-}
+export { presentationName } from "./presentations.js";
 
 export function partLabel(label: string): string {
   return label ? `(${label})` : "";
@@ -72,4 +71,51 @@ export function searchableText(pack: SetPack): string {
   const parts = [pack.set.name, pack.set.source ?? "", pack.set.collection ?? "", ...(pack.set.tags ?? [])];
   for (const q of pack.questions) parts.push(...(q.stems ?? []), q.text, q.modelAnswer ?? "", ...q.parts.flatMap((p) => [p.text, p.modelAnswer ?? ""]));
   return parts.join("\n").toLowerCase();
+}
+
+const COMMAND_WORDS = ["state", "list", "name", "give", "identify", "outline", "describe", "explain", "justify", "compare", "contrast", "interpret", "classify", "categorise", "categorize", "prioritise", "prioritize", "discuss", "suggest", "define", "calculate", "propose", "summarise", "summarize", "rank", "predict", "assess", "evaluate", "distinguish", "differentiate", "recommend", "write", "draw", "label", "indicate", "select", "choose", "formulate", "devise", "plan", "set out", "for each"];
+const CHATTY = /\b(could you|can you|would you|what do you think|please|i would like|tell me|let's|lets)\b/i;
+
+/** Examination language: a command word first, no conversational phrasing. Returns the problems found, if any. */
+export function examStyleWarnings(label: string, text: string): string[] {
+  const t = text.trim().toLowerCase().replace(/^[("'\[]+/, "");
+  const out: string[] = [];
+  if (t && !COMMAND_WORDS.some((w) => t.startsWith(w + " ") || t.startsWith(w + ",") || t.startsWith(w + ":"))) out.push(`${label} does not open with an examination command word (State, List, Outline, Explain, Justify…).`);
+  if (CHATTY.test(text)) out.push(`${label} uses conversational phrasing; rewrite it as an instruction.`);
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const sentences = text.split(/[.!?](?:\s|$)/).filter((x) => x.trim()).length;
+  if (words > 45) out.push(`${label} is ${words} words; keep a question under about 45 words (at most three short sentences). Move background into the stem or split it into parts.`);
+  else if (sentences > 3) out.push(`${label} has ${sentences} sentences; keep to three at most.`);
+  return out;
+}
+
+/** Style warnings for a whole question: its text when it has no parts, otherwise each part. */
+export function questionStyleWarnings(q: Question, number: number): string[] {
+  if (!q.parts.length) return examStyleWarnings(`Question ${number}`, q.text);
+  return q.parts.flatMap((p) => examStyleWarnings(`Question ${number}${partLabel(p.label)}`, p.text));
+}
+
+/** Strip bookkeeping prefixes such as "Case 02:" or "Set 3 -" from a title; numbering is automatic. */
+export function cleanTitle(text: string | undefined): string {
+  return (text ?? "").replace(/^\s*(?:case|set|station|scenario)\s*\d*\s*[:.\-–—]?\s*/i, "").trim();
+}
+
+/** The descriptive title of a set, or empty when it only has a generic name. */
+export function entryTitle(e: { name: string; source?: string; number?: number }): string {
+  const fromSource = cleanTitle(e.source);
+  if (fromSource) return fromSource;
+  return /^(set|case)\s*\d*$/i.test(e.name.trim()) ? "" : cleanTitle(e.name);
+}
+
+/** What is weak about a set's metadata, in words a user can act on. */
+export function metadataWarnings(e: { name: string; source?: string; tags?: string[] }): string[] {
+  const out: string[] = [];
+  const raw = (e.source ?? e.name ?? "").trim();
+  if (!entryTitle(e)) out.push("no descriptive title");
+  else if (/^\s*(case|set|station|scenario)\s*\d*\s*[:.\-–—]/i.test(raw)) out.push(`title carries a bookkeeping prefix ("${raw.slice(0, 24)}…")`);
+  else if (entryTitle(e).split(/\s+/).length > 14) out.push("title is long; aim for under ten words");
+  const tags = (e.tags ?? []).filter(Boolean);
+  if (!tags.length) out.push("no tags; tags should name the conditions the case covers");
+  else if (tags.length === 1) out.push("only one tag");
+  return out;
 }

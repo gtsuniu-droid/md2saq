@@ -1,4 +1,5 @@
 import ShareLinks from "../components/ShareLinks";
+import SetCode from "../components/SetCode";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AccountGate from "../components/AccountGate";
 import { useAccountGate } from "../lib/accountGate";
@@ -11,7 +12,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { db, getSettings } from "../data/db";
 import { presentationName } from "../data/presentations";
 import { formatDate, formatDuration, partLabel, totalMarks, truncate } from "../lib/questions";
-import { loadSummaries, setLabel, startSet, suggestedMinutesFor } from "../lib/sets";
+import { loadSummaries, setLabel, setTitle, startSet, suggestedMinutesFor } from "../lib/sets";
 import { fullLabel } from "../lib/tree";
 import { isAdmin } from "../lib/admin";
 import { moveSetToPresentation } from "../lib/movePresentation";
@@ -104,8 +105,7 @@ export default function SetPage() {
     `${questions.length} question${questions.length === 1 ? "" : "s"}`,
     summary.marks ? `${summary.marks} marks` : "",
     presentation ? presentationName(presentation) : "",
-    set.number !== undefined && set.name && set.name !== setLabel(set) && !/^set\s*\d+$/i.test(set.name) ? set.name : "",
-    set.source ?? "",
+    setTitle(set),
   ].filter(Boolean);
 
   return (
@@ -113,7 +113,7 @@ export default function SetPage() {
       <header className="set-page-head">
         <div className="set-crumbs"><Link to="/browse">Browse</Link>{set.collection ? <>, <Link to={`/browse?collection=${encodeURIComponent(set.collection)}`}>{set.collection}</Link></> : null}</div>
         <h1>{fullLabel(summary)}</h1>
-        <p className="set-meta">{meta.map((m) => <span key={m}>{m}</span>)}</p>
+        <p className="set-meta">{meta.map((m) => <span key={m}>{m}</span>)}{set.bankId && <SetCode bankId={set.bankId} />}</p>
         {set.tags && set.tags.length > 0 && (
           <div className="set-tags">{set.tags.map((t) => <Link key={t} to={`/browse?tag=${encodeURIComponent(t)}`}>{t}</Link>)}</div>
         )}

@@ -1,6 +1,7 @@
 import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
 import ConfirmDialog from "../components/ConfirmDialog";
+import FixWithClaude from "../components/FixWithClaude";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router";
@@ -63,6 +64,7 @@ export default function QuestionPage() {
         <div className="muted"><Link to={`/set/${q.setId}`}>{set ? setLabel(set) : "Set"}</Link>, question {q.order + 1}</div>
         <QuestionCommunity key={`community-${q.id}`} question={q} set={set} />
         <ShareLinks key={q.id} set={set} />
+        {admin && <FixWithClaude set={set ?? undefined} question={q} />}
         {admin && <button className="danger small" onClick={() => setDeleting(true)}>Delete question</button>}
       </div>
       {message && <p style={{ color: "var(--warn)" }}>{message}</p>}

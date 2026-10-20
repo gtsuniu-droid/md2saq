@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, expect, it } from "vitest";
 import { db } from "../data/db";
 import { DEFAULT_SETTINGS, type AnswerComment } from "../data/types";
-import { commentSegments, deleteAnswerComment, validCommentAnchor, writeAnswerComment } from "./answerComments";
+import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, validCommentAnchor, writeAnswerComment } from "./answerComments";
 const comment = (id='c'): AnswerComment => ({id,partLabel:'a',start:3,end:9,quote:'answer',text:'Explain this point',createdAt:0,updatedAt:0});
 it('anchors exact occurrences and refuses stale or invalid passages',()=>{
  expect(validCommentAnchor('My answer and answer',comment())).toBe(true);
@@ -50,4 +50,14 @@ it('rejects another account, a missing part, and unsubmitted answers',async()=>{
  await db.attempts.update('a',{submittedAt:undefined});
  await expect(writeAnswerComment('a',comment())).rejects.toThrow('saved answer');
  expect((await db.attempts.get('a'))?.answerComments).toBeUndefined();
+});
+it('accepts a general comment on the whole answer and never highlights it',async()=>{
+ const general={...comment('g'),...GENERAL_ANCHOR};
+ expect(isGeneralComment(general)).toBe(true);
+ expect(validCommentAnchor('anything',general)).toBe(true);
+ expect(commentSegments('My answer',[general]).every((s)=>!s.ids.length)).toBe(true);
+ await writeAnswerComment('a',general);
+ expect((await db.attempts.get('a'))?.answerComments?.[0]).toMatchObject({id:'g',quote:'',start:0,end:0,text:'Explain this point'});
+ await expect(writeAnswerComment('a',{...general,id:'empty',text:'  '})).rejects.toThrow('Write a comment');
+ await expect(writeAnswerComment('a',{...comment('bad'),quote:''})).rejects.toThrow('Select');
 });

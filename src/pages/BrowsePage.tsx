@@ -20,6 +20,7 @@ import { bankErrorMessage, deleteSetEverywhere } from "../lib/share";
 import { BankPasscodeError, verifyPasscode } from "../lib/bank";
 import { patchSettings } from "../data/db";
 import ConfirmDialog from "../components/ConfirmDialog";
+import SetCode from "../components/SetCode";
 import AccountGate from "../components/AccountGate";
 import { useAccountGate } from "../lib/accountGate";
 import { useLocation } from "react-router";
@@ -152,7 +153,7 @@ export default function BrowsePage() {
 
         {active ? <>
           <header className="browse-detail-heading">
-            <div><button className="small link browse-back" disabled={!!editing} onClick={() => { const next = new URLSearchParams(params); next.delete("set"); setParams(next, { replace: true }); }}>← Sets</button><h2>{browseSetTitle(active)}</h2><span className="muted">{active.questions.length} questions</span></div>
+            <div><button className="small link browse-back" disabled={!!editing} onClick={() => { const next = new URLSearchParams(params); next.delete("set"); setParams(next, { replace: true }); }}>← Sets</button><h2>{browseSetTitle(active)}</h2><span className="muted">{active.questions.length} questions</span>{active.set.bankId && <SetCode bankId={active.set.bankId} />}</div>
             {!editing && <div className="row"><button className="small primary" disabled={deleting || (!content.ready || active.contentReady === false) || !active.questions.length} onClick={() => start(active)}>Practise</button><Link className="button small" to={`/set/${active.set.id}`}>Details</Link><button className="small" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => { select(active.set.id); setEditing(active.set.id); detail.current?.scrollTo(0, 0); }}>{data && isAdmin(data.settings) ? "Edit" : "Edit my copy"}</button>{data && isAdmin(data.settings) && <button className="small danger" disabled={deleting || !content.ready || active.contentReady === false} onClick={() => { setDeleteError(""); setPasscode(""); setPendingDelete(active); }}>Delete</button>}</div>}
           </header>
           <div className="browse-detail-scroll" ref={detail}>

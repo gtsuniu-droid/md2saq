@@ -144,6 +144,14 @@ export async function onCloudUser(cb: (u: CloudUser | null) => void): Promise<()
   return onAuthStateChanged(auth, (u) => cb(u ? toCloudUser(u) : null));
 }
 
+/** A short-lived proof of sign-in for the site's own functions, or null when signed out. */
+export async function idToken(): Promise<string | null> {
+  if (!cloudConfigured()) return null;
+  const { auth } = await services();
+  await auth.authStateReady();
+  return auth.currentUser ? auth.currentUser.getIdToken() : null;
+}
+
 export async function currentUser(): Promise<CloudUser | null> {
   if (!cloudConfigured()) return null;
   const { auth } = await services();

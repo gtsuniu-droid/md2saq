@@ -215,10 +215,15 @@ passcode is remembered per device and can be cleared from Settings.
 
 ## Editing the bank from Claude (MCP)
 
-`mcp/` holds `saq-mcp`, a Model Context Protocol server that lets Claude Desktop or Claude
-Code read and edit the shared bank: list and search sets, read a set with question numbers,
-change a question, part, stem or the set's details, add a question or a whole paper, and
-delete with explicit confirmation. See `mcp/README.md` for setup.
+Settings, AI assistants gives each signed-in person a personal connection link for claude.ai,
+ChatGPT, Claude Desktop or Claude Code. Admins also get a "Fix with AI" menu on every question
+while practising, marking or viewing it, which opens the assistant with the set code and
+question number ready. The site serves MCP at `/api/mcp/<token>` (`netlify/functions/mcp.ts`);
+links are minted by `netlify/functions/mcp-token.ts` after checking the Firebase sign-in, and
+only their hashes are stored (blob store `mcp-tokens`). Admins and the owner get the editing
+tools, backed by the site's own `BANK_PASSCODE`; everyone else gets the reading tools. Sets are
+named by their short code (shown on the set page and in Browse) or a label like "Dyspnoea set 3".
+`mcp/` holds the same tools as a local STDIO server for development; see `mcp/README.md`.
 
 ## Pushing questions from your own generator
 
