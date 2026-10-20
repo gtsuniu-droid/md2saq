@@ -2,7 +2,7 @@
  * Configuration from the environment, with CLI flags on top. Nothing is written
  * back to process.env.
  *
- *   SAQ_SITE_URL   The site, e.g. https://md2saq.netlify.app (default) or http://localhost:5173
+ *   SAQ_SITE_URL   The site, e.g. https://saqmd2.netlify.app (default) or http://localhost:5173
  *   SAQ_PASSCODE   The bank's admin passcode. Needed for every change; reading works without it.
  *   SAQ_READ_ONLY  "1" or "true" to refuse every change, whatever the passcode.
  */
@@ -17,7 +17,7 @@ export function loadConfig(argv: string[] = process.argv.slice(2)): Config {
     const i = argv.indexOf(name);
     return i >= 0 ? argv[i + 1] : undefined;
   };
-  const site = (flag("--site") ?? process.env.SAQ_SITE_URL ?? "https://md2saq.netlify.app").trim().replace(/\/+$/, "");
+  const site = (flag("--site") ?? process.env.SAQ_SITE_URL ?? "https://saqmd2.netlify.app").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//.test(site)) throw new Error(`SAQ_SITE_URL must start with http:// or https:// (got "${site}").`);
   return {
     siteUrl: site,

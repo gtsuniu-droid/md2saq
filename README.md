@@ -46,7 +46,7 @@ Setup, once, about ten minutes:
 1. Create a project at https://console.firebase.google.com. Add a Web app to it and copy
    the four values `apiKey`, `authDomain`, `projectId`, `appId`.
 2. Authentication, Sign-in method: enable Google. Under Settings, Authorized domains,
-   add your Netlify domain (for example `md2saq.netlify.app`).
+   add your Netlify domain (for example `saqmd2.netlify.app`).
 3. Firestore Database: create it (production mode), then paste the contents of
    `firestore.rules` from this repo into Rules and publish. The rules let each signed-in
    person read and write only their own documents.

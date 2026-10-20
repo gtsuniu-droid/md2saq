@@ -89,7 +89,7 @@ Configuration is by environment variable:
 
 | Variable | Meaning |
 | --- | --- |
-| `SAQ_SITE_URL` | The site. Defaults to `https://md2saq.netlify.app`. Use `http://localhost:5173` against `npm run dev`. |
+| `SAQ_SITE_URL` | The site. Defaults to `https://saqmd2.netlify.app`. Use `http://localhost:5173` against `npm run dev`. |
 | `SAQ_PASSCODE` | The bank's admin passcode (`BANK_PASSCODE` in Netlify; `dev` locally). Needed for every change. |
 | `SAQ_READ_ONLY` | `1` to refuse every change. |
 
@@ -110,7 +110,7 @@ Settings, Developer, Edit Config, then add to `mcpServers`:
       "command": "node",
       "args": ["/path/to/saq-practice/mcp/bin/saq-mcp.js", "--stdio"],
       "env": {
-        "SAQ_SITE_URL": "https://md2saq.netlify.app",
+        "SAQ_SITE_URL": "https://saqmd2.netlify.app",
         "SAQ_PASSCODE": "your-passcode"
       }
     }
