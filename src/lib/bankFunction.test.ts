@@ -218,7 +218,7 @@ describe("bank history", () => {
     const restored = await put(created.id, {}, `&restore=${versions[0].at}`);
     expect(restored.status).toBe(200);
     expect(((await (await get(`?id=${created.id}`)).json()) as { set: { name: string } }).set.name).toBe("v1");
-    versions = ((await (await get(`?history=${created.id}`)).json()) as { versions: { reason: string }[] }).versions;
+    versions = ((await (await get(`?history=${created.id}`)).json()) as { versions: typeof versions }).versions;
     expect(versions.map((v) => v.reason)).toEqual(["restore", "update"]);
 
     expect(((await (await del(created.id)).json()) as { restorable: boolean }).restorable).toBe(true);
