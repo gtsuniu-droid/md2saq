@@ -1535,3 +1535,10 @@ details.section > summary h2 { font-size: 1.15rem; }
 .amboss-search form.row { gap: .4rem; flex-wrap: nowrap; }
 .amboss-search form.row input { flex: 1; }
 .amboss-search-results { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+/* Questions the connector or an admin flagged for review, admin-only on the set page. */
+.review-flags { margin: .6rem 0 0; padding: .7rem .9rem; border: 1px solid color-mix(in srgb, #e7ab23 55%, var(--border)); border-left: 3px solid #e7ab23; border-radius: 10px; background: color-mix(in srgb, #ffeeb3 35%, var(--card)); font-size: .9rem; }
+.review-flags ul { margin: .35rem 0; padding-left: 1.1rem; }
+.review-flags li { margin: .15rem 0; }
+.review-flags li span { font-weight: 600; }
+.review-flags small { display: block; margin-top: .25rem; }

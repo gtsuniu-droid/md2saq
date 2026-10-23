@@ -119,3 +119,71 @@ export function metadataWarnings(e: { name: string; source?: string; tags?: stri
   else if (tags.length === 1) out.push("only one tag");
   return out;
 }
+
+const answered = (q: Question): boolean => q.parts.length ? q.parts.every((p) => !!((p.modelAnswer ?? "").trim() || p.modelAnswerDoc)) : !!((q.modelAnswer ?? "").trim() || q.modelAnswerDoc);
+export { answered as hasModelAnswers };
+
+/** A set as a readable document: stems once per stage, numbered questions, parts and marks, answers optional. */
+export function packToMarkdown(heading: { code: string; label: string }, pack: SetPack, includeAnswers: boolean): string {
+  const { set } = pack;
+  const ordered = [...pack.questions].sort((a, b) => a.order - b.order);
+  const title = entryTitle({ name: set.name, source: set.source, number: set.number });
+  const lines: string[] = [`# ${heading.label}${title ? `: ${title}` : ""}`, ``, `Code \`${heading.code}\`${set.tags?.length ? ` · Tags: ${set.tags.join(", ")}` : ""}${set.collection ? ` · Collection: ${set.collection}` : ""}${set.suggestedMinutes ? ` · ${set.suggestedMinutes} min` : ""}`];
+  if (set.instructions) lines.push(``, `> ${set.instructions.replace(/\n/g, "\n> ")}`);
+  const shown = new Set<string>();
+  ordered.forEach((q, i) => {
+    (q.stems ?? []).forEach((stem, stage) => {
+      if (shown.has(stem)) return;
+      shown.add(stem);
+      lines.push(``, `**Stage ${stage + 1}.** ${stem}`);
+    });
+    lines.push(``, `**${i + 1}.** ${q.text}${q.marks !== undefined && !q.parts.length ? ` *(${q.marks} marks)*` : ""}`);
+    for (const p of q.parts) lines.push(`   **(${p.label})** ${p.text}${p.marks !== undefined ? ` *(${p.marks} marks)*` : ""}`);
+    if (includeAnswers) {
+      if (q.modelAnswer) lines.push(``, `   *Answer:*`, ...q.modelAnswer.split("\n").map((l) => `   ${l}`));
+      for (const p of q.parts) if (p.modelAnswer) lines.push(``, `   *Answer (${p.label}):*`, ...p.modelAnswer.split("\n").map((l) => `   ${l}`));
+    }
+  });
+  if (set.markingNotes) lines.push(``, `## Marking notes`, set.markingNotes);
+  if (set.debrief) lines.push(``, `## Debrief`, set.debrief);
+  return lines.join("\n");
+}
+
+const COUNT_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const countAsked = (text: string): { n: number; capitals: boolean } | null => {
+  const m = /\b(?:list|name|give|state|identify|outline|describe|suggest|propose)\s+(?:the\s+|up\s+to\s+|at\s+least\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i.exec(text);
+  if (!m) return null;
+  const raw = m[1];
+  const n = /^\d+$/.test(raw) ? Number(raw) : COUNT_WORDS[raw.toLowerCase()];
+  return n ? { n, capitals: raw === raw.toUpperCase() } : null;
+};
+const lines = (t: string | undefined) => (t ?? "").split("\n").map((l) => l.trim()).filter(Boolean).length;
+
+export interface QualityIssue { severity: "fix" | "check"; issue: string }
+
+/** Everything a reviewer would raise about one question: style, marks, counts and answers. */
+export function questionQualityIssues(q: Question, number: number): QualityIssue[] {
+  const out: QualityIssue[] = [];
+  const label = (p?: SubPart) => `Question ${number}${p ? `(${p.label})` : ""}`;
+  for (const w of questionStyleWarnings(q, number)) out.push({ severity: "fix", issue: w });
+  const targets: { text: string; marks?: number; answer?: string; answerDoc?: unknown; part?: SubPart }[] = q.parts.length
+    ? q.parts.map((p) => ({ text: p.text, marks: p.marks, answer: p.modelAnswer, answerDoc: p.modelAnswerDoc, part: p }))
+    : [{ text: q.text, marks: q.marks, answer: q.modelAnswer, answerDoc: q.modelAnswerDoc }];
+  if (!(q.stems?.length)) out.push({ severity: "check", issue: `${label()} has no case stem.` });
+  for (const t of targets) {
+    const words = t.text.trim().split(/\s+/).filter(Boolean).length;
+    if (words < 4) out.push({ severity: "fix", issue: `${label(t.part)} is only ${words} word${words === 1 ? "" : "s"}; a question needs a task, not a heading.` });
+    if (t.marks === undefined) out.push({ severity: "fix", issue: `${label(t.part)} has no marks.` });
+    else if (t.marks === 0) out.push({ severity: "check", issue: `${label(t.part)} is worth 0 marks.` });
+    const asked = countAsked(t.text);
+    if (asked && !asked.capitals) out.push({ severity: "check", issue: `${label(t.part)} asks for ${asked.n} items; write the number in capitals (e.g. ${["", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"][asked.n] ?? asked.n}).` });
+    if (asked && t.marks !== undefined && t.marks < asked.n) out.push({ severity: "check", issue: `${label(t.part)} asks for ${asked.n} items but carries ${t.marks} mark${t.marks === 1 ? "" : "s"}.` });
+    if (asked && t.marks !== undefined && t.marks > asked.n * 3) out.push({ severity: "check", issue: `${label(t.part)} asks for ${asked.n} items but carries ${t.marks} marks; say what else earns credit.` });
+    const hasAnswer = !!((t.answer ?? "").trim() || t.answerDoc);
+    if (!hasAnswer) out.push({ severity: "fix", issue: `${label(t.part)} has no model answer.` });
+    else if (!t.answerDoc && t.marks !== undefined && t.marks >= 3 && lines(t.answer) < 2) out.push({ severity: "check", issue: `${label(t.part)} is worth ${t.marks} marks but its model answer is a single line; one point per line helps marking.` });
+    if (/\b(etc|and so on)\b\.?/i.test(t.text)) out.push({ severity: "check", issue: `${label(t.part)} trails off with "etc."; say exactly what is wanted.` });
+  }
+  if (q.parts.length === 1) out.push({ severity: "check", issue: `${label()} has a single part (${q.parts[0].label}); fold it into the question.` });
+  return out;
+}

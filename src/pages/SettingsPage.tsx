@@ -2,13 +2,14 @@ import { setProgressAccount } from "../lib/progressAccount";
 import AmbossSettings from "../components/AmbossSettings";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { db, patchSettings, getSettings } from "../data/db";
 import { DEFAULT_SETTINGS } from "../data/types";
 import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileText, type ExportFile } from "../lib/exportImport";
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
+import { hideRemovedCopies, libraryBreakdown, type LibraryBreakdown } from "../lib/library";
 import { ambossLogout } from "../lib/amboss";
 import { cloudConfigured, signOutCloud } from "../lib/firebase";
 import SignInPanel from "../components/SignInPanel";
@@ -29,6 +30,8 @@ export default function SettingsPage() {
   const settings = useLiveQuery(async () => await getSettings(), []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [libraryMsg, setLibraryMsg] = useState<string | null>(null);
+  const [breakdown, setBreakdown] = useState<LibraryBreakdown | null>(null);
+  useEffect(() => { void libraryBreakdown().then(setBreakdown); }, [libraryMsg]);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [cloudMsg, setCloudMsg] = useState<string | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
@@ -180,6 +183,9 @@ export default function SettingsPage() {
                   catch { setLibraryMsg("The server is not reachable from here."); }
                 }}>Check for new sets</button>
               </Row>
+              {breakdown && <Row title="On this device" help={`${breakdown.published} published ${breakdown.published === 1 ? "set" : "sets"} from the shared bank` + (breakdown.unpublished ? `, ${breakdown.unpublished} of your own not yet published` : "") + (breakdown.removed ? `, and ${breakdown.removed} edited ${breakdown.removed === 1 ? "copy" : "copies"} of ${breakdown.removed === 1 ? "a set" : "sets"} since removed from the bank. Only the published sets are the same on every device.` : ". Only the published sets are the same on every device.")}>
+                {breakdown.removed > 0 && <button className="small" onClick={async () => { const n = await hideRemovedCopies(); setLibraryMsg(`${n} ${n === 1 ? "copy" : "copies"} hidden. Your attempts on ${n === 1 ? "it" : "them"} are kept in History.`); }}>Hide removed {breakdown.removed === 1 ? "copy" : "copies"}</button>}
+              </Row>}
               {libraryMsg && <p className="settings-message" role="status">{libraryMsg}</p>}
             </div>
           </section>

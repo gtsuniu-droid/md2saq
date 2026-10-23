@@ -41,8 +41,11 @@ export async function pushToBank(setId: string): Promise<void> {
       await db.sets.update(setId, { bankUpdatedAt: entry.updatedAt ?? Date.now(), dirty: false });
       return;
     } catch (e) {
-      // Removed from the bank in the meantime: fall through and create it again.
       if (!(e instanceof Error && /not found/i.test(e.message))) throw e;
+      // Deleted from the bank elsewhere: the bank wins. The copy leaves the library here
+      // (it stays on the device for past attempts) rather than coming back as a new set.
+      await db.sets.update(setId, { dirty: false });
+      throw new Error("This set was deleted from the shared bank on another device, so the change was not published. Create it again as a new set if it is still wanted.");
     }
   }
   const entry = await uploadBankSet(pack, passcode);

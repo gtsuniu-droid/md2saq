@@ -181,6 +181,26 @@ export default function App() {
     };
   }, []);
 
+  // Sets are published, edited and deleted from several places (Admin, Browse, Create, the
+  // AI connector), so an open tab re-reads the catalogue when it comes back into view and
+  // every ten minutes, not only when the app opens.
+  useEffect(() => {
+    if (/^\/(shared|s)\//.test(window.location.pathname)) return;
+    let last = Date.now();
+    const refresh = async (force = false) => {
+      if (document.visibilityState !== "visible" || (!force && Date.now() - last < 2 * 60_000)) return;
+      if ((await getSettings()).autoImportBank === false) return;
+      last = Date.now();
+      try { if (await syncFromBank()) requestSync(0); } catch { /* offline */ }
+    };
+    const onVisible = () => { void refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("online", onVisible);
+    const timer = setInterval(() => void refresh(true), 10 * 60_000);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); window.removeEventListener("online", onVisible); clearInterval(timer); };
+  }, []);
+
   // Drop unsubmitted attempts left behind by abandoned papers.
   useEffect(() => {
     if (/^\/(shared|s)\//.test(window.location.pathname)) return;

@@ -191,3 +191,44 @@ describe("catalogue delivery routes", () => {
     expect((await (await get("?catalogue=1")).json()).entries).toHaveLength(0);
   });
 });
+
+describe("bank history", () => {
+  beforeEach(() => { memory.clear(); process.env.BANK_PASSCODE = "secret"; process.env.NETLIFY = "true"; });
+  const put = (id: string, body: unknown, query = "") =>
+    handler(new Request(`http://x/api/bank?id=${id}${query}`, { method: "PUT", headers: { "content-type": "application/json", "x-passcode": "secret" }, body: JSON.stringify(body) }));
+  const del = (id: string) => handler(new Request(`http://x/api/bank?id=${id}`, { method: "DELETE", headers: { "x-passcode": "secret" } }));
+
+  it("previews a paper without storing anything", async () => {
+    const res = await handler(new Request("http://x/api/bank?preview=1", { method: "POST", headers: { "content-type": "application/json", "x-passcode": "secret" }, body: JSON.stringify({ format: "saq-practice-text", name: "p", text: "1. State the diagnosis. (2 marks)\n2. Outline management. (3 marks)" }) }));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { pack: { questions: unknown[] } }).pack.questions).toHaveLength(2);
+    expect(((await (await get()).json()) as { sets: unknown[] }).sets).toHaveLength(0);
+  });
+
+  it("keeps earlier versions, restores one, and brings a deleted set back under its old id", async () => {
+    const created = (await (await post({ format: "saq-practice-text", name: "v1", text: "1. State the diagnosis. (2 marks)" })).json()) as { id: string };
+    const pack = (await (await get(`?id=${created.id}`)).json()) as { set: { name: string }; questions: { text: string }[] };
+    await put(created.id, { ...pack, set: { ...pack.set, name: "v2" }, questions: [{ ...pack.questions[0], text: "State the likely cause. (2 marks)" }] });
+    expect((await get(`?history=${created.id}`, "nope")).status).toBe(403);
+    let versions = ((await (await get(`?history=${created.id}`)).json()) as { versions: { at: number; reason: string; name: string }[] }).versions;
+    expect(versions.map((v) => [v.reason, v.name])).toEqual([["update", "v1"]]);
+    const old = (await (await get(`?history=${created.id}&at=${versions[0].at}`)).json()) as { pack: { questions: { text: string }[] } };
+    expect(old.pack.questions[0].text).toBe("State the diagnosis.");
+
+    const restored = await put(created.id, {}, `&restore=${versions[0].at}`);
+    expect(restored.status).toBe(200);
+    expect(((await (await get(`?id=${created.id}`)).json()) as { set: { name: string } }).set.name).toBe("v1");
+    versions = ((await (await get(`?history=${created.id}`)).json()) as { versions: { reason: string }[] }).versions;
+    expect(versions.map((v) => v.reason)).toEqual(["restore", "update"]);
+
+    expect(((await (await del(created.id)).json()) as { restorable: boolean }).restorable).toBe(true);
+    const deleted = ((await (await get("?deleted=1")).json()) as { deleted: { id: string; name: string }[] }).deleted;
+    expect(deleted.map((d) => [d.id, d.name])).toEqual([[created.id, "v1"]]);
+    const last = ((await (await get(`?history=${created.id}`)).json()) as { versions: { at: number; reason: string }[] }).versions[0];
+    expect(last.reason).toBe("delete");
+    expect((await put(created.id, {}, `&restore=${last.at}`)).status).toBe(200);
+    const sets = ((await (await get()).json()) as { sets: { id: string; number: number }[] }).sets;
+    expect(sets.map((s) => [s.id, s.number])).toEqual([[created.id, 1]]);
+    expect(((await (await get("?deleted=1")).json()) as { deleted: unknown[] }).deleted).toHaveLength(0);
+  });
+});

@@ -27,7 +27,10 @@ export interface Question {
   [key: string]: unknown;
 }
 
+export interface ReviewFlag { questionId: string; reason: string; flaggedAt: number; by?: string }
+
 export interface QuestionSet {
+  reviewFlags?: ReviewFlag[];
   id: string;
   number?: number;
   name: string;

@@ -111,7 +111,14 @@ async function refreshCatalogue(): Promise<number> {
   const old = await readCatalogue();
   const versions = new Map(old?.entries.map(e => [e.id, e.revision]));
   const changed = catalogue.entries.filter(e => versions.get(e.id) !== e.revision).length;
-  if (JSON.stringify(old) !== JSON.stringify(catalogue)) await db.meta.put({ id: CATALOGUE_KEY, value: JSON.stringify(catalogue) });
+  if (JSON.stringify(old) !== JSON.stringify(catalogue)) {
+    await db.meta.put({ id: CATALOGUE_KEY, value: JSON.stringify(catalogue) });
+    // An edited copy of a set that has since been deleted from the bank leaves the library
+    // (it stays on the device for past attempts), so every device shows the same sets.
+    const live = new Set(catalogue.entries.map(e => e.id));
+    const gone = (await db.sets.filter(s => !!s.bankId && !!s.dirty && !live.has(s.bankId)).primaryKeys()) as string[];
+    for (const id of gone) await db.sets.update(id, { dirty: false });
+  }
   return changed;
 }
 

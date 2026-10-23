@@ -80,7 +80,7 @@ export default function ClaudeConnect() {
               <li><strong>ChatGPT:</strong> Settings, Connectors, Create (developer mode must be on). Name it SAQ Practice, paste the link as the MCP server URL, authentication None, Create.</li>
               <li><strong>Claude Code:</strong> <code>claude mcp add --transport http saq-practice &lt;link&gt;</code></li>
             </ul>
-            <p className="muted">Then ask things like "show me dyspnoea set 3", "find questions about pulmonary embolism"{canEdit ? ", or \"in chest pain set 2 question 1, add troponin at 0 and 6 hours to the model answer\"" : ""}.</p>
+            <p className="muted">Then ask things like "show me dyspnoea set 3", "find questions about pulmonary embolism"{canEdit ? ", \"review the whole bank for bad questions and flag them\", or \"in chest pain set 2 question 1, add troponin at 0 and 6 hours to the model answer\". Every change is kept in history, so \"undo that\" works too" : ""}.</p>
           </div>
           {error && <p className="settings-message field-error" role="alert">{error}</p>}
         </>

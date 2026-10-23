@@ -58,7 +58,19 @@ return the code and label for every set they mention.
 | `addQuestion` | Append a question, with parts if wanted. |
 | `removeQuestion` | Remove a question. Needs `confirmDeletion: true`. |
 | `addSet` | Create a set from a pasted paper (the Create page's text format), with its title, presentation and tags. |
-| `deleteSet` | Delete a set for everyone. Needs `confirmDeletion: true`. |
+| `deleteSet` | Delete a set for everyone. Needs `confirmDeletion: true`. `restoreDeletedSet` can bring it back. |
+| `reviewQuestions` | Every question that breaks the house style or marking rules, grouped by set, worst first. |
+| `flagQuestions` / `clearFlags` / `listFlags` | Keep questions marked for review; admins see the flags on the set page. Editing a flagged question clears it. |
+| `previewSet` | Parse a paper as `addSet` would, without saving: see how it splits before publishing. |
+| `applyEdits` | Several changes to one set in a single save (one history version). |
+| `reorderQuestions` | Put a set's questions in a new order. |
+| `duplicateSet` | Copy a set under a new title, optionally without answers or in another presentation. |
+| `renameTag` | Rename or merge a tag across every set. Needs `confirm: true`. |
+| `setHistory` / `restoreSet` | Earlier versions of a set (the last twenty) and undo back to one. |
+| `listDeletedSets` / `restoreDeletedSet` | Deleted sets (the last fifty) and bringing one back under its old code. |
+| `bankStats` / `listTags` | The shape of the bank per presentation; every tag in use. |
+
+Resources: `saq://sets` (the whole list) and `saq://set/{code}` (one set as Markdown). Prompts: `review-bank`, `overhaul-set`, `draft-set`, `tidy-metadata`, `write-answers`.
 
 With `--read-only` (or `SAQ_READ_ONLY=1`) only the reading tools are offered.
 

@@ -41,3 +41,32 @@ export async function loadLibrary(): Promise<{ sets: QuestionSet[]; questions: Q
   }
   return { sets, questions, pending };
 }
+
+export interface LibraryBreakdown {
+  /** Sets in the shared bank's catalogue, the same on every device. */
+  published: number;
+  /** Sets written on this device and never published. */
+  unpublished: number;
+  /** Personal copies of sets that have since been removed from the bank, still shown here. */
+  removed: number;
+  removedIds: string[];
+}
+
+/** Why one device's set count differs from another's: only the published figure is shared. */
+export async function libraryBreakdown(): Promise<LibraryBreakdown> {
+  const [catalogue, sets] = await Promise.all([readCatalogue(), db.sets.toArray()]);
+  const live = new Set(catalogue?.entries.map((e) => e.id) ?? []);
+  const unpublished = sets.filter((s) => !s.bankId).length;
+  const removedIds = catalogue ? sets.filter((s) => s.bankId && s.dirty && !live.has(s.bankId)).map((s) => s.id) : [];
+  return { published: live.size, unpublished, removed: removedIds.length, removedIds };
+}
+
+/**
+ * Stop showing copies of sets the bank no longer has. The copies and their questions stay
+ * on the device so past attempts can still be read; they just leave the library.
+ */
+export async function hideRemovedCopies(): Promise<number> {
+  const { removedIds } = await libraryBreakdown();
+  await db.transaction("rw", db.sets, async () => { for (const id of removedIds) await db.sets.update(id, { dirty: false }); });
+  return removedIds.length;
+}

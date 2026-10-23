@@ -20,7 +20,7 @@ export function catalogueEntry(id: string, revision: number, pack: SetPack, numb
     id, revision,
     set: { id: s.id, name: s.name, source: s.source, collection: s.collection, tags: s.tags,
       primaryPresentation: primaryPresentation(s, pack.questions), suggestedMinutes: s.suggestedMinutes,
-      number: number ?? s.number, createdAt: s.createdAt, bankId: id, bankUpdatedAt: revision },
+      number: number ?? s.number, createdAt: s.createdAt, bankId: id, bankUpdatedAt: revision, reviewFlags: s.reviewFlags?.length ? s.reviewFlags : undefined },
     questions: pack.questions.map(q => ({ id: q.bankQuestionId ?? q.id, bankQuestionId: q.bankQuestionId ?? q.id,
       setId: s.id, order: q.order, text: q.text, stems: q.stems, marks: q.marks,
       parts: (q.parts ?? []).map(p => ({ label: p.label, text: p.text, marks: p.marks })),

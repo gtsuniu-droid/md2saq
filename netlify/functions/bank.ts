@@ -227,7 +227,49 @@ export default async (req: Request): Promise<Response> => {
     return { pack, key: typeof body.key === "string" ? body.key.slice(0, 200) : undefined };
   };
 
+  // Every change keeps the previous version, so a bad edit or a deletion can be undone.
+  const HISTORY_KEEP = 20;
+  interface HistoryRow { at: number; reason: "update" | "delete" | "restore"; name: string; questionCount: number }
+  interface DeletedRow { id: string; name: string; group?: string; number?: number; questionCount: number; deletedAt: number }
+  const snapshot = async (entry: BankEntry, reason: HistoryRow["reason"]): Promise<void> => {
+    const pack = await store.get(`sets/${entry.id}`, { type: "json" });
+    if (!pack) return;
+    const rows = ((await store.get(`history-index/${entry.id}`, { type: "json" })) as HistoryRow[] | null) ?? [];
+    const at = Math.max(Date.now(), (rows[0]?.at ?? 0) + 1);
+    await store.setJSON(`history/${entry.id}/${at}`, { at, reason, entry, pack });
+    rows.unshift({ at, reason, name: entry.name, questionCount: entry.questionCount });
+    // Sets with pictures are large; keep only a few versions of those so storage stays small.
+    const keep = JSON.stringify(pack).length > 300_000 ? 3 : HISTORY_KEEP;
+    for (const old of rows.splice(keep)) await store.delete(`history/${entry.id}/${old.at}`);
+    await store.setJSON(`history-index/${entry.id}`, rows);
+  };
+  const deletedIndex = async (): Promise<DeletedRow[]> => ((await store.get("deleted-index", { type: "json" })) as DeletedRow[] | null) ?? [];
+
+  /** Store a pack as the set's current version: index entry, delivery files and content. */
+  const publish = async (id: string, pack: Pack, previous: BankEntry | undefined, index: BankEntry[]): Promise<BankEntry> => {
+    const entry = entryFrom(id, pack, previous);
+    if (previous) carryNumber(entry, previous);
+    const next = index.some((e) => e.id === id) ? index.map((e) => (e.id === id ? entry : e)) : [...index, entry];
+    renumber(next);
+    (pack.set as { number?: number }).number = entry.number;
+    await saveDelivery(store, entry, pack as SetPack, url.origin);
+    await store.setJSON(`sets/${id}`, pack);
+    await saveIndex(next);
+    return entry;
+  };
+
   if (req.method === "GET") {
+    if (url.searchParams.has("history") || url.searchParams.has("deleted")) {
+      if (!authorised) return new Response("Wrong passcode.", { status: 403 });
+      if (url.searchParams.has("deleted")) return json({ deleted: await deletedIndex() });
+      const id = url.searchParams.get("history") ?? "";
+      const at = url.searchParams.get("at");
+      if (at) {
+        const snap = await store.get(`history/${id}/${at}`, { type: "json" });
+        return snap ? json(snap) : new Response("No such version.", { status: 404 });
+      }
+      return json({ versions: ((await store.get(`history-index/${id}`, { type: "json" })) as HistoryRow[] | null) ?? [] });
+    }
     if (url.searchParams.has("image")) return deliverImage(store, url.searchParams.get("image") ?? "");
     if (url.searchParams.has("catalogue")) return deliverCatalogue(store, await loadIndex(), req);
     if (url.searchParams.has("content")) {
@@ -259,6 +301,8 @@ export default async (req: Request): Promise<Response> => {
   if (req.method === "POST") {
     const r = await readPack();
     if (r instanceof Response) return r;
+    // A parse-only pass: how the text would split into questions, with nothing stored.
+    if (url.searchParams.has("preview")) return json({ pack: r.pack });
     const index = await loadIndex();
     if (r.key) {
       const existing = index.find((e) => e.key === r.key);
@@ -294,28 +338,45 @@ export default async (req: Request): Promise<Response> => {
     if (!id) return new Response("Missing id.", { status: 400 });
     const index = await loadIndex();
     const previous = index.find((e) => e.id === id);
+    const restoreAt = url.searchParams.get("restore");
+    if (restoreAt) {
+      // Bring back an earlier version, or a deleted set under its old id.
+      const snap = (await store.get(`history/${id}/${restoreAt}`, { type: "json" })) as { pack: Pack } | null;
+      if (!snap) return new Response("No such version.", { status: 404 });
+      let base = previous;
+      if (!base) {
+        const tomb = (await store.get(`deleted/${id}`, { type: "json" })) as { entry: BankEntry } | null;
+        if (!tomb) return new Response("Not found", { status: 404 });
+        base = { ...tomb.entry, number: undefined };
+      } else await snapshot(previous!, "restore");
+      const entry = await publish(id, snap.pack, base, index);
+      if (!previous) {
+        await store.delete(`deleted/${id}`);
+        await store.setJSON("deleted-index", (await deletedIndex()).filter((d) => d.id !== id));
+      }
+      return json(entry);
+    }
     if (!previous) return new Response("Not found", { status: 404 });
     const r = await readPack();
     if (r instanceof Response) return r;
-    const entry = entryFrom(id, r.pack, previous);
-    carryNumber(entry, previous);
-    const next = index.map((e) => (e.id === id ? entry : e));
-    renumber(next);
-    (r.pack.set as { number?: number }).number = entry.number;
-    await saveDelivery(store, entry, r.pack as SetPack, url.origin);
-    await store.setJSON(`sets/${id}`, r.pack);
-    await saveIndex(next);
-    return json(entry);
+    await snapshot(previous, "update");
+    return json(await publish(id, r.pack, previous, index));
   }
 
   if (req.method === "DELETE") {
     const id = url.searchParams.get("id");
     if (!id) return new Response("Missing id.", { status: 400 });
     const index = await loadIndex();
-    if (!index.some((e) => e.id === id)) return new Response("Not found", { status: 404 });
+    const entry = index.find((e) => e.id === id);
+    if (!entry) return new Response("Not found", { status: 404 });
+    await snapshot(entry, "delete");
+    await store.setJSON(`deleted/${id}`, { entry, deletedAt: Date.now() });
+    const rows = [{ id, name: entry.name, group: entry.group, number: entry.number, questionCount: entry.questionCount, deletedAt: Date.now() }, ...(await deletedIndex()).filter((d) => d.id !== id)];
+    for (const old of rows.splice(50)) await store.delete(`deleted/${old.id}`);
+    await store.setJSON("deleted-index", rows);
     await store.delete(`sets/${id}`);
     await saveIndex(index.filter((e) => e.id !== id));
-    return json({ deleted: id });
+    return json({ deleted: id, restorable: true });
   }
 
   return new Response("Method not allowed", { status: 405 });

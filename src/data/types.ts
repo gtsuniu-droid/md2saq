@@ -19,7 +19,17 @@ export interface PresentationNote {
   deleted: boolean;
 }
 
+/** A question an admin or the AI connector has marked as needing review. Shown to admins on the set page. */
+export interface ReviewFlag {
+  questionId: string;
+  reason: string;
+  flaggedAt: number;
+  by?: string;
+}
+
 export interface QuestionSet {
+  /** Questions flagged for review, kept with the set so every admin and chat sees them. */
+  reviewFlags?: ReviewFlag[];
   /** The case’s main presenting complaint, independent of secondary question tags. */
   primaryPresentation?: string;
   id: string;

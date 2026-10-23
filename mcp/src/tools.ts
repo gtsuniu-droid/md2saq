@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { BankClient, setCode } from "./client.js";
 import type { Question, SetPack, SubPart } from "./types.js";
-import { cleanTitle, describeQuestion, entryTitle, examStyleWarnings, fail, findPart, findQuestion, metadataWarnings, ok, plainText, presentationName, questionStyleWarnings, searchableText, setLabel } from "./util.js";
+import { cleanTitle, describeQuestion, entryTitle, examStyleWarnings, fail, findPart, findQuestion, hasModelAnswers, metadataWarnings, ok, packToMarkdown, plainText, presentationName, questionStyleWarnings, searchableText, setLabel } from "./util.js";
+import { registerMoreReadTools, registerMoreWriteTools } from "./tools-more.js";
 import { PRESENTATIONS, resolvePresentation } from "./presentations.js";
 
 
@@ -21,6 +22,12 @@ function withQuestion(pack: SetPack, index: number, question: Question): SetPack
   const ordered = [...pack.questions].sort((a, b) => a.order - b.order);
   ordered[index] = question;
   return { ...pack, set: { ...pack.set, updatedAt: Date.now() }, questions: ordered.map((q, i) => ({ ...q, order: i })) };
+}
+
+/** A fixed question no longer needs review. */
+function withoutFlag(pack: SetPack, questionId: string): SetPack {
+  const flags = (pack.set.reviewFlags ?? []).filter((f) => f.questionId !== questionId);
+  return { ...pack, set: { ...pack.set, reviewFlags: flags.length ? flags : undefined } };
 }
 
 /** Guided workflows, offered as prompts where the client supports them. */
@@ -117,13 +124,14 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
   server.registerTool("getSet", {
     title: "Get a set",
     description: "A whole set: its details (title, presentation, tags, instructions, marking notes, debrief, suggested minutes) and every question with its number, id, case stems, text, marks, parts and model answers. Read this before editing so you change the right question.",
-    inputSchema: { set: setRef, includeModelAnswers: z.boolean().default(true).describe("Set false to leave the model answers out, for a shorter result.") },
+    inputSchema: { set: setRef, includeModelAnswers: z.boolean().default(true).describe("Set false to leave the model answers out, for a shorter result."), format: z.enum(["json", "markdown"]).default("json").describe("markdown gives the set as a readable document instead of structured fields.") },
     annotations: READ,
-  }, async ({ set: ref, includeModelAnswers }) => {
+  }, async ({ set: ref, includeModelAnswers, format }) => {
     try {
       const entry = await bank.resolve(ref);
       const bankId = entry.id;
       const pack = await bank.getPack(bankId);
+      if (format === "markdown") return { content: [{ type: "text", text: packToMarkdown({ code: setCode(bankId), label: setLabel(entry) }, pack, includeModelAnswers) }] };
       const questions = [...pack.questions].sort((a, b) => a.order - b.order).map(describeQuestion);
       if (!includeModelAnswers) for (const q of questions) { delete (q as { modelAnswer?: string }).modelAnswer; for (const p of q.parts) delete (p as { modelAnswer?: string }).modelAnswer; }
       const { set } = pack;
@@ -140,29 +148,37 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
     title: "Find questions",
     description: "Search the text of every set (stems, questions, parts and model answers) for words or a phrase. Returns the matching sets and the question numbers that matched, with a short snippet each. Use it to find where a topic is covered or to locate a question to edit.",
     inputSchema: {
-      query: z.string().min(2).describe("Words or a phrase to look for, case-insensitive. All words must appear in the same set."),
-      presentation: z.string().optional().describe("Limit to one presentation id."),
+      query: z.string().default("").describe("Words or a phrase to look for, case-insensitive. All words must appear in the same set. May be empty when filtering by tag or withoutAnswers."),
+      presentation: z.string().optional().describe("Limit to one presentation id or name."),
+      tag: z.string().optional().describe("Only sets carrying this tag."),
+      withoutAnswers: z.boolean().default(false).describe("Only questions that have no model answer yet."),
+      searchModelAnswers: z.boolean().default(true).describe("Set false to match question text and stems only."),
       limit: z.number().int().min(1).max(100).default(20),
     },
     annotations: READ,
-  }, async ({ query, presentation, limit }) => {
+  }, async ({ query, presentation, tag, withoutAnswers, searchModelAnswers, limit }) => {
     try {
       const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!words.length && !tag && !withoutAnswers) return fail(new Error("Give words to search for, a tag, or withoutAnswers true."));
       const all = await bank.allPacks();
       const matches: Record<string, unknown>[] = [];
       const pres = presentation ? resolvePresentation(presentation)?.id ?? presentation : undefined;
       for (const { entry, pack } of all) {
         if (pres && !(entry.presentations.includes(pres) || entry.group === pres)) continue;
-        const text = searchableText(pack);
+        if (tag && !(entry.tags ?? []).some((t) => t.toLowerCase() === tag.toLowerCase())) continue;
+        const text = searchModelAnswers ? searchableText(pack) : searchableText({ ...pack, questions: pack.questions.map((q) => ({ ...q, modelAnswer: undefined, parts: q.parts.map((p) => ({ ...p, modelAnswer: undefined })) })) });
         if (!words.every((w) => text.includes(w))) continue;
         const hits = [...pack.questions].sort((a, b) => a.order - b.order).flatMap((q, i) => {
-          const body = [...(q.stems ?? []), q.text, q.modelAnswer ?? "", ...q.parts.flatMap((p) => [p.text, p.modelAnswer ?? ""])].join("\n");
+          if (withoutAnswers && hasModelAnswers(q)) return [];
+          const body = [...(q.stems ?? []), q.text, ...(searchModelAnswers ? [q.modelAnswer ?? ""] : []), ...q.parts.flatMap((p) => [p.text, ...(searchModelAnswers ? [p.modelAnswer ?? ""] : [])])].join("\n");
+          if (!words.length) return [{ questionNumber: i + 1, questionId: q.id, snippet: q.text.slice(0, 160) }];
           const lower = body.toLowerCase();
           const at = words.map((w) => lower.indexOf(w)).filter((n) => n >= 0);
           if (!at.length) return [];
           const start = Math.max(0, Math.min(...at) - 80);
           return [{ questionNumber: i + 1, questionId: q.id, snippet: body.slice(start, start + 220).replace(/\s+/g, " ").trim() }];
         });
+        if (!hits.length) continue;
         matches.push({ code: setCode(entry.id), label: setLabel(entry), title: entryTitle(entry), questions: hits, bankId: entry.id });
         if (matches.length >= limit) break;
       }
@@ -203,7 +219,9 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
     } catch (e) { return fail(e); }
   });
 
+  registerMoreReadTools(server, bank);
   if (readOnly) return;
+  registerMoreWriteTools(server, bank);
 
   const partInput = z.object({ label: z.string().describe("e.g. \"a\""), text: z.string().min(1), marks: z.number().min(0).optional(), modelAnswer: z.string().optional() });
   const questionInput = z.object({
@@ -313,7 +331,7 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       if (text !== undefined) { next.text = plainText(text); if (question.textDoc) { delete next.textDoc; dropped.push("question formatting"); } }
       if (marks !== undefined) next.marks = marks ?? undefined;
       if (modelAnswer !== undefined) { next.modelAnswer = modelAnswer === null ? undefined : plainText(modelAnswer); if (question.modelAnswerDoc) { delete next.modelAnswerDoc; dropped.push("model answer formatting"); } }
-      const entry = await bank.updatePack(bankId, withQuestion(pack, index, next));
+      const entry = await bank.updatePack(bankId, withoutFlag(withQuestion(pack, index, next), question.id));
       const style = text !== undefined ? questionStyleWarnings(next, index + 1) : [];
       return ok({ success: true, code: setCode(bankId), bankId, label: setLabel(entry), question: describeQuestion(next, index), changed: [text !== undefined && "text", marks !== undefined && "marks", modelAnswer !== undefined && "modelAnswer"].filter(Boolean), warning: dropped.length ? `Replaced ${dropped.join(" and ")}; pictures or formatting in it are gone.` : undefined, styleWarnings: style.length ? style : undefined, message: "Saved and published. Students receive it when they next open the site." });
     } catch (e) { return fail(e, { set: ref, questionNumber, questionId }); }
@@ -343,7 +361,7 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       if (marks !== undefined) nextPart.marks = marks ?? undefined;
       if (modelAnswer !== undefined) { nextPart.modelAnswer = modelAnswer === null ? undefined : plainText(modelAnswer); if (current.modelAnswerDoc) { delete nextPart.modelAnswerDoc; dropped.push("model answer formatting"); } }
       const next: Question = { ...question, parts: question.parts.map((p) => (p === current ? nextPart : p)) };
-      const entry = await bank.updatePack(bankId, withQuestion(pack, index, next));
+      const entry = await bank.updatePack(bankId, withoutFlag(withQuestion(pack, index, next), question.id));
       const style = text !== undefined ? examStyleWarnings(`Question ${index + 1}(${current.label})`, nextPart.text) : [];
       return ok({ success: true, code: setCode(bankId), bankId, label: setLabel(entry), question: describeQuestion(next, index), part: current.label, warning: dropped.length ? `Replaced ${dropped.join(" and ")}; pictures or formatting in it are gone.` : undefined, styleWarnings: style.length ? style : undefined, message: "Saved and published." });
     } catch (e) { return fail(e, { set: ref, questionNumber, questionId, part }); }
@@ -500,7 +518,7 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
 
   server.registerTool("deleteSet", {
     title: "Delete a set",
-    description: "Permanently delete a set from the shared bank for everyone. Students lose their attempts on it when their library updates; later sets in the presentation renumber. Runs only with confirmDeletion true.",
+    description: "Delete a set from the shared bank for everyone. Later sets in the presentation renumber. It can be brought back with restoreDeletedSet (the last fifty deletions are kept), but students' attempts on it are gone once their library updates. Runs only with confirmDeletion true.",
     inputSchema: { set: setRef, confirmDeletion: z.boolean().describe("Must be true; the user has confirmed.") },
     annotations: DESTRUCTIVE,
   }, async ({ set: ref, confirmDeletion }) => {
@@ -509,7 +527,7 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       const entry = await bank.resolve(ref);
       const bankId = entry.id;
       await bank.deleteSet(bankId);
-      return ok({ success: true, code: setCode(bankId), bankId, deleted: setLabel(entry), questionCount: entry.questionCount, message: "Deleted from the shared bank." });
+      return ok({ success: true, code: setCode(bankId), bankId, deleted: setLabel(entry), questionCount: entry.questionCount, message: "Deleted from the shared bank.", hint: "If this was a mistake, restoreDeletedSet brings it back under the same code." });
     } catch (e) { return fail(e, { set: ref }); }
   });
 }

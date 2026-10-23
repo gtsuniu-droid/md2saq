@@ -117,6 +117,13 @@ export default function SetPage() {
         {set.tags && set.tags.length > 0 && (
           <div className="set-tags">{set.tags.map((t) => <Link key={t} to={`/browse?tag=${encodeURIComponent(t)}`}>{t}</Link>)}</div>
         )}
+        {admin && !!set.reviewFlags?.length && (
+          <div className="review-flags" role="note" aria-label="Questions flagged for review">
+            <strong>Flagged for review</strong>
+            <ul>{set.reviewFlags.map((f) => { const i = [...summary.questions].sort((a, b) => a.order - b.order).findIndex((q) => (q.bankQuestionId ?? q.id) === f.questionId || q.id === f.questionId); return <li key={f.questionId + f.flaggedAt}><span>{i >= 0 ? `Question ${i + 1}` : "A removed question"}</span> {f.reason}</li>; })}</ul>
+            <small className="muted">Flags come from the AI connector's review or an admin. Fixing the question with the connector clears its flag.</small>
+          </div>
+        )}
         {flash && <p className={`set-flash${flash.startsWith("Saved and") ? "" : " warn"}`} role="status">{flash}</p>}
       </header>
       {set.instructions && (

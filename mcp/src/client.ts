@@ -47,6 +47,9 @@ export interface BankReader {
 const PACKS = new Map<string, { revision: number; pack: SetPack }>();
 let INDEX: { at: number; entries: BankEntry[] } | null = null;
 
+export interface HistoryRow { at: number; reason: "update" | "delete" | "restore"; name: string; questionCount: number }
+export interface DeletedRow { id: string; name: string; group?: string; number?: number; questionCount: number; deletedAt: number }
+
 export class BankClient {
   constructor(private readonly config: Config, private readonly reader?: BankReader) {}
 
@@ -166,6 +169,48 @@ export class BankClient {
     const res = await this.check(await fetch(this.url(), { method: "POST", headers: this.writeHeaders(), body: JSON.stringify({ format: "saq-practice-text", ...body }) }), "Adding a set");
     INDEX = null;
     return (await res.json()) as BankEntry & { duplicate?: boolean };
+  }
+
+  /** Reading history needs the passcode too: it can hold content that was deleted on purpose. */
+  private authHeaders(): Record<string, string> {
+    if (!this.config.passcode) throw new PasscodeMissingError();
+    return { "x-passcode": this.config.passcode };
+  }
+
+  /** Create a set from a complete pack (a duplicate, or one built in memory). */
+  async createPack(pack: SetPack, key?: string): Promise<BankEntry> {
+    const res = await this.check(await fetch(this.url(), { method: "POST", headers: this.writeHeaders(), body: JSON.stringify({ ...pack, key }) }), "Adding a set");
+    INDEX = null;
+    return (await res.json()) as BankEntry;
+  }
+
+  /** How a paper would split into questions, with nothing stored. */
+  async preview(body: { name: string; text: string; source?: string; presentations?: string[] }): Promise<SetPack> {
+    const res = await this.check(await fetch(this.url({ preview: "1" }), { method: "POST", headers: this.writeHeaders(), body: JSON.stringify({ format: "saq-practice-text", ...body }) }), "Previewing a set");
+    return ((await res.json()) as { pack: SetPack }).pack;
+  }
+
+  async history(bankId: string): Promise<HistoryRow[]> {
+    const res = await this.check(await fetch(this.url({ history: bankId }), { headers: this.authHeaders() }), `History of set ${bankId}`);
+    return ((await res.json()) as { versions: HistoryRow[] }).versions;
+  }
+
+  async historyPack(bankId: string, at: number): Promise<{ at: number; reason: string; pack: SetPack }> {
+    const res = await this.check(await fetch(this.url({ history: bankId, at: String(at) }), { headers: this.authHeaders() }), `Version ${at} of set ${bankId}`);
+    return (await res.json()) as { at: number; reason: string; pack: SetPack };
+  }
+
+  async deletedSets(): Promise<DeletedRow[]> {
+    const res = await this.check(await fetch(this.url({ deleted: "1" }), { headers: this.authHeaders() }), "Listing deleted sets");
+    return ((await res.json()) as { deleted: DeletedRow[] }).deleted;
+  }
+
+  /** Make an earlier version current again; for a deleted set this brings it back under its old id. */
+  async restore(bankId: string, at: number): Promise<BankEntry> {
+    const res = await this.check(await fetch(this.url({ id: bankId, restore: String(at) }), { method: "PUT", headers: this.writeHeaders(), body: "{}" }), `Restoring set ${bankId}`);
+    PACKS.delete(bankId);
+    INDEX = null;
+    return (await res.json()) as BankEntry;
   }
 
   async deleteSet(bankId: string): Promise<void> {
