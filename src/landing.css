@@ -93,7 +93,7 @@
 .landing-close p { color: var(--l-muted); font-size: 1.05rem; line-height: 1.65; max-width: 52ch; margin: 0 auto 2rem; }
 .landing-footer { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; max-width: 1120px; margin: 0 auto; padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 3rem; border-top: 1px solid var(--l-border); color: var(--l-muted); font-size: .88rem; }
 .landing-footer .landing-brand { margin-right: 0; color: var(--l-fg); }
-.landing-footer nav { display: flex; gap: 1.25rem; }
+.landing-footer nav { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; }
 .landing-footer nav a:hover { color: var(--l-fg); }
 .landing-footer small { margin-left: auto; }
 

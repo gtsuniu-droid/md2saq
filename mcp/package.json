@@ -2,7 +2,7 @@
   "name": "saq-mcp",
   "version": "0.1.0",
   "description": "Model Context Protocol server for SAQ Practice: read and edit the shared question bank from Claude.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "saq-mcp": "bin/saq-mcp.js"
@@ -10,7 +10,8 @@
   "files": [
     "bin",
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

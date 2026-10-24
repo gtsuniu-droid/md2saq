@@ -189,7 +189,12 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
 
       <footer className="landing-footer">
         <span className="landing-brand"><BrandMark />SAQ Practice</span>
-        <nav aria-label="Footer"><Link to="/home">Practice</Link><Link to="/browse">Library</Link><Link to="/notes">Notes</Link><Link to="/settings">Settings</Link></nav>
+        <nav aria-label="Footer">
+          <Link to="/home">Practice</Link><Link to="/browse">Library</Link><Link to="/notes">Notes</Link><Link to="/settings">Settings</Link>
+          <a href="https://github.com/gtsuniu-droid/md2saq">Project</a>
+          <a href="https://github.com/gtsuniu-droid/md2saq/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>
+          <a href="https://github.com/gtsuniu-droid/md2saq/blob/main/LICENSE">Apache 2.0 licence</a>
+        </nav>
         <small>Practice questions are teaching material, not clinical advice.</small>
       </footer>
     </div>

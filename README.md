@@ -1,4 +1,6 @@
-# SAQ Practice
+# SAQMD2 — SAQ Practice
+
+[Website](https://saqmd2.netlify.app) · [Project](https://github.com/gtsuniu-droid/md2saq) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Apache 2.0 licence](LICENSE)
 
 A minimal site for practising short answer questions against a fixed list of clinical
 presentations. Paste questions in, sit them under a timer in an exam-style layout, mark
@@ -322,3 +324,24 @@ Conversations use Firestore at `questionCommunity/{bankId}/questions/{publishedQ
 **Firebase status:** these rules were deployed and verified on project `saqmd2` on 23 September 2026. For future rules changes, deploy `firestore.rules` to the same Firebase project before enabling the corresponding UI on the live website. Publishing the Netlify build alone does not update Firebase rules. The rules retain the existing private per-user restrictions and add the shared conversation paths. If the moderator account changes, update the verified-email rule as well as the UI admin configuration. The implementation follows Firebase's [field-access rules](https://firebase.google.com/docs/firestore/security/rules-fields) and [cursor pagination](https://firebase.google.com/docs/firestore/query-data/query-cursors) guidance.
 
 Short set links use `/s/{eight-character-code}`. Codes are derived from the permanent bank ID, survive renaming/reordering, and resolve read-only through `/api/bank?short=...`; no link database or additional publish is needed when copying. Old `/shared/...` links still open. The sharing menu now copies only whole-set links.
+
+## Contributing and community
+
+Bug reports, feature suggestions, documentation improvements and pull requests are welcome.
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+Report conduct concerns privately to [chagc@student.unimelb.edu.au](mailto:chagc@student.unimelb.edu.au).
+
+Use GitHub issues for bugs and feature requests, and describe the purpose and validation of
+code changes in a pull request. Only contribute material you have the right to share.
+Unless explicitly stated otherwise, contributions intentionally submitted for inclusion are
+provided under Apache 2.0, as described in section 5 of the licence.
+
+## Licence
+
+SAQMD2’s original code and documentation are licensed under the
+[Apache License, Version 2.0](LICENSE). Third-party code, assets and dependencies retain
+their own licences and notices; see [third-party notices](THIRD_PARTY_NOTICES.md), including
+the outstanding provenance check for the AMBOSS term matcher.
+
+The software licence does not grant rights to third-party branding, external AMBOSS content,
+or question-bank content stored outside this repository.
