@@ -2,6 +2,7 @@ import { legacyQuestionIds, catalogueEntry, CATALOGUE_KEY, type BankCatalogue } 
 import { loadLibrary, readCatalogue } from "./library";
 import { db, patchSettings } from "../data/db";
 import { applyBankUpdate, type SetPack } from "./exportImport";
+import { hasUnpublishedEdits } from "./bankEditState";
 
 export interface BankEntry {
   id: string;
@@ -136,19 +137,24 @@ async function loadLatestSetContent(setId: string): Promise<string> {
   const [catalogue, local] = await Promise.all([readCatalogue(), db.sets.get(id)]);
   const latest = catalogue?.entries.find(e => e.id === local?.bankId || e.set.id === id);
   // If a publication arrived during the download, all callers await the latest version.
-  if (latest && local && !local.dirty && (local.bankUpdatedAt ?? 0) < latest.revision) return loadLatestSetContent(id);
+  if (latest && local && !hasUnpublishedEdits(local) && (local.bankUpdatedAt ?? 0) < latest.revision) return loadLatestSetContent(id);
   return id;
 }
 
 async function loadSetContent(setId: string): Promise<string> {
   const catalogue = await readCatalogue();
   const local = await db.sets.get(setId);
+  // Repair caches poisoned by the old refresh without clearing genuine local work.
+  if (local?.dirty && !hasUnpublishedEdits(local)) {
+    await db.sets.update(local.id, { dirty: false });
+    local.dirty = false;
+  }
   const entry = catalogue?.entries.find(e => e.id === local?.bankId || e.set.id === setId);
   if (!entry) {
     if (local) return local.id;
     throw new Error("Set not found. Refresh the library and try again.");
   }
-  if (local && (local.dirty || (local.bankUpdatedAt ?? 0) >= entry.revision)) {
+  if (local && (hasUnpublishedEdits(local) || (local.bankUpdatedAt ?? 0) >= entry.revision)) {
     if (local.bankId !== entry.id || local.number !== entry.set.number) await db.sets.update(local.id, { bankId: entry.id, number: entry.set.number ?? local.number });
     return local.id;
   }
@@ -165,7 +171,7 @@ async function loadSetContent(setId: string): Promise<string> {
     // Recheck after the network wait: don't overwrite edits or a concurrent import.
     const mine = await db.sets.where("bankId").equals(entry.id).first() ?? await db.sets.get(setId);
     if (mine) {
-      if (!mine.dirty && (mine.bankUpdatedAt ?? 0) < entry.revision) {
+      if (!hasUnpublishedEdits(mine) && (mine.bankUpdatedAt ?? 0) < entry.revision) {
         for (const [canonical, id] of legacy) await db.questions.update(id, { bankQuestionId: canonical });
         await applyBankUpdate(mine.id, pack, entry.revision);
         await db.sets.update(mine.id, { bankId: entry.id, number: entry.set.number ?? mine.number });

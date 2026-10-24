@@ -1,6 +1,7 @@
 import { db } from "../data/db";
 import type { Question, QuestionSet } from "../data/types";
 import { legacyQuestionIds, CATALOGUE_KEY, type BankCatalogue } from "./bankCatalogue";
+import { hasUnpublishedEdits } from "./bankEditState";
 
 export async function readCatalogue(): Promise<BankCatalogue | undefined> {
   const value = (await db.meta.get(CATALOGUE_KEY))?.value;
@@ -25,7 +26,7 @@ export async function loadLibrary(): Promise<{ sets: QuestionSet[]; questions: Q
     if (seen.has(setId)) continue;
     seen.add(setId);
     const members = bySet.get(setId) ?? [];
-    if (local && (local.dirty || (local.bankUpdatedAt ?? 0) >= entry.revision)) {
+    if (local && (hasUnpublishedEdits(local) || (local.bankUpdatedAt ?? 0) >= entry.revision)) {
       sets.push({ ...local, bankId: entry.id, number: entry.set.number ?? local.number });
       questions.push(...members);
     } else {

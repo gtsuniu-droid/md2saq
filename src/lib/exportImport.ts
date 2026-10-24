@@ -139,7 +139,7 @@ export async function applyBankUpdate(localSetId: string, pack: SetPack, bankUpd
     // The number comes from the bank's index, which is renumbered as sets come and go; the pack's copy may be stale.
     const { id: _id, createdAt: _c, bankId: _b, number: _n, ...rest } = pack.set;
     void _id; void _c; void _b; void _n;
-    await db.sets.put({ ...local, ...rest, id: localSetId, bankUpdatedAt, updatedAt: bankUpdatedAt });
+    await db.sets.put({ ...local, ...rest, id: localSetId, bankUpdatedAt, updatedAt: bankUpdatedAt, dirty: false });
     const incoming = [...pack.questions].sort((a, b) => a.order - b.order);
     const kept = new Set<string>();
     const incomingIds = new Set(incoming.map(q => q.bankQuestionId ?? q.id));

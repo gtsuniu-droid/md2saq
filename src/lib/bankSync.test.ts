@@ -62,6 +62,45 @@ describe("catalogue-first library", () => {
     await ensureSetContent("set-0");
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it("recovers a cache blocked by an inherited dirty flag and keeps its question identity and image", async () => {
+    const old = pack(0);
+    await db.sets.add({ ...old.set, bankId: "bank-0", bankUpdatedAt: 1, updatedAt: 1, dirty: true });
+    await db.questions.add({ ...old.questions[0], id: "local-question", bankQuestionId: "q-0", text: "Old hip question" });
+    const revised = pack(0);
+    revised.set.dirty = true; // A published pack can contain the publisher's local metadata.
+    revised.questions[0] = { ...revised.questions[0], text: "Identify the fracture and give THREE important complications.", marks: 4,
+      modelAnswer: "Updated fracture marking guide", images: [{ id: "hip-image", place: "stem", dataUrl: "data:image/png;base64,aGlw" }] };
+    network(1, async () => json(revised));
+    await syncFromBank();
+    expect((await loadLibrary()).pending.has("set-0")).toBe(true);
+    await ensureSetContent("set-0");
+    expect(await db.sets.get("set-0")).toMatchObject({ dirty: false, bankUpdatedAt: 2 });
+    expect(await db.questions.get("local-question")).toMatchObject({ text: revised.questions[0].text, marks: 4,
+      modelAnswer: "Updated fracture marking guide", images: revised.questions[0].images });
+    expect(await db.questions.count()).toBe(1);
+  });
+  it("continues receiving later publications after refreshing a pack with dirty metadata", async () => {
+    await db.sets.add({ ...pack(0).set, bankId: "bank-0", bankUpdatedAt: 1 });
+    const published = pack(0);
+    published.set.dirty = true;
+    network(1, async () => json(published));
+    await syncFromBank(); await ensureSetContent("set-0");
+    expect((await db.sets.get("set-0"))?.dirty).toBe(false);
+    const latest = pack(0);
+    latest.questions[0].modelAnswer = "Next published marking guide";
+    await db.meta.put({ id: CATALOGUE_KEY, value: JSON.stringify({ version: 1, entries: [catalogueEntry("bank-0", 3, latest)] }) });
+    vi.stubGlobal("fetch", vi.fn(async () => json(latest)));
+    await ensureSetContent("set-0");
+    expect((await db.questions.get("q-0"))?.modelAnswer).toBe("Next published marking guide");
+    expect((await db.sets.get("set-0"))?.bankUpdatedAt).toBe(3);
+  });
+  it("still protects timestamped local edits based on an older publication", async () => {
+    await db.sets.add({ ...pack(0).set, name: "My local edit", bankId: "bank-0", bankUpdatedAt: 1, updatedAt: 2, dirty: true });
+    const fetcher = network(1);
+    await syncFromBank(); await ensureSetContent("set-0");
+    expect(await db.sets.get("set-0")).toMatchObject({ name: "My local edit", dirty: true, bankUpdatedAt: 1 });
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith("/api/bank?catalogue=1");
+  });
   it("retains question identity for history and for sessions planned before hydration", async () => {
     await db.sets.add({ ...pack(0).set, bankId: "bank-0", bankUpdatedAt: 1 });
     await db.questions.add({ ...pack(0).questions[0], id: "local-question", bankQuestionId: "q-0", text: "Old" });
