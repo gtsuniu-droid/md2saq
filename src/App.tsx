@@ -38,6 +38,7 @@ import { useRef, useState } from "react";
 import { recordDeletes, requestSync, startSyncLoop, syncNow } from "./lib/sync";
 import { touchMember } from "./lib/members";
 import { setAdminRole } from "./lib/adminRole";
+import { hasEntered, markEntered } from "./lib/entered";
 import { patchSettings } from "./data/db";
 
 function AccountButton() {
@@ -235,7 +236,13 @@ export default function App() {
 
   // The front page is for newcomers; anyone signed in or who has practised before goes straight in.
   if (pathname === "/" || pathname === "/welcome") return <LandingPage autoEnter={pathname === "/"} />;
-  if (pathname === "/home") try { localStorage.setItem("saq-practice:entered", "1"); } catch { /* private mode */ }
+  // A newcomer who arrives at any app page sees the welcome page first. Shared links still open directly.
+  const sharedLink = /^\/(s|shared)\//.test(pathname);
+  if (!hasEntered() && !sharedLink && !session) {
+    if (account === undefined) return null;
+    if (!account.cloudUser) return <Navigate to="/welcome" replace />;
+  }
+  if (pathname === "/home") markEntered();
 
   const full = /^\/(paper|mark)(\/|$)/.test(pathname);
   const shell = full ? "page full" : pathname === "/home" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : pathname === "/settings" ? "page settings-shell" : pathname === "/admin" ? "page admin-shell" : "page wide-shell";

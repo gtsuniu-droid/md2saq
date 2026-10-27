@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { hasEntered, markEntered } from "../lib/entered";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, Navigate } from "react-router";
 import gsap from "gsap";
@@ -100,8 +101,7 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
     for (const q of questions) for (const p of q.presentations) presentations.add(p);
     return { sets: sets.length, questions: questions.length, presentations: presentations.size, user: settings.cloudUser, attempts };
   }, []);
-  let entered = false;
-  try { entered = localStorage.getItem("saq-practice:entered") === "1"; } catch { /* private mode */ }
+  const entered = hasEntered();
   const returning = !!info && (info.attempts > 0 || !!info.user || !!loadSession() || entered);
   const skip = autoEnter && returning;
   useLandingMotion(root, info !== undefined && !skip);
@@ -114,8 +114,8 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
     <div className="landing" ref={root}>
       <header className="landing-nav">
         <Link to="/welcome" className="landing-brand"><BrandMark />SAQ Practice</Link>
-        <Link to="/browse" className="landing-nav-link">Library</Link>
-        <Link to="/home" className="landing-login">{info?.user ? "Open practice" : "Student login"} <span aria-hidden="true">↗</span></Link>
+        <Link onClick={markEntered} to="/browse" className="landing-nav-link">Library</Link>
+        <Link onClick={markEntered} to="/home" className="landing-login">{info?.user ? "Open practice" : "Student login"} <span aria-hidden="true">↗</span></Link>
       </header>
 
       <section className="landing-hero">
@@ -123,8 +123,8 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
           <h1>Strengthen your clinical thinking</h1>
           <p className="landing-lede">Timed short-answer cases for medical finals that train your differential diagnosis, history taking and clinical reasoning. Writing the answer yourself, then marking it against the model, is how it sticks.</p>
           <div className="landing-cta-row">
-            <Link to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
-            <Link to="/browse" className="landing-secondary">Browse the library</Link>
+            <Link onClick={markEntered} to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
+            <Link onClick={markEntered} to="/browse" className="landing-secondary">Browse the library</Link>
           </div>
           <p className="landing-stats" aria-label="Library size">
             <span><b data-count={corePresentations}>{corePresentations}</b> core presentations</span>
@@ -184,13 +184,13 @@ export default function LandingPage({ autoEnter = false }: { autoEnter?: boolean
       <section className="landing-close landing-reveal">
         <h2>Reading feels productive. Answering is what sticks.</h2>
         <p>Every case makes you commit to a differential, ask the right history questions and justify a plan, then shows you what you missed. That is the learning.</p>
-        <Link to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
+        <Link onClick={markEntered} to="/home" className="landing-cta">{cta} <span aria-hidden="true">→</span></Link>
       </section>
 
       <footer className="landing-footer">
         <span className="landing-brand"><BrandMark />SAQ Practice</span>
         <nav aria-label="Footer">
-          <Link to="/home">Practice</Link><Link to="/browse">Library</Link><Link to="/notes">Notes</Link><Link to="/settings">Settings</Link>
+          <Link onClick={markEntered} to="/home">Practice</Link><Link onClick={markEntered} to="/browse">Library</Link><Link onClick={markEntered} to="/notes">Notes</Link><Link onClick={markEntered} to="/settings">Settings</Link>
           <a href="https://github.com/gtsuniu-droid/md2saq">Project</a>
           <a href="https://github.com/gtsuniu-droid/md2saq/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>
           <a href="https://github.com/gtsuniu-droid/md2saq/blob/main/LICENSE">Apache 2.0 licence</a>

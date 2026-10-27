@@ -6,15 +6,20 @@ import { createStudySession, fetchStudySession, formatCode, joinStudySession, no
 import { PRESENTATIONS } from "../data/presentations";
 
 interface Props {
-  selectedQuestions: Question[];
+  /** The paper to publish when "Create a code" is pressed: the practice selection, or a fresh six-stem exam. */
+  buildPaper: () => Question[];
   sets: QuestionSet[];
   presentations: string[];
+  mode: "practice" | "exam";
   minutes: number;
+  examTiming?: { readingSec: number; totalSec: number };
   signedIn: boolean;
   canCreate: boolean;
   starting: boolean;
-  onStart: (questionIds: string[], minutes: number, code: string) => void;
+  onStart: (questionIds: string[], study: StudySession) => void;
 }
+
+const describeTiming = (s: StudySession): string => s.mode === "exam" ? `Exam, ${Math.round((s.readingSec ?? 0) / 60)} min reading then ${Math.round((s.totalSec ?? 0) / 3600 * 10) / 10} h writing, strict clock` : `Practice, ${s.minutes ? `${s.minutes} minutes` : "untimed"}`;
 
 const presentationNames = (ids: string[]) => ids.map((id) => PRESENTATIONS.find((p) => p.id === id)?.name ?? id).join(", ");
 
@@ -27,7 +32,7 @@ function Participants({ study, me }: { study: StudySession; me?: string }) {
 }
 
 /** Inside New session: make a code for the current selection, or join a friend's. */
-export default function StudyWithFriends({ selectedQuestions, sets, presentations, minutes, signedIn, canCreate, starting, onStart }: Props) {
+export default function StudyWithFriends({ buildPaper, sets, presentations, mode, minutes, examTiming, signedIn, canCreate, starting, onStart }: Props) {
   const [params, setParams] = useSearchParams();
   const [code, setCode] = useState(() => normaliseCode(params.get("join") ?? ""));
   const [busy, setBusy] = useState(false);
@@ -53,7 +58,7 @@ export default function StudyWithFriends({ selectedQuestions, sets, presentation
 
   const create = async () => {
     setBusy(true); setError("");
-    try { setCreated(await createStudySession(selectedQuestions, sets, minutes, presentations)); setFound(null); }
+    try { setCreated(await createStudySession(buildPaper(), sets, mode === "exam" ? { mode, presentations, ...examTiming } : { mode, minutes, presentations })); setFound(null); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not create a code."); }
     finally { setBusy(false); }
   };
@@ -70,7 +75,7 @@ export default function StudyWithFriends({ selectedQuestions, sets, presentation
   const startJoined = async () => {
     if (!found) return;
     setBusy(true); setError("");
-    try { const ids = await joinStudySession(found); onStart(ids, found.minutes, found.code); }
+    try { const ids = await joinStudySession(found); onStart(ids, found); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not join."); setBusy(false); }
   };
   const copy = async (what: "code" | "link") => {
@@ -79,7 +84,7 @@ export default function StudyWithFriends({ selectedQuestions, sets, presentation
     try { await navigator.clipboard.writeText(text); setCopied(what); window.setTimeout(() => setCopied(""), 1500); } catch { setCopied(""); }
   };
 
-  if (!signedIn) return <div className="study-row"><p className="muted">Sign in to study with friends: one code gives everyone the same questions, then you compare answers.</p></div>;
+  if (!signedIn) return <div className="study-row"><p className="muted">Sign in to {mode === "exam" ? "sit an exam" : "study"} with friends: one code gives everyone the same {mode === "exam" ? "paper" : "questions"}, then you compare answers.</p></div>;
 
   return (
     <div className="study-block">
@@ -88,7 +93,7 @@ export default function StudyWithFriends({ selectedQuestions, sets, presentation
           <div className="study-code-pane">
             <span className="study-eyebrow">Your study code</span>
             <div className="study-digits" aria-label={`Code ${created.code}`}>{created.code.split("").map((d, i) => <span key={i} className={i === 3 ? "gap" : undefined}>{d}</span>)}</div>
-            <p className="muted">Anyone who enters this code on their home page gets these {created.questions.length} questions in this order. It works for 7 days.</p>
+            <p className="muted">Anyone who enters this code on their home page gets {created.mode === "exam" ? "this exact exam" : `these ${created.questions.length} questions in this order`}. It works for 7 days.</p>
             <div className="row"><button type="button" className="small" onClick={() => void copy("code")}>{copied === "code" ? "Copied" : "Copy code"}</button><button type="button" className="small" onClick={() => void copy("link")}>{copied === "link" ? "Copied" : "Copy link"}</button></div>
           </div>
           <div className="study-people-pane">
@@ -97,15 +102,15 @@ export default function StudyWithFriends({ selectedQuestions, sets, presentation
             <p className="muted">Everyone works at their own pace. Afterwards, Compare answers is on the session summary.</p>
           </div>
           <div className="study-card-foot">
-            <div><strong>{created.questions.length} questions</strong><span className="muted">Practice, {created.minutes ? `${created.minutes} minutes` : "untimed"}, same order for everyone</span></div>
-            <div className="row"><button type="button" onClick={() => setCreated(null)} disabled={starting}>Close</button><button type="button" className="primary" disabled={starting} onClick={() => { void studyRecords().then((rs) => { const r = rs.find((x) => x.code === created.code); if (r) onStart(r.questionIds, created.minutes, created.code); }); }}>{starting ? "Preparing…" : "Start practice"}</button></div>
+            <div><strong>{created.questions.length} questions</strong><span className="muted">{describeTiming(created)}, same order for everyone</span></div>
+            <div className="row"><button type="button" onClick={() => setCreated(null)} disabled={starting}>Close</button><button type="button" className="primary" disabled={starting} onClick={() => { void studyRecords().then((rs) => { const r = rs.find((x) => x.code === created.code); if (r) onStart(r.questionIds, created); }); }}>{starting ? "Preparing…" : created.mode === "exam" ? "Start the exam" : "Start practice"}</button></div>
           </div>
         </section>
       ) : found ? (
         <section className="study-card found" aria-label="Study session found">
           <div className="study-code-pane">
-            <span className="study-eyebrow">Found: {found.hostName}'s session</span>
-            <strong className="study-found-title">{found.questions.length} questions, {found.minutes ? `${found.minutes} minutes` : "untimed"}</strong>
+            <span className="study-eyebrow">Found: {found.hostName}'s {found.mode === "exam" ? "exam" : "session"}</span>
+            <strong className="study-found-title">{found.questions.length} questions. {describeTiming(found)}</strong>
             <p>{presentationNames(found.presentations) || "Mixed presentations"}</p>
             <p className="muted">Code {formatCode(found.code)}. You get the same questions in the same order.</p>
           </div>
@@ -114,15 +119,15 @@ export default function StudyWithFriends({ selectedQuestions, sets, presentation
             <Participants study={found} />
           </div>
           <div className="study-card-foot">
-            <span className="muted">The host set the time. Compare answers with everyone afterwards.</span>
-            <div className="row"><button type="button" onClick={() => setFound(null)} disabled={busy}>Cancel</button><button type="button" className="primary" disabled={busy || starting} onClick={() => void startJoined()}>{busy || starting ? "Preparing…" : "Start the same questions"}</button></div>
+            <span className="muted">{found.mode === "exam" ? "The clock starts when you press start and does not stop." : "The host set the time."} Compare answers with everyone afterwards.</span>
+            <div className="row"><button type="button" onClick={() => setFound(null)} disabled={busy}>Cancel</button><button type="button" className="primary" disabled={busy || starting} onClick={() => void startJoined()}>{busy || starting ? "Preparing…" : found.mode === "exam" ? "Start the same exam" : "Start the same questions"}</button></div>
           </div>
         </section>
       ) : (
         <div className="study-row">
           <div className="study-row-text">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 2c-2.7 0-5 1.4-5 3.5V19h10v-2.5C13 14.4 10.7 13 8 13Zm8 0c-.4 0-.8 0-1.2.1 1.3.9 2.2 2 2.2 3.4V19h4v-2.5c0-2.1-2.3-3.5-5-3.5Z" fill="currentColor" /></svg>
-            <span><strong>Study with friends.</strong> <button type="button" className="link" disabled={busy || !canCreate} title={canCreate ? "Make a code for the questions selected above" : "Choose presentations and questions above first"} onClick={() => void create()}>{busy && !code ? "Creating…" : "Create a code"}</button> for this selection so everyone gets the same questions.</span>
+            <span><strong>{mode === "exam" ? "Sit this exam with friends." : "Study with friends."}</strong> <button type="button" className="link" disabled={busy || !canCreate} title={canCreate ? (mode === "exam" ? "Make a code for a six-stem exam everyone sits together" : "Make a code for the questions selected above") : (mode === "exam" ? "Six presentations with sets are needed first" : "Choose presentations and questions above first")} onClick={() => void create()}>{busy && !code ? "Creating…" : "Create a code"}</button> {mode === "exam" ? "so everyone gets the identical paper under the same strict clock." : "for this selection so everyone gets the same questions."}</span>
           </div>
           <form className="study-join" onSubmit={(e) => { e.preventDefault(); void join(); }}>
             <input inputMode="numeric" aria-label="Study code" placeholder="Enter a code" maxLength={7} value={code} onChange={(e) => setCode(normaliseCode(e.target.value))} />

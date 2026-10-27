@@ -21,9 +21,16 @@ export interface StudySession {
   expiresAt: number;
   presentations: string[];
   questions: StudyQuestion[];
+  /** Practice with a suggested time, or the fixed six-stem exam under the strict clock. */
+  mode: "practice" | "exam";
+  /** Practice time; 0 for untimed. */
   minutes: number;
+  /** Exam timing, seconds. */
+  readingSec?: number;
+  totalSec?: number;
   participants: StudyParticipant[];
 }
+export interface StudyOptions { mode: "practice" | "exam"; minutes?: number; readingSec?: number; totalSec?: number; presentations: string[] }
 export interface SharedAnswer { index: number; text: string; score?: number; maxScore?: number }
 export interface SharedAnswers { uid: string; name: string; photo?: string; answers: SharedAnswer[]; sharedAt: number }
 /** What this device remembers about a code it created or joined. */
@@ -75,13 +82,18 @@ function fromDoc(code: string, v: Record<string, unknown>): StudySession {
     createdAt: at(v.createdAt), expiresAt: typeof v.expiresAt === "number" ? v.expiresAt : 0,
     presentations: Array.isArray(v.presentations) ? (v.presentations as string[]) : [],
     questions: Array.isArray(v.questions) ? (v.questions as StudyQuestion[]) : [],
+    mode: v.mode === "exam" ? "exam" : "practice",
     minutes: typeof v.minutes === "number" ? v.minutes : 0,
+    readingSec: typeof v.readingSec === "number" ? v.readingSec : undefined,
+    totalSec: typeof v.totalSec === "number" ? v.totalSec : undefined,
     participants: Array.isArray(v.participants) ? (v.participants as StudyParticipant[]) : [],
   };
 }
 
 /** Publish the chosen questions under a fresh code. Every question must come from a published set. */
-export async function createStudySession(questions: Question[], sets: QuestionSet[], minutes: number, presentations: string[]): Promise<StudySession> {
+export async function createStudySession(questions: Question[], sets: QuestionSet[], options: StudyOptions): Promise<StudySession> {
+  const { mode, presentations } = options;
+  const minutes = options.minutes ?? 0;
   if (!cloudConfigured()) throw new Error("Study codes need the cloud, which is not configured on this site.");
   if (!questions.length) throw new Error("Choose some questions first.");
   if (questions.length > 60) throw new Error("Keep a study session to 60 questions.");
@@ -101,9 +113,10 @@ export async function createStudySession(questions: Question[], sets: QuestionSe
     const ref = doc(firestore, "studySessions", code);
     if ((await getDoc(ref)).exists()) continue;
     const expiresAt = Date.now() + STUDY_DAYS * 24 * 3600 * 1000;
-    await setDoc(ref, { code, hostUid: me.uid, hostName: name, createdAt: serverTimestamp(), expiresAt, presentations: presentations.slice(0, 50), questions: list, minutes, participants: [host] });
+    const timing = mode === "exam" ? { readingSec: options.readingSec ?? 0, totalSec: options.totalSec ?? 0 } : {};
+    await setDoc(ref, { code, hostUid: me.uid, hostName: name, createdAt: serverTimestamp(), expiresAt, presentations: presentations.slice(0, 50), questions: list, mode, minutes, ...timing, participants: [host] });
     await remember({ code, questionIds: questions.map((q) => q.id), startedAt: Date.now(), role: "host", hostName: name, questionCount: list.length });
-    return { code, hostUid: me.uid, hostName: name, createdAt: Date.now(), expiresAt, presentations, questions: list, minutes, participants: [host] };
+    return { code, hostUid: me.uid, hostName: name, createdAt: Date.now(), expiresAt, presentations, questions: list, mode, minutes, ...timing, participants: [host] };
   }
   throw new Error("Could not find a free code. Try again.");
 }

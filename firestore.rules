@@ -78,7 +78,10 @@ service cloud.firestore {
       function signedIn() { return request.auth != null; }
       function validStudy() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['code', 'hostUid', 'hostName', 'createdAt', 'expiresAt', 'presentations', 'questions', 'minutes', 'participants'])
+        return d.keys().hasOnly(['code', 'hostUid', 'hostName', 'createdAt', 'expiresAt', 'presentations', 'questions', 'mode', 'minutes', 'readingSec', 'totalSec', 'participants'])
+          && d.mode in ['practice', 'exam']
+          && (!('readingSec' in d) || (d.readingSec is int && d.readingSec >= 0 && d.readingSec <= 7200))
+          && (!('totalSec' in d) || (d.totalSec is int && d.totalSec >= 0 && d.totalSec <= 36000))
           && d.code == code && code.matches('^[0-9]{6}$') && d.hostUid == request.auth.uid
           && d.hostName is string && d.hostName.size() <= 40 && d.createdAt == request.time
           && d.expiresAt is int && d.presentations is list && d.presentations.size() <= 50
