@@ -2,7 +2,7 @@ import HomeLeaderboard from "../components/HomeLeaderboard";
 import LibraryStatus from "../components/LibraryStatus";
 import { loadLibrary } from "../lib/library";
 import { ensureQuestionContent, ensureSetContent } from "../lib/bank";
-import { buildExamPaper, examPresentationPool, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
+import { buildExamPaper, examPresentationPool, examTiming, EXAM_MAX_STEMS, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
 import { hasAnswerContent } from "../lib/answerContent";
 import AttemptHistory from "../components/AttemptHistory";
 import { belongsToAccount } from "../lib/progressAccount";
@@ -46,6 +46,8 @@ export default function HomePage() {
   const [examError, setExamError] = useState("");
   const [minutes, setMinutes] = useState("");
   const [search, setSearch] = useState("");
+  const [examPick, setExamPick] = useState<"random" | "choose">("random");
+  const [examCount, setExamCount] = useState(String(EXAM_STEMS));
   const [replacing, setReplacing] = useState<"practice" | "exam" | { questionIds: string[]; study: StudySession } | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const gate = useAccountGate();
@@ -149,18 +151,24 @@ export default function HomePage() {
     finally { setStarting(false); }
   };
 
-  const examTopics = examPresentationPool(data.sets, data.questions).size;
+  const examPresentations = examPick === "choose" ? [...selected] : undefined;
+  const examPool = [...examPresentationPool(data.sets, data.questions)].filter(([id]) => !examPresentations || examPresentations.includes(id));
+  const examSetsAvailable = examPool.reduce((n, [, cases]) => n + cases.length, 0);
+  const examSize = Math.min(EXAM_MAX_STEMS, Math.max(1, Math.round(Number(examCount) || EXAM_STEMS)));
+  const examReady = examSetsAvailable >= examSize && (examPick === "random" || selected.size > 0);
+  const examClock = examTiming(examSize);
+  const buildExam = () => buildExamPaper(data.sets, data.questions, Math.random, { count: examSize, presentations: examPresentations });
   const startExam = async (force = false) => {
     if (starting) return;
     setExamError("");
-    const paper = buildExamPaper(data.sets, data.questions);
-    if (!paper.length) { setExamError("At least six presentations with sets are needed."); return; }
+    const paper = buildExam();
+    if (!paper.length) { setExamError(examPick === "choose" ? "Not enough sets in the chosen presentations for that many." : "Not enough sets in the bank for that many."); return; }
     if (gate.gated) { setGateOpen(true); return; }
     if (session && !force) { setReplacing("exam"); return; }
     setStarting(true);
     try {
       await ensureQuestionContent(paper.map(q => q.id));
-      startSession(paper.map((q) => q.id), "exam", EXAM_WRITING_SEC, "sets", { examFormat: "six-stem", readingSec: EXAM_READING_SEC });
+      startSession(paper.map((q) => q.id), "exam", examClock.totalSec, "sets", { examFormat: "six-stem", readingSec: examClock.readingSec });
       nav("/paper");
     } catch (error) { setExamError(error instanceof Error ? error.message : "Could not load the exam."); }
     finally { setStarting(false); }
@@ -170,6 +178,42 @@ export default function HomePage() {
   const total = session?.questionIds.length ?? 0;
   const done = inProgress?.submitted ?? 0;
   const submittedAll = !!session && total > 0 && done >= total;
+
+  const presentationList = <>
+    <div className="row">
+      <input aria-label="Search presentations" type="search" placeholder="Search presentations" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: "12rem" }} />
+      <label className="check"><input type="checkbox" checked={newOnly} onChange={(e) => setNewOnly(e.target.checked)} /> {unit === "sets" ? "Unattempted sets only" : "Unattempted questions only"}</label>
+
+    </div>
+
+    <div className="row spread presentation-list-heading"><span>Core presentations</span><span className="muted">{unit === "sets" ? "Sets" : "Questions"} marked / available</span></div>
+    <div className="pres-list">
+      <label className="pres-row head">
+        <input type="checkbox" checked={allSelected} disabled={!withQuestions.length} onChange={() => setSelected((previous) => { const next = new Set(previous); withQuestions.forEach((p) => { if (allSelected) next.delete(p.id); else next.add(p.id); }); return next; })} />
+        <span className="name">{search.trim() ? "Select all results" : "All presentations"}</span>
+        <span className="bar" />
+        <span className="count muted">{!search.trim() && `${allProgress.marked} / ${allProgress.total}`}</span>
+      </label>
+      {visible.map((p) => {
+        const pr = progress.get(p.id)!;
+        const markedPct = pr.total ? (100 * pr.marked) / pr.total : 0;
+        const attemptedPct = pr.total ? (100 * (pr.attempted - pr.marked)) / pr.total : 0;
+        return (
+          <label key={p.id} className={"pres-row" + (p.parent ? " child" : "") + (pr.total === 0 ? " none" : "")}>
+            <input type="checkbox" checked={selected.has(p.id)} disabled={pr.total === 0} onChange={() => toggle(p.id)} />
+            <span className="name"><span className="emoji">{p.emoji}</span>{p.name}</span>
+            <span className="bar">
+              <span className="fill marked" style={{ width: `${markedPct}%` }} />
+              <span className="fill attempted" style={{ width: `${attemptedPct}%` }} />
+            </span>
+            <span className="count muted">{pr.marked} / {pr.total}</span>
+          </label>
+        );
+      })}
+    </div>
+    {visible.length === 0 && <p className="muted" role="status">No matching presentations. Try another search.</p>}
+    <div className="row spread presentation-list-footer"><span className="muted">{selected.size ? `${selected.size} ${selected.size === 1 ? "presentation" : "presentations"} selected.` : "Choose one or more presentations."} Unavailable topics have no questions yet.</span>{selected.size > 0 && <button className="small link" onClick={() => setSelected(new Set())}>Clear selection</button>}</div>
+  </>;
 
   return (
     <div>
@@ -212,9 +256,9 @@ export default function HomePage() {
         </div>
         <div className="stat-row">
           <div><div className="stat-value">{summary.answered}</div><div className="stat-label">answered</div></div>
-          <div><div className="stat-value">{summary.correctPct === null ? "—" : `${summary.correctPct}%`}</div><div className="stat-label">score</div></div>
+          <div><div className="stat-value">{summary.correctPct === null ? "–" : `${summary.correctPct}%`}</div><div className="stat-label">score</div></div>
           <div><div className="stat-value">{summary.dailyAvg}</div><div className="stat-label">per active day</div></div>
-          <div><div className="stat-value">{summary.secondsPerQuestion === null ? "—" : formatDuration(summary.secondsPerQuestion)}</div><div className="stat-label">per question</div></div>
+          <div><div className="stat-value">{summary.secondsPerQuestion === null ? "–" : formatDuration(summary.secondsPerQuestion)}</div><div className="stat-label">per question</div></div>
         </div>
         <details className="activity-details"><summary>Activity calendar</summary><Heatmap grid={view.grid} /></details>
       </div>
@@ -226,49 +270,23 @@ export default function HomePage() {
           <button className={mode === "exam" ? "on" : ""} aria-pressed={mode === "exam"} onClick={() => setMode("exam")}>Exam</button>
         </div>
         {mode === "exam" ? <div className="exam-setup">
-          <div className="exam-format"><div><strong>6 stems</strong><span>6 different presentations</span></div><div><strong>15 min</strong><span>Reading time</span></div><div><strong>2 hours</strong><span>Writing time</span></div></div>
-          <p className="muted">Answers unlock after reading time. The clock keeps running if you leave.</p>
-          {examTopics < EXAM_STEMS && <p role="status">{examTopics} of 6 presentations available. Add sets from {EXAM_STEMS - examTopics} more to start.</p>}
+          <div className="seg" role="group" aria-label="Which sets"><button className={examPick === "random" ? "on" : ""} aria-pressed={examPick === "random"} onClick={() => setExamPick("random")}>Random</button><button className={examPick === "choose" ? "on" : ""} aria-pressed={examPick === "choose"} onClick={() => setExamPick("choose")}>Choose presentations</button></div>
+          {examPick === "choose" && presentationList}
+          <div className="row exam-count-row">
+            <label className="session-inline-label">How many sets?<input aria-label="Number of sets in the exam" type="number" min={1} max={EXAM_MAX_STEMS} step={1} value={examCount} onChange={(e) => setExamCount(e.target.value)} /></label>
+            <span className="muted">Up to {EXAM_MAX_STEMS}. {examPick === "random" ? "One set from each of as many presentations as possible." : "One set from each chosen presentation first, then more from the same ones."}</span>
+          </div>
+          <div className="exam-format"><div><strong>{examSize} {examSize === 1 ? "stem" : "stems"}</strong><span>{examPick === "random" ? "Mixed presentations" : `${selected.size} chosen`}</span></div><div><strong>{Math.round(examClock.readingSec / 60)} min</strong><span>Reading time</span></div><div><strong>{examClock.totalSec >= 3600 ? `${Math.round((examClock.totalSec / 3600) * 10) / 10} h` : `${Math.round(examClock.totalSec / 60)} min`}</strong><span>Writing time</span></div></div>
+          <p className="muted">Answers unlock after reading time. The clock never stops, and the paper submits itself when it runs out.</p>
+          {!examReady && <p role="status">{examPick === "choose" && !selected.size ? "Choose at least one presentation." : `${examSetsAvailable} ${examSetsAvailable === 1 ? "set" : "sets"} available${examPick === "choose" ? " in the chosen presentations" : ""}; lower the number or add sets.`}</p>}
           {examError && <p className="field-error" role="alert">{examError}</p>}
-          <button className="primary" onClick={() => void startExam()} disabled={starting || examTopics < EXAM_STEMS}>{starting ? "Preparing exam…" : "Start exam"}</button>
+          <button className="primary" onClick={() => void startExam()} disabled={starting || !examReady}>{starting ? "Preparing exam…" : "Start exam"}</button>
         </div> : <>
         <div className="session-unit-picker" role="group" aria-label="What would you like to practise?">
           <button className={unit === "sets" ? "selected" : ""} aria-pressed={unit === "sets"} onClick={() => { setUnit("sets"); setCount(""); }}><strong>Whole sets</strong><span>Complete cases, with every question in order.</span></button>
           <button className={unit === "questions" ? "selected" : ""} aria-pressed={unit === "questions"} onClick={() => { setUnit("questions"); setCount(""); }}><strong>Individual questions</strong><span>Mix questions from your chosen presentations.</span></button>
         </div>
-        <div className="row">
-          <input aria-label="Search presentations" type="search" placeholder="Search presentations" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: "12rem" }} />
-          <label className="check"><input type="checkbox" checked={newOnly} onChange={(e) => setNewOnly(e.target.checked)} /> {unit === "sets" ? "Unattempted sets only" : "Unattempted questions only"}</label>
-
-        </div>
-
-        <div className="row spread presentation-list-heading"><span>Core presentations</span><span className="muted">{unit === "sets" ? "Sets" : "Questions"} marked / available</span></div>
-        <div className="pres-list">
-          <label className="pres-row head">
-            <input type="checkbox" checked={allSelected} disabled={!withQuestions.length} onChange={() => setSelected((previous) => { const next = new Set(previous); withQuestions.forEach((p) => { if (allSelected) next.delete(p.id); else next.add(p.id); }); return next; })} />
-            <span className="name">{search.trim() ? "Select all results" : "All presentations"}</span>
-            <span className="bar" />
-            <span className="count muted">{!search.trim() && `${allProgress.marked} / ${allProgress.total}`}</span>
-          </label>
-          {visible.map((p) => {
-            const pr = progress.get(p.id)!;
-            const markedPct = pr.total ? (100 * pr.marked) / pr.total : 0;
-            const attemptedPct = pr.total ? (100 * (pr.attempted - pr.marked)) / pr.total : 0;
-            return (
-              <label key={p.id} className={"pres-row" + (p.parent ? " child" : "") + (pr.total === 0 ? " none" : "")}>
-                <input type="checkbox" checked={selected.has(p.id)} disabled={pr.total === 0} onChange={() => toggle(p.id)} />
-                <span className="name"><span className="emoji">{p.emoji}</span>{p.name}</span>
-                <span className="bar">
-                  <span className="fill marked" style={{ width: `${markedPct}%` }} />
-                  <span className="fill attempted" style={{ width: `${attemptedPct}%` }} />
-                </span>
-                <span className="count muted">{pr.marked} / {pr.total}</span>
-              </label>
-            );
-          })}
-        </div>
-        {visible.length === 0 && <p className="muted" role="status">No matching presentations. Try another search.</p>}
-        <div className="row spread presentation-list-footer"><span className="muted">{selected.size ? `${selected.size} ${selected.size === 1 ? "presentation" : "presentations"} selected.` : "Choose one or more presentations."} Unavailable topics have no questions yet.</span>{selected.size > 0 && <button className="small link" onClick={() => setSelected(new Set())}>Clear selection</button>}</div>
+        {presentationList}
 
         {unit === "sets" && selected.size > 0 && <div className="session-set-picker">
           <div className="row spread"><span className="muted">{setPool.length} complete {setPool.length === 1 ? "set" : "sets"} available</span><div className="seg" role="group" aria-label="Set selection"><button className={!chooseSets ? "on" : ""} aria-pressed={!chooseSets} onClick={() => { setChooseSets(false); setCount(""); }}>Random sets</button><button className={chooseSets ? "on" : ""} aria-pressed={chooseSets} onClick={() => { setChooseSets(true); setCount(""); }}>Choose sets</button></div></div>
@@ -301,7 +319,7 @@ export default function HomePage() {
             <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={() => void start()} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
           </div>
         </>}
-        <StudyWithFriends mode={mode} buildPaper={() => mode === "exam" ? buildExamPaper(data.sets, data.questions) : selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} examTiming={{ readingSec: EXAM_READING_SEC, totalSec: EXAM_WRITING_SEC }} signedIn={!!data.settings.cloudUser} canCreate={!starting && (mode === "exam" ? examTopics >= EXAM_STEMS : !!selectedQuestions.length && validMinutes && validCount)} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
+        <StudyWithFriends mode={mode} buildPaper={() => mode === "exam" ? buildExam() : selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} examTiming={examClock} signedIn={!!data.settings.cloudUser} canCreate={!starting && (mode === "exam" ? examReady : !!selectedQuestions.length && validMinutes && validCount)} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
       </div>
       <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
 

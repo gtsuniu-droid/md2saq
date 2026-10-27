@@ -295,7 +295,7 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
       {undoStack.length > 0 && <div className="editor-undo" role="status"><span>{undoStack[undoStack.length - 1].label}. Nothing changes until you save.</span><span className="spacer" /><button className="small" onClick={undoRemoval}>Undo</button></div>}
 
       {data.admin && <details className="card">
-        <summary><span>Set details</span><span className="muted">{[set.primaryPresentation ? presentationName(set.primaryPresentation) : "No presentation", tags.length ? `${tags.length} tag${tags.length === 1 ? "" : "s"}` : "", set.suggestedMinutes ? `${set.suggestedMinutes} min` : ""].filter(Boolean).join(" · ")}</span></summary>
+        <summary><span>Set details</span><span className="muted">{[set.primaryPresentation ? presentationName(set.primaryPresentation) : "No presentation", tags.length ? `${tags.length} tag${tags.length === 1 ? "" : "s"}` : "", set.suggestedMinutes ? `${set.suggestedMinutes} min` : ""].filter(Boolean).join(", ")}</span></summary>
         <div className="stack" style={{ marginTop: "1rem" }}>
         <label htmlFor="set-editor-presentation">Primary presentation
           <select id="set-editor-presentation" value={set.primaryPresentation ?? ""} onChange={(e) => patchSet({ primaryPresentation: e.target.value || undefined })}>
@@ -342,7 +342,7 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
         {stemGroups.map((group, groupIndex) => <article key={group.id} id={group.id} className="card shared-stem-card" tabIndex={-1}>
           <header className="row spread">
             <div>
-              <h3>{stemGroups.length === 1 ? "Case stem" : `Case stem ${groupIndex + 1}`} {group.stemIndex > 0 ? `— Stage ${group.stemIndex + 1}` : ""}</h3>
+              <h3>{stemGroups.length === 1 ? "Case stem" : `Case stem ${groupIndex + 1}`} {group.stemIndex > 0 ? `(more information ${group.stemIndex + 1})` : ""}</h3>
               <p className="muted">Used by {group.questionNumbers.length === 1 ? "Question" : "Questions"} {group.questionNumbers.join(", ")}</p>
             </div>
           </header>
@@ -382,7 +382,7 @@ export default function SetEditPage({ embeddedSetId, onDone }: { embeddedSetId?:
                     <button className="small link" disabled={addingImages} onClick={() => patchQ(q.key, { stems: (q.stems ?? []).filter((_, x) => x !== si), stemDocs: q.stemDocs?.filter((_, x) => x !== si) })}>Remove from this question</button>
                   </span>
                 </div>
-                <p className="muted">{st.trim() ? `${st.slice(0, 170)}${st.length > 170 ? "…" : ""}` : q.stemDocs?.[si] ? "Rich case stem — open to view or edit." : "Empty stem — open to add case details."}</p>
+                <p className="muted">{st.trim() ? `${st.slice(0, 170)}${st.length > 170 ? "…" : ""}` : q.stemDocs?.[si] ? "Rich case stem: open to view or edit." : "Empty stem: open to add case details."}</p>
               </div>;
             })}
             <div className="row" style={{ marginTop: "0.4rem" }}>

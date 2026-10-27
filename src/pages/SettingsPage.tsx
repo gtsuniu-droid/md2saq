@@ -134,7 +134,7 @@ export default function SettingsPage() {
                   <Row title="Signed in">
                     <span className="account-identity">
                       {settings.cloudUser.photo ? <img src={settings.cloudUser.photo} alt="" referrerPolicy="no-referrer" /> : <span className="avatar-fallback">{(settings.cloudUser.name ?? settings.cloudUser.email ?? "?").charAt(0).toUpperCase()}</span>}
-                      <span><strong>{settings.cloudUser.name ?? settings.cloudUser.email ?? "Your account"}</strong><span className="muted">{settings.cloudUser.email}{settings.cloudUser.provider === "password" ? (settings.cloudUser.verified ? " · email account" : " · email not confirmed yet") : ""}</span></span>
+                      <span><strong>{settings.cloudUser.name ?? settings.cloudUser.email ?? "Your account"}</strong><span className="muted">{settings.cloudUser.email}{settings.cloudUser.provider === "password" ? (settings.cloudUser.verified ? ", email account" : ", email not confirmed yet") : ""}</span></span>
                     </span>
                   </Row>
                   <Row title="Sync" help="Runs on its own after sign-in, when the tab comes back into view, and shortly after anything is saved.">

@@ -62,7 +62,7 @@ export default function StudyPage() {
   return (
     <div className="study-compare">
       <header className="row spread leaderboard-head">
-        <div><h1>Compare answers</h1><p className="muted">Study session <strong className="study-inline-code">{formatCode(study.code)}</strong> · {study.questions.length} questions · {people.length} {people.length === 1 ? "person" : "people"}{names ? ` · ${names}` : ""}</p></div>
+        <div><h1>Compare answers</h1><p className="muted">Study session <strong className="study-inline-code">{formatCode(study.code)}</strong>, {study.questions.length} questions, {people.length} {people.length === 1 ? "person" : "people"}{names ? `, ${names}` : ""}</p></div>
         {mine === "shared" ? <span className="lb-chip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>Your answers are shared</span>
           : mine === "none" ? <span className="muted">Sit the session from your home page with code {formatCode(study.code)} to share yours.</span> : null}
       </header>

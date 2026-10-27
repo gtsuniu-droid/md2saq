@@ -156,9 +156,9 @@ export function filterTree(nodes: TreeNode[], q: string): TreeNode[] {
   return nodes.map(walk).filter((n): n is TreeNode => !!n);
 }
 
-/** "Dizziness – Set 3": the set's first branch and its number, for lists outside the tree. */
+/** "Dizziness Set 3": the set's first branch and its number, for lists outside the tree. */
 export function fullLabel(s: SetSummary): string {
   const top = setPaths(s)[0]?.split(SEP).map(displayName).join(" / ");
   const num = setLabel(s.set);
-  return top ? `${top} – ${num}` : num;
+  return top ? `${top} ${num}` : num;
 }

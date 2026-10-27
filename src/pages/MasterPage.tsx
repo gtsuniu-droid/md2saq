@@ -263,7 +263,7 @@ function MasterContents() {
                   </td>
                   <td>{s.questions.length}</td>
                   <td className="muted">{status}</td>
-                  <td className="muted admin-date" title={addedAt(s) !== undefined ? new Date(addedAt(s)!).toLocaleString() : "Connect to the bank to see the original publish date"}>{addedAt(s) !== undefined ? formatDate(addedAt(s)!) : "—"}</td>
+                  <td className="muted admin-date" title={addedAt(s) !== undefined ? new Date(addedAt(s)!).toLocaleString() : "Connect to the bank to see the original publish date"}>{addedAt(s) !== undefined ? formatDate(addedAt(s)!) : "–"}</td>
                   <td className="muted admin-date" title={new Date(updatedAt(s)).toLocaleString()}>{formatDate(updatedAt(s))}</td>
                   <td><div className="admin-set-actions">
                     <button className="small" onClick={() => nav(`/set/${s.set.id}/edit#case-stems`)}>Edit</button>

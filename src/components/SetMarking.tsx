@@ -371,7 +371,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
       {noteOpen && <div className="mark-note">
         <AutoTextarea aria-label={`Note for question ${order + 1}`} placeholder="What do you want to remember from this question?" value={draft.notes} onChange={(e) => patch("notes", e.target.value)} style={{ minHeight: "4rem" }} />
         <div className="row mark-note-extra">
-          <label className="mark-inline">Confidence<select value={draft.confidence ?? ""} onChange={(e) => patch("confidence", e.target.value ? Number(e.target.value) : undefined)}><option value="">Not rated</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}{n === 1 ? " — guessing" : n === 5 ? " — certain" : ""}</option>)}</select></label>
+          <label className="mark-inline">Confidence<select value={draft.confidence ?? ""} onChange={(e) => patch("confidence", e.target.value ? Number(e.target.value) : undefined)}><option value="">Not rated</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}{n === 1 ? " (guessing)" : n === 5 ? " (certain)" : ""}</option>)}</select></label>
           <label className="mark-inline">Learning point for Anki<input type="text" value={draft.learningPoint} onChange={(e) => patch("learningPoint", e.target.value)} /></label>
         </div>
         <div className="row">{ERROR_TAGS.map((t) => <button type="button" key={t.id} className={"chip" + (draft.errorTags.includes(t.id) ? " on" : "")} aria-pressed={draft.errorTags.includes(t.id)} onClick={() => patch("errorTags", draft.errorTags.includes(t.id) ? draft.errorTags.filter((x) => x !== t.id) : [...draft.errorTags, t.id])}>{t.label}</button>)}</div>

@@ -139,7 +139,7 @@ function CommunityPanel({ question, set, initialChannel, ownerId, admin, api, on
           {!loading && !error && !page.posts.length && <p className="muted">{channel === "suggestions" ? "No suggestions yet." : "Start the discussion."}</p>}
           {page.posts.map(post => <article className="community-post" key={post.id}>
             <div className="row spread"><strong>{post.authorName}</strong><time dateTime={new Date(post.createdAt).toISOString()}>{new Date(post.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time></div>
-            {channel === "suggestions" && <small className="community-post-kind">{post.kind === "answer" ? "Suggested answer" : "Problem reported"}{post.resolved ? " — Resolved" : ""}</small>}
+            {channel === "suggestions" && <small className="community-post-kind">{post.kind === "answer" ? "Suggested answer" : "Problem reported"}{post.resolved ? ", resolved" : ""}</small>}
             <p className="pre">{post.body}</p>
             <div className="row community-post-actions">
               {channel === "discussion" && <button className="small link" disabled={busy} onClick={() => { setReplyTo(post); document.getElementById("community-message")?.focus(); }}>Reply</button>}

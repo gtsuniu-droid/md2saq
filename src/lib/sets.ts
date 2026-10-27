@@ -130,12 +130,12 @@ export function shortTitle(title: string, max = 48): string {
 }
 
 /**
- * The number with a short reminder of the case: "Set 03 · Breathless after a long flight".
+ * The number with a short reminder of the case: "Set 03: Breathless after a long flight".
  * Lists use this so a number means something; the set page shows the full title.
  */
 export function setHeadline(set: Pick<QuestionSet, "number" | "name" | "source">, max = 48): string {
   const title = setTitle(set);
-  return title ? `${setLabel(set)} · ${shortTitle(title, max)}` : setLabel(set);
+  return title ? `${setLabel(set)}: ${shortTitle(title, max)}` : setLabel(set);
 }
 
 /** Every set on the device with the group it is numbered in. */

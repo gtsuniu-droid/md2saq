@@ -6,7 +6,7 @@ import { isOwnerEmail, listMembers, setMemberRole, type Member } from "../lib/me
 import ConfirmDialog from "./ConfirmDialog";
 
 function when(ts?: number): string {
-  if (!ts) return "—";
+  if (!ts) return "–";
   const d = new Date(ts);
   return d.toLocaleDateString([], { day: "numeric", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
 }

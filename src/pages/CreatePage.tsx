@@ -445,7 +445,7 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
                     <td>
                       <select value={m.setId ?? ""} onChange={(e) => setMerges((ms) => ms.map((x, xi) => (xi === i ? { ...x, setId: e.target.value || null } : x)))}>
                         <option value="">Choose a set</option>
-                        {summaries.map((s) => <option key={s.set.id} value={s.set.id}>{fullLabel(s)}{s.set.source ? ` — ${s.set.source}` : ""}</option>)}
+                        {summaries.map((s) => <option key={s.set.id} value={s.set.id}>{fullLabel(s)}{s.set.source ? `: ${s.set.source}` : ""}</option>)}
                       </select>
                     </td>
                     <td><button className="small danger" onClick={() => setMerges((ms) => ms.filter((_, xi) => xi !== i))}>Remove</button></td>
@@ -468,7 +468,7 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
                     <td><input type="text" value={b.name} style={{ width: "6rem" }} onChange={(e) => setCases((cs) => cs.map((x) => (x.key === b.key ? { ...x, name: e.target.value } : x)))} /></td>
                     <td>{b.c.title}</td>
                     <td>{b.drafts.length}</td>
-                    <td>{(b.c.marks ?? b.drafts.reduce((a, d) => a + (d.marks ?? 0), 0)) || "—"}</td>
+                    <td>{(b.c.marks ?? b.drafts.reduce((a, d) => a + (d.marks ?? 0), 0)) || "–"}</td>
                     <td className="muted">{b.c.hasAnswers ? "yes" : "no"}</td>
                     <td style={{ minWidth: "16rem" }}>
                       <TagEditor value={b.tags} known={known} compact
@@ -493,7 +493,7 @@ export function CreateTools({ embedded = false, onSaved, onSavingChange }: Creat
                   <tr key={f.key}>
                     <td><input type="text" value={f.name} style={{ width: "100%" }} onChange={(e) => setFiles((fs) => fs.map((x) => (x.key === f.key ? { ...x, name: e.target.value } : x)))} /></td>
                     <td>{f.drafts.length === 0 ? <span style={{ color: "var(--bad)" }}>none parsed</span> : f.drafts.length}</td>
-                    <td>{f.drafts.reduce((a, d) => a + (d.marks ?? 0), 0) || "—"}</td>
+                    <td>{f.drafts.reduce((a, d) => a + (d.marks ?? 0), 0) || "–"}</td>
                     <td className="row" style={{ justifyContent: "flex-end" }}>
                       <button className="small" onClick={() => editFile(f)} disabled={f.drafts.length === 0}>Review</button>
                       <button className="small danger" onClick={() => setFiles((fs) => fs.filter((x) => x.key !== f.key))}>Remove</button>

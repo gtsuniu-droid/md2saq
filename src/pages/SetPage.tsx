@@ -175,7 +175,7 @@ export default function SetPage() {
                     </div>
                   )}
                 </td>
-                <td style={{ width: "4rem" }}>{totalMarks(q) ?? "—"}</td>
+                <td style={{ width: "4rem" }}>{totalMarks(q) ?? "–"}</td>
                 <td style={{ width: "8rem" }} className="muted">{lm ? `${lm.score}/${lm.max}` : doneByQuestion.get(q.id) ? "unmarked" : ""}</td>
               </tr>
             );

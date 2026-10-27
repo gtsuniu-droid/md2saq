@@ -34,10 +34,10 @@ describe("deck tree", () => {
   });
 
   it("labels a set with its branch outside the tree", () => {
-    expect(fullLabel(summary(4, ["dizziness"]))).toBe("Dizziness – Set 04");
-    expect(fullLabel(summary(5, ["dizziness"], ["Dizziness::Vestibular_neuritis"]))).toBe("Dizziness / Vestibular neuritis – Set 05");
-    expect(fullLabel(summary(6, []))).toBe("Untagged – Set 06");
-    expect(fullLabel(summary(12, ["dizziness"]))).toBe("Dizziness – Set 12");
+    expect(fullLabel(summary(4, ["dizziness"]))).toBe("Dizziness Set 04");
+    expect(fullLabel(summary(5, ["dizziness"], ["Dizziness::Vestibular_neuritis"]))).toBe("Dizziness / Vestibular neuritis Set 05");
+    expect(fullLabel(summary(6, []))).toBe("Untagged Set 06");
+    expect(fullLabel(summary(12, ["dizziness"]))).toBe("Dizziness Set 12");
   });
 
   it("says where a search matched: tags, label or question content", () => {

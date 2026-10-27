@@ -1726,3 +1726,6 @@ details.section > summary h2 { font-size: 1.15rem; }
 .history-section-name { display: inline-flex; align-items: center; gap: .45rem; font-weight: 700; }
 .history-section .history-list li:first-child { border-top: 0; padding-top: .5rem; }
 @media (max-width: 540px) { .history-bar { width: 100%; } .history-result { align-items: flex-start; } .history-section > summary { flex-wrap: wrap; } }
+.exam-setup .seg { margin-bottom: .9rem; }
+.exam-count-row { margin: .9rem 0 .6rem; align-items: center; gap: .75rem 1rem; flex-wrap: wrap; }
+.exam-count-row input { width: 5rem; margin-left: .5rem; }

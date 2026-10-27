@@ -29,7 +29,7 @@ export default function FixWithClaude({ set, question, small = true }: Props) {
   return <details className="fix-with-ai">
     <summary className={small ? "small" : undefined} title="Hand this question to an AI assistant to fix. Needs your connection link from Settings, AI assistants.">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.8 6l4.7.4-3.6 3 1.1 4.6L8 11.6 4 14l1.1-4.6-3.6-3L6.2 6z" fill="currentColor" /></svg>
-      Fix with AI{note && <span className="muted"> · {note}</span>}
+      Fix with AI{note && <span className="muted">, {note}</span>}
     </summary>
     <div className="fix-with-ai-menu">
       <button type="button" className="small" onClick={() => void open(`https://claude.ai/new?q=${encodeURIComponent(prompt)}`)}>Open in Claude</button>

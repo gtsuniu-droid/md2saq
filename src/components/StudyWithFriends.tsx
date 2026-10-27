@@ -137,7 +137,7 @@ export default function StudyWithFriends({ buildPaper, sets, presentations, mode
       )}
       {error && <p className="field-error" role="alert">{error}</p>}
       {recent.length > 0 && !created && !found && (
-        <p className="study-recent muted">Recent: {recent.map((r, i) => <span key={r.code}>{i > 0 && " · "}<Link to={`/study/${r.code}`}>{formatCode(r.code)}</Link> ({r.role === "host" ? "yours" : r.hostName}, {formatDate(r.startedAt)})</span>)}</p>
+        <p className="study-recent muted">Recent: {recent.map((r, i) => <span key={r.code}>{i > 0 && ", "}<Link to={`/study/${r.code}`}>{formatCode(r.code)}</Link> ({r.role === "host" ? "yours" : r.hostName}, {formatDate(r.startedAt)})</span>)}</p>
       )}
     </div>
   );

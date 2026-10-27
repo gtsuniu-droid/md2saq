@@ -124,7 +124,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
       <div className="row spread"><h2>{draft.revision ? "Edit note" : "New note"}</h2><span className="muted">{draft.ownerId === SHARED_OWNER ? "Shared note, saved edits are public" : "Private draft kept on this device"}</span></div>
       <div className="note-fields">
         <label>Presentation<select aria-label="Note presentation" disabled={draft.ownerId === SHARED_OWNER && !!draft.revision} value={draft.presentationId} onChange={(e) => setDraft({ ...draft, presentationId: e.target.value })}>{PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>Section<select aria-label="Note section" value={noteSection(draft.section)} onChange={(e) => setDraft({ ...draft, section: noteSection(e.target.value) })}>{NOTE_SECTIONS.map((s) => <option key={s.id} value={s.id}>{s.label} — {s.description}</option>)}</select></label>
+        <label>Section<select aria-label="Note section" value={noteSection(draft.section)} onChange={(e) => setDraft({ ...draft, section: noteSection(e.target.value) })}>{NOTE_SECTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}: {s.description}</option>)}</select></label>
         <label>Note type<input aria-label="Note type" list="note-kinds" maxLength={80} required value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} /></label>
       </div>
       <datalist id="note-kinds">{[...new Set([...NOTE_KINDS, ...(notes ?? []).map((n) => n.kind)])].map((k) => <option key={k} value={k} />)}</datalist>
@@ -139,7 +139,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
         {filteredPresentations.map((p) => {
           const count = (notes ?? []).filter((n) => n.presentationId === p.id && !n.deleted).length;
           const savedInCloud = library === "shared" && (sharedIndex?.includes(p.id) || (notes ?? []).some((n) => n.presentationId === p.id));
-          return <button key={p.id} className={p.id === selected ? "selected" : ""} aria-current={p.id === selected ? "page" : undefined} onClick={() => { setParams({ presentation: p.id, section }); setKind(""); setTrash(false); }}><span>{p.emoji} {p.name}</span><small title={savedInCloud ? "Notes saved in the shared library. Open this presentation to view them." : undefined}>{savedInCloud ? "Saved" : count || "—"}</small></button>;
+          return <button key={p.id} className={p.id === selected ? "selected" : ""} aria-current={p.id === selected ? "page" : undefined} onClick={() => { setParams({ presentation: p.id, section }); setKind(""); setTrash(false); }}><span>{p.emoji} {p.name}</span><small title={savedInCloud ? "Notes saved in the shared library. Open this presentation to view them." : undefined}>{savedInCloud ? "Saved" : count || "–"}</small></button>;
         })}
         {!filteredPresentations.length && <p className="muted">No matching presentations.</p>}
       </aside>

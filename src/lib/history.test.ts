@@ -9,7 +9,7 @@ describe("account history", () => {
   it("keeps repeat attempts, excludes other accounts and unused drafts, newest first", () => {
     const entries = historyEntries([attempt("a", "alice", 10), attempt("draft", "alice"), attempt("b", "alice", 20), attempt("bob", "bob", 30)], [], [question], [set], "alice");
     expect(entries.map((r) => r.attempt.id)).toEqual(["b", "a"]);
-    expect(entries[0].label).toBe("Set 04 · Example case, Question 3");
+    expect(entries[0].label).toBe("Set 04: Example case, Question 3");
     expect(entries[0].text).toBe(question.text);
   });
   it("uses only the account's newest saved score, including zero scores", () => {
@@ -35,10 +35,10 @@ describe("account history", () => {
     const entries = historyEntries([sitting("a1", "q1"), sitting("a2", "q2"), { ...attempt("solo", "alice", 70), questionId: "q2" }], marks, [q1, q2], [set], "alice");
     const groups = historyGroups(entries, [q1, q2], (id) => id === "chest-pain" ? "Chest pain" : id);
     expect(groups.map((g) => g.kind)).toEqual(["question", "set"]);
-    expect(groups[1].label).toBe("Chest pain — Set 04 · Example case");
+    expect(groups[1].label).toBe("Chest pain Set 04: Example case");
     expect(groups[1].text).toBe("First");
     expect(groups[1]).toMatchObject({ total: 2, marked: 2, score: 7, maxScore: 11, reviewLater: true });
     expect(groups[1].anchor.id).toBe("a1");
-    expect(groups[0]).toMatchObject({ label: "Set 04 · Example case, Question 2", total: 1, marked: 0, score: undefined });
+    expect(groups[0]).toMatchObject({ label: "Set 04: Example case, Question 2", total: 1, marked: 0, score: undefined });
   });
 });

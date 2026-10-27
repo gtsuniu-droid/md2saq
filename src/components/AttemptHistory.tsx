@@ -19,7 +19,7 @@ const band = (p: number) => (p >= 70 ? "good" : p >= 50 ? "mid" : "low");
 /** One sitting: what it was, when, how it went. The presentation sits above so the eye can scan. */
 function Row({ g, sitting, caption = true }: { g: HistoryGroup; sitting: number; caption?: boolean }) {
   const unmarked = g.entries.find((e) => !e.mark)?.attempt ?? g.anchor;
-  const name = g.presentation && g.label.startsWith(`${g.presentation} — `) ? g.label.slice(g.presentation.length + 3) : g.label;
+  const name = g.presentation && g.label.startsWith(`${g.presentation} `) ? g.label.slice(g.presentation.length + 1) : g.label;
   const emoji = g.presentationId ? PRESENTATION_BY_ID.get(g.presentationId)?.emoji : undefined;
   const titled = !!g.set && !!setTitle(g.set);
   const p = pct(g);
@@ -32,9 +32,9 @@ function Row({ g, sitting, caption = true }: { g: HistoryGroup; sitting: number;
         {g.kind === "question" && <p className="muted">{truncate(g.text, 110)}</p>}
         <span className="muted history-meta">
           <time dateTime={new Date(g.submittedAt).toISOString()}>{when(g.submittedAt)}</time>
-          {g.kind === "set" ? ` · ${g.total} question${g.total === 1 ? "" : "s"}` : " · single question"}
-          {g.mode === "exam" ? " · exam" : ""}
-          {sitting > 1 ? ` · ${ordinal(sitting)} sitting` : ""}
+          {g.kind === "set" ? `, ${g.total} question${g.total === 1 ? "" : "s"}` : ", single question"}
+          {g.mode === "exam" ? ", exam" : ""}
+          {sitting > 1 ? `, ${ordinal(sitting)} sitting` : ""}
         </span>
       </div>
       <div className="history-result">
@@ -97,7 +97,7 @@ export default function AttemptHistory({ attempts, marks, questions, sets, setti
       <div><h2 id="history-heading">History</h2>{groups.length > 0 && <p className="muted history-summary">{setsDoneAll} {setsDoneAll === 1 ? "set" : "sets"} done across {new Set(groups.map((g) => g.presentation).filter(Boolean)).size} presentations, {groups.length} {groups.length === 1 ? "sitting" : "sittings"}.</p>}</div>
       {ownerId ? <button className="small" disabled={busy} onClick={() => void refresh()}>{busy ? "Syncing…" : "Sync history"}</button> : <Link to="/settings">Sign in to sync</Link>}
     </div>
-    {(message || sync?.status === "error") && <p className="muted history-sync" role="status">{message || "Saved on this device. Cloud sync failed — try again."}</p>}
+    {(message || sync?.status === "error") && <p className="muted history-sync" role="status">{message || "Saved on this device. Cloud sync failed, try again."}</p>}
     {groups.length > 0 && <div className="row history-filters">
       <input type="search" aria-label="Search history" placeholder="Search sets, presentations or questions" value={search} onChange={(e) => { setSearch(e.target.value); setLimit(10); }} />
       <select aria-label="Filter history" value={filter} onChange={(e) => { setFilter(e.target.value); setLimit(10); }}><option value="all">All sittings</option><option value="practice">Practice</option><option value="exam">Exams</option><option value="unmarked">Needs marking</option><option value="review">Review later</option></select>
@@ -106,7 +106,7 @@ export default function AttemptHistory({ attempts, marks, questions, sets, setti
     {!groups.length ? <p className="history-empty">No sittings yet.</p> : !filtered.length ? <p className="history-empty">Nothing matches your search.</p>
       : view === "presentation" ? sections.map((s) => (
         <details key={s.name} className="history-section" open>
-          <summary><span className="history-section-name">{s.emoji && <span aria-hidden="true">{s.emoji}</span>}{s.name}</span><span className="muted">{s.setsDone} {s.setsDone === 1 ? "set" : "sets"} done · {s.rows.length} {s.rows.length === 1 ? "sitting" : "sittings"}{s.best !== null ? ` · best ${s.best}%` : ""}</span></summary>
+          <summary><span className="history-section-name">{s.emoji && <span aria-hidden="true">{s.emoji}</span>}{s.name}</span><span className="muted">{s.setsDone} {s.setsDone === 1 ? "set" : "sets"} done, {s.rows.length} {s.rows.length === 1 ? "sitting" : "sittings"}{s.best !== null ? `, best ${s.best}%` : ""}</span></summary>
           <ol className="history-list">{s.rows.map((g) => <Row key={g.key} g={g} sitting={sittingOf.get(g.key) ?? 1} caption={false} />)}</ol>
         </details>
       ))
