@@ -345,3 +345,11 @@ the outstanding provenance check for the AMBOSS term matcher.
 
 The software licence does not grant rights to third-party branding, external AMBOSS content,
 or question-bank content stored outside this repository.
+
+## Student progress for admins
+
+The Admin page's "Student progress this week" table is computed on the server from every
+account's submitted answers. It needs a Firebase service account key: in the Firebase console
+open Project settings, Service accounts, Generate new private key, then add the downloaded
+JSON (on one line) as `FIREBASE_SERVICE_ACCOUNT` in Netlify's environment variables and
+redeploy. Without it the table falls back to the figures students publish themselves.

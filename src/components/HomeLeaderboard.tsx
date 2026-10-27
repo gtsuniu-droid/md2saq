@@ -4,6 +4,7 @@ import type { Settings } from "../data/types";
 import { cloudConfigured } from "../lib/firebase";
 import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, type LeaderboardRow } from "../lib/leaderboard";
 import { joinLeaderboard } from "../lib/social";
+import { useSubmittedCount } from "../lib/useSubmittedCount";
 import { Avatar } from "./LeaderboardBoard";
 
 const MEDAL = ["gold", "silver", "bronze"];
@@ -15,6 +16,8 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   const [joining, setJoining] = useState(false);
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [error, setError] = useState("");
+  // Re-publish and re-read as soon as a question is submitted, so the count moves at once.
+  const submitted = useSubmittedCount(user?.uid);
 
   useEffect(() => {
     if (!user) return;
@@ -27,7 +30,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
       } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
     })();
     return () => { live = false; };
-  }, [user?.uid, joined, settings.social?.username]);
+  }, [user?.uid, joined, settings.social?.username, submitted]);
 
   if (!cloudConfigured() || !user) return null;
   const sorted = rows ? sortRows(rows, "questions") : [];

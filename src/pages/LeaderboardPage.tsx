@@ -5,6 +5,7 @@ import { getSettings } from "../data/db";
 import { cloudConfigured } from "../lib/firebase";
 import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
 import { BoardRows, Podium, UnitToggle, useBoardEntrance } from "../components/LeaderboardBoard";
+import { useSubmittedCount } from "../lib/useSubmittedCount";
 
 /** Everyone who opted in, ranked by questions answered or sets completed this week. */
 export default function LeaderboardPage() {
@@ -15,6 +16,7 @@ export default function LeaderboardPage() {
   const root = useRef<HTMLDivElement>(null);
   const user = settings?.cloudUser;
   const social = settings?.social;
+  const submitted = useSubmittedCount(user?.uid);
 
   useEffect(() => {
     if (!user) return;
@@ -27,7 +29,7 @@ export default function LeaderboardPage() {
       } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
     })();
     return () => { live = false; };
-  }, [user?.uid, social?.leaderboard, social?.username]);
+  }, [user?.uid, social?.leaderboard, social?.username, submitted]);
 
   const sorted = rows ? sortRows(rows, unit) : [];
   useBoardEntrance(root, [rows !== null, unit]);

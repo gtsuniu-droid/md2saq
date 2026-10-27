@@ -25,7 +25,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 /** Firebase web config, from the environment on Netlify or from .env.local when developing. */
-function firebaseEnv(): { apiKey?: string; projectId?: string; adminEmails: string[] } {
+export function firebaseEnv(): { apiKey?: string; projectId?: string; adminEmails: string[] } {
   const env: Record<string, string | undefined> = { ...process.env };
   if (!hosted()) {
     try {
@@ -39,7 +39,7 @@ function firebaseEnv(): { apiKey?: string; projectId?: string; adminEmails: stri
 }
 
 /** Who is calling, from the Firebase ID token in the Authorization header. */
-async function caller(req: Request): Promise<ConnectionRecord | Response> {
+export async function caller(req: Request): Promise<ConnectionRecord | Response> {
   const idToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (!idToken) return new Response("Sign in first.", { status: 401 });
   const { apiKey, projectId, adminEmails } = firebaseEnv();
