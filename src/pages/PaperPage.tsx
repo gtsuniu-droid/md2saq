@@ -291,6 +291,14 @@ export default function PaperPage() {
     nav(`/session/${session.id}`, { replace: true });
   }, [session, data, flushAttempt, nav]);
 
+  // Closing the tab mid-exam is possible but gets a warning; the exam resumes on return.
+  useEffect(() => {
+    if (session?.mode !== "exam") return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [session?.mode]);
+
   // Only exams submit at the deadline. Practice remains editable after time runs out.
   useEffect(() => {
     if (examExpired && data && !submittingRef.current) void submitAll();
@@ -456,7 +464,7 @@ export default function PaperPage() {
         <span style={{ flex: 1 }} />
         {session.mode === "practice" && !session.examFormat && <AmbossSearch />}
         {!session.examFormat && <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />}
-        <button disabled={addingImages} onClick={() => nav("/home")}>{session.examFormat ? "Exit" : "Save & exit"}</button>
+        {session.mode !== "exam" && <button disabled={addingImages} onClick={() => nav("/home")}>{session.examFormat ? "Exit" : "Save & exit"}</button>}
         <button disabled={addingImages} onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
         {session.mode === "practice"
           ? <button onClick={() => nextQuestion(index)} disabled={submittingSet || addingImages}>{index + 1 >= data.questions.length ? "Session summary" : data.questions[index + 1].setId !== data.questions[index].setId ? "Next set" : "Next"}</button>

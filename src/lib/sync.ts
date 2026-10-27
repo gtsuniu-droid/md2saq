@@ -6,6 +6,7 @@ import { cloudConfigured, currentUser, deleteMany, fetchSince, writeMany, type C
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
 import { syncNotes } from "./notes";
 import { belongsToAccount } from "./progressAccount";
+import { publishWeeklyCount } from "./leaderboard";
 
 /**
  * Offline-first sync of a signed-in person's own records: attempts (drafts
@@ -25,6 +26,7 @@ const SETTINGS_SYNCED: (keyof Settings)[] = [
   "autoImportBank",
   "ambossHighlights",
   "ambossOnPaper",
+  "social",
 ];
 
 /** Firestore rejects undefined; drop those fields recursively. Arrays are kept as is. */
@@ -175,6 +177,8 @@ async function push(uid: string): Promise<number> {
   const markDocs = marks.map((m) => stripUndefined(m) as unknown as Record<string, unknown>);
   await writeMany(uid, "attempts", attemptDocs);
   await writeMany(uid, "marks", markDocs);
+  // The leaderboard shows this week's count; it follows every push of attempts.
+  if (attemptDocs.length) await publishWeeklyCount(uid).catch(() => undefined);
   if (settings?.cloudUser?.uid === uid && (settings._m ?? 0) > since) {
     await writeMany(uid, "settings", [stripUndefined(settingsForCloud(settings)) as unknown as Record<string, unknown>]);
   }

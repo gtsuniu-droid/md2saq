@@ -24,6 +24,8 @@ import ReviewPage from "./pages/ReviewPage";
 import SessionReviewPage from "./pages/SessionReviewPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
+import LeaderboardPage from "./pages/LeaderboardPage";
+import NoticesBell from "./components/NoticesBell";
 import LandingPage, { BrandMark } from "./pages/LandingPage";
 import AmbossPanel from "./components/AmbossPanel";
 import AmbossHover from "./components/AmbossHover";
@@ -226,6 +228,10 @@ export default function App() {
     })();
   }, []);
 
+  // An exam cannot be left: no bar, no other page, until the paper is submitted and reviewed.
+  const examLocked = session?.mode === "exam" && !pathname.startsWith("/session/");
+  if (examLocked && pathname !== "/paper") return <Navigate to="/paper" replace />;
+
   // The front page is for newcomers; anyone signed in or who has practised before goes straight in.
   if (pathname === "/" || pathname === "/welcome") return <LandingPage autoEnter={pathname === "/"} />;
   if (pathname === "/home") try { localStorage.setItem("saq-practice:entered", "1"); } catch { /* private mode */ }
@@ -234,7 +240,7 @@ export default function App() {
   const shell = full ? "page full" : pathname === "/home" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : pathname === "/settings" ? "page settings-shell" : pathname === "/admin" ? "page admin-shell" : "page wide-shell";
   return (
     <div className="app">
-      <nav className="nav">
+      {examLocked ? <div className="nav exam-bar" aria-label="Exam in progress"><span className="brand"><BrandMark />SAQ Practice</span><span className="exam-bar-note">Exam in progress. Submit the paper to leave.</span></div> : <nav className="nav">
         <NavLink to="/welcome" className="brand"><BrandMark />SAQ Practice</NavLink>
         <NavLink to="/home" end>Home</NavLink>
         <NavLink to="/browse">Browse</NavLink>
@@ -245,8 +251,9 @@ export default function App() {
         {session && <NavLink to="/paper" className="nav-paper"><span className="dot" />Continue session</NavLink>}
         <span style={{ flex: 1 }} />
         {studying && !(session?.examFormat && pathname.startsWith("/paper")) && <button className="nav-notes" aria-expanded={notesOpen} onClick={() => setNotesOpen((open) => !open)}>{notesOpen ? "Hide reference notes" : "Reference notes"}</button>}
+        {account?.cloudUser && <NoticesBell canPost={isAdmin(account)} uid={account.cloudUser.uid} />}
         <AccountButton />
-      </nav>
+      </nav>}
       {account?.cloudUser && account.cloudUser.verified === false && !full && <VerifyBar user={account.cloudUser} />}
       <div className="study-workspace">
       <main className={shell}>
@@ -266,6 +273,7 @@ export default function App() {
           <Route path="/mark/:attemptId" element={<ContentGate kind="attempt"><MarkPage /></ContentGate>} />
           <Route path="/history/:attemptId" element={<ContentGate kind="attempt"><SetAttemptPage /></ContentGate>} />
           <Route path="/session/:id" element={<ContentGate kind="session"><SessionReviewPage /></ContentGate>} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/master" element={<Navigate to="/admin" replace />} />
           <Route path="/bank" element={<Navigate to="/admin" replace />} />

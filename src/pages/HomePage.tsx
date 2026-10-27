@@ -1,3 +1,4 @@
+import HomeLeaderboard from "../components/HomeLeaderboard";
 import LibraryStatus from "../components/LibraryStatus";
 import { loadLibrary } from "../lib/library";
 import { ensureQuestionContent, ensureSetContent } from "../lib/bank";
@@ -196,6 +197,7 @@ export default function HomePage() {
         </div>
         <details className="activity-details"><summary>Activity calendar</summary><Heatmap grid={view.grid} /></details>
       </div>
+      <HomeLeaderboard settings={data.settings} />
 
       <div className="card home-card session-card" id="new-session" tabIndex={-1} aria-labelledby="new-session-heading">
         <h2 className="section-heading" id="new-session-heading">New session</h2>{startError && <p role="alert">{startError}</p>}{starting && <p role="status">Preparing questions…</p>}

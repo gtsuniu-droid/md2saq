@@ -10,6 +10,7 @@ import { downloadText, exportAll, exportLearningPointsTsv, importAll, readFileTe
 import { formatDate } from "../lib/questions";
 import { syncFromBank } from "../lib/bank";
 import { hideRemovedCopies, libraryBreakdown, type LibraryBreakdown } from "../lib/library";
+import { saveSocialSettings, USERNAME_MAX } from "../lib/social";
 import { ambossLogout } from "../lib/amboss";
 import { cloudConfigured, signOutCloud } from "../lib/firebase";
 import SignInPanel from "../components/SignInPanel";
@@ -31,6 +32,9 @@ export default function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [libraryMsg, setLibraryMsg] = useState<string | null>(null);
   const [breakdown, setBreakdown] = useState<LibraryBreakdown | null>(null);
+  const [social, setSocial] = useState<{ username: string; leaderboard: boolean } | null>(null);
+  const [socialMsg, setSocialMsg] = useState("");
+  const [socialBusy, setSocialBusy] = useState(false);
   useEffect(() => { void libraryBreakdown().then(setBreakdown); }, [libraryMsg]);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [cloudMsg, setCloudMsg] = useState<string | null>(null);
@@ -91,6 +95,7 @@ export default function SettingsPage() {
   const sections = [
     { id: "practice", label: "Practice" },
     { id: "account", label: "Account" },
+    ...(cloudConfigured() ? [{ id: "social", label: "Leaderboard" }] : []),
     { id: "amboss", label: "AMBOSS" },
     { id: "library", label: "Question library" },
     ...(cloudConfigured() ? [{ id: "claude", label: "AI assistants" }] : []),
@@ -163,6 +168,37 @@ export default function SettingsPage() {
             </div>
           </section>
 
+          {cloudConfigured() && (
+            <section className="settings-section" id="social" aria-labelledby="settings-social">
+              <h2 id="settings-social">Leaderboard</h2>
+              <p className="muted">Off until you turn it on. Other students only ever see the username you choose here, never your real name or email.</p>
+              <div className="card">
+                {!settings.cloudUser ? <Row title="Sign in first" help="The leaderboard is tied to your account." /> : (() => {
+                  const form = social ?? { username: settings.social?.username ?? "", leaderboard: settings.social?.leaderboard ?? false };
+                  const save = async () => {
+                    setSocialBusy(true); setSocialMsg("");
+                    try { await saveSocialSettings(form); setSocial(null); setSocialMsg("Saved."); }
+                    catch (e) { setSocialMsg(e instanceof Error ? e.message : "Could not save."); }
+                    finally { setSocialBusy(false); }
+                  };
+                  return (
+                    <>
+                      <Row title="Show me on the leaderboard" help="Questions answered and sets completed this week, Monday to Sunday, against everyone else who opted in. The leaderboard then shows on your home page.">
+                        <input type="checkbox" aria-label="Show me on the leaderboard" checked={form.leaderboard} onChange={(e) => setSocial({ ...form, leaderboard: e.target.checked })} />
+                      </Row>
+                      <Row title="Username" help={`What others see. Letters, numbers, spaces and underscores, up to ${USERNAME_MAX} characters.`}>
+                        <input aria-label="Username" maxLength={USERNAME_MAX} placeholder="e.g. Eiden" value={form.username} onChange={(e) => setSocial({ ...form, username: e.target.value })} />
+                      </Row>
+                      <Row title="Save" help={form.leaderboard ? "Your username becomes visible to other students." : "Turning it off removes you from the leaderboard and hides it on your home page."}>
+                        <button className="primary small" disabled={socialBusy || !social} onClick={() => void save()}>{socialBusy ? "Saving…" : "Save"}</button>
+                      </Row>
+                      {socialMsg && <p className={`settings-message${/Saved/.test(socialMsg) ? "" : " field-error"}`} role="status">{socialMsg}</p>}
+                    </>
+                  );
+                })()}
+              </div>
+            </section>
+          )}
           <div className="settings-section" id="amboss">
             <AmbossSettings settings={settings} />
           </div>

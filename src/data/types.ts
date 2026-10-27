@@ -238,6 +238,17 @@ export interface Settings {
   ambossOnPaper: boolean;
   /** Signed-in cloud account, for display. */
   cloudUser?: { uid: string; email?: string; name?: string; photo?: string; verified?: boolean; provider?: string };
+  /** Opt-in social features. Only the chosen username is ever shown to others. */
+  social?: SocialSettings;
+}
+
+export interface SocialSettings {
+  /** The name other students see, never the account's real name. */
+  username: string;
+  /** Appear on the weekly leaderboard. */
+  leaderboard: boolean;
+  /** Said no to the one-time invitation; the home panel stays hidden until Settings turns it on. */
+  declined?: boolean;
 }
 
 /** Device-only credential record. Never included in settings, sync or backups. */
