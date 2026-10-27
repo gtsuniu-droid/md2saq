@@ -47,6 +47,7 @@ export default function NoteEditor({ initial, onChange, onBusyChange, label = "N
       <button type="button" aria-label="Bold" aria-pressed={active?.bold} onClick={() => editor.chain().focus().toggleBold().run()}><b>B</b></button>
       <button type="button" aria-label="Italic" aria-pressed={active?.italic} onClick={() => editor.chain().focus().toggleItalic().run()}><i>I</i></button>
       <button type="button" onClick={() => imageInput.current?.click()}>Picture</button>
+      <button type="button" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run()}>Table</button>
       {compact && <button type="button" aria-expanded={more} onClick={() => setMore(!more)}>More</button>}
       {(!compact || more) && <>
       <button type="button" aria-label="Highlight" aria-pressed={active?.highlight} onClick={() => editor.chain().focus().toggleHighlight().run()}><mark>H</mark></button>
@@ -66,7 +67,6 @@ export default function NoteEditor({ initial, onChange, onBusyChange, label = "N
       <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>Heading</button>
       <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()}>Bullets</button>
       <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()}>Numbered</button>
-      <button type="button" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run()}>Table</button>
       {active?.table && <><button type="button" onClick={() => editor.chain().focus().addRowAfter().run()}>+ Row</button><button type="button" onClick={() => editor.chain().focus().addColumnAfter().run()}>+ Column</button><button type="button" onClick={() => editor.chain().focus().deleteTable().run()}>Remove table</button></>}
       <button type="button" aria-label="Undo" onClick={() => editor.chain().focus().undo().run()}>Undo</button>
       </>}

@@ -2,7 +2,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod";
 import { BankClient, setCode } from "./client.js";
 import type { Question, SetPack, SubPart } from "./types.js";
-import { cleanTitle, describeQuestion, entryTitle, examStyleWarnings, fail, findPart, findQuestion, hasModelAnswers, metadataWarnings, ok, packToMarkdown, plainText, presentationName, questionQualityIssues, questionStyleWarnings, setLabel } from "./util.js";
+import { cleanTitle, describeQuestion, entryTitle, examStyleWarnings, fail, findPart, findQuestion, hasModelAnswers, metadataWarnings, ok, packToMarkdown, plainText, presentationName, questionQualityIssues, questionStyleWarnings, richValue, setLabel } from "./util.js";
 import type { ReviewFlag } from "./types.js";
 import { PRESENTATIONS, resolvePresentation } from "./presentations.js";
 
@@ -234,13 +234,13 @@ export function registerMoreWriteTools(server: McpServer, bank: BankClient): voi
         const q = questions[index];
         if (e.text === undefined && e.marks === undefined && e.modelAnswer === undefined) throw new Error(`Edit for question ${index + 1} changes nothing.`);
         const target: SubPart | Question = e.part ? findPart(q, e.part) : q;
-        if (e.text !== undefined) { target.text = plainText(e.text); if (target.textDoc) { delete target.textDoc; warnings.push(`Question ${index + 1}${e.part ? `(${e.part})` : ""}: formatting dropped.`); } }
+        if (e.text !== undefined) { const v = richValue(e.text); target.text = v.text; if (v.doc) target.textDoc = v.doc; else if (target.textDoc) { delete target.textDoc; warnings.push(`Question ${index + 1}${e.part ? `(${e.part})` : ""}: formatting dropped.`); } }
         if (e.marks !== undefined) target.marks = e.marks ?? undefined;
-        if (e.modelAnswer !== undefined) { target.modelAnswer = e.modelAnswer === null ? undefined : plainText(e.modelAnswer); if (target.modelAnswerDoc) { delete target.modelAnswerDoc; warnings.push(`Question ${index + 1}${e.part ? `(${e.part})` : ""}: answer formatting dropped.`); } }
+        if (e.modelAnswer !== undefined) { const v = e.modelAnswer === null ? { text: "" } : richValue(e.modelAnswer); target.modelAnswer = v.text || undefined; if (v.doc) target.modelAnswerDoc = v.doc; else if (target.modelAnswerDoc) { delete target.modelAnswerDoc; warnings.push(`Question ${index + 1}${e.part ? `(${e.part})` : ""}: answer formatting dropped.`); } }
         applied.push(`Q${index + 1}${e.part ? `(${e.part})` : ""}`);
         if (e.text !== undefined) warnings.push(...(e.part ? examStyleWarnings(`Question ${index + 1}(${e.part})`, target.text) : questionStyleWarnings(q, index + 1)));
       }
-      if (stems) for (const q of questions) { q.stems = stems.map(plainText); delete q.stemDocs; }
+      if (stems) { const values = stems.map(richValue); for (const q of questions) { q.stems = values.map((v) => v.text); q.stemDocs = values.some((v) => v.doc) ? values.map((v) => v.doc ?? null) : undefined; } }
       const edited = new Set(applied.map((a) => questions[Number(/\d+/.exec(a)![0]) - 1].id));
       const reviewFlags = (pack.set.reviewFlags ?? []).filter((f) => !edited.has(f.questionId));
       const entry = await bank.updatePack(bankId, { ...pack, set: { ...pack.set, updatedAt: Date.now(), reviewFlags: reviewFlags.length ? reviewFlags : undefined }, questions: questions.map((q, i) => ({ ...q, order: i })) });

@@ -2,6 +2,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { BankError, PasscodeMissingError, ReadOnlyModeError } from "./client.js";
 import type { BankEntry, Question, SetPack, SubPart } from "./types.js";
 import { presentationName } from "./presentations.js";
+import { docToText, looksRich, markdownToDoc } from "./markdownDoc.js";
 
 /** Success: the object as JSON text plus structuredContent, so clients can show either. */
 export function ok(data: Record<string, unknown>): CallToolResult {
@@ -64,6 +65,17 @@ export function findPart(question: Question, label: string): SubPart {
 
 export function plainText(value: string): string {
   return value.replace(/\r\n/g, "\n").trim();
+}
+
+/**
+ * Text as the site stores it: plain when it is plain; a document (with tables, lists,
+ * headings, bold) plus its searchable text when it is written in Markdown.
+ */
+export function richValue(value: string): { text: string; doc?: unknown } {
+  const text = plainText(value);
+  if (!looksRich(text)) return { text };
+  const doc = markdownToDoc(text);
+  return { text: docToText(doc), doc };
 }
 
 /** Everything in the set's text that a search should look at. */

@@ -69,6 +69,8 @@ return the code and label for every set they mention.
 | `setHistory` / `restoreSet` | Earlier versions of a set (the last twenty) and undo back to one. |
 | `listDeletedSets` / `restoreDeletedSet` | Deleted sets (the last fifty) and bringing one back under its old code. |
 | `bankStats` / `listTags` | The shape of the bank per presentation; every tag in use. |
+| `listNotes` / `getNote` | The shared notes under a presentation, read as Markdown. |
+| `addNote` / `updateNote` / `deleteNote` | Publish, change or remove a shared note; Markdown tables, lists and headings become real formatting. The same Markdown works in stems, questions and model answers. |
 
 Resources: `saq://sets` (the whole list) and `saq://set/{code}` (one set as Markdown). Prompts: `review-bank`, `overhaul-set`, `draft-set`, `tidy-metadata`, `write-answers`.
 

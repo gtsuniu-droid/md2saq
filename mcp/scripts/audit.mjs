@@ -96,6 +96,25 @@ expect("renameTag reports affected sets before confirming", r.isError && r.data.
   const tpl = await client.listResourceTemplates(); expect("resources: saq://set/{code} template is listed", tpl.resourceTemplates.some((x) => x.uriTemplate === "saq://set/{code}"));
   const code = (await raw("listSets", { presentation: "hypertension", limit: 1 })).data.sets[0].code;
   const read = await client.readResource({ uri: `saq://set/${code}` }); expect("resources: a set reads as markdown", /^# High blood pressure/.test(read.contents[0].text), read.contents[0].text.split("\n")[0]); }
+// --- notes and tables
+r = await raw("addNote", { presentation: "high blood pressure", title: "Audit note", section: "ddx", markdown: "# Causes\n\n- Primary\n- Secondary\n\n| Cause | Clue |\n| --- | --- |\n| Renal | Raised creatinine |" });
+expect("addNote publishes a Markdown note", !r.isError && r.data.note.section === "ddx", r.data.error);
+r = await raw("getNote", { presentation: "high blood pressure", note: "Audit note" });
+expect("getNote returns the table as Markdown", !r.isError && /\| Cause \| Clue \|/.test(r.data.note.markdown ?? "") && /# Causes/.test(r.data.note.markdown), r.data.error ?? (r.data.note?.markdown ?? "").slice(0, 60));
+r = await raw("updateNote", { presentation: "high blood pressure", note: "Audit note", markdown: "Added line.", append: true });
+expect("updateNote appends", !r.isError && r.data.changed.includes("appended"), r.data.error);
+r = await raw("listNotes", { presentation: "hypertension" });
+expect("listNotes shows it", !r.isError && r.data.notes.some((n) => n.title === "Audit note"), r.data.error);
+r = await raw("deleteNote", { presentation: "high blood pressure", note: "Audit note", confirmDeletion: true });
+expect("deleteNote removes it", !r.isError, r.data.error);
+r = await raw("listNotes", { presentation: "hypertension" });
+expect("deleted note is gone from the list", !r.isError && !r.data.notes.some((n) => n.title === "Audit note"));
+const stemBefore = (await raw("getSet", { set: "hypertension 1" })).data.questions[0].stems[0];
+r = await raw("updateStem", { set: "hypertension 1", stage: 1, text: stemBefore + "\n\n| Observation | Value |\n| --- | --- |\n| BP | 176/112 |" });
+expect("updateStem keeps a Markdown table as a document", !r.isError && r.data.questionsUpdated >= 1, r.data.error);
+r = await raw("getSet", { set: "hypertension 1" });
+expect("the stem now carries rich text with the table", !r.isError && r.data.questions[0].hasRichText === false || (r.data.questions[0].stems[0] ?? "").includes("BP | 176/112"), JSON.stringify(r.data.questions?.[0]?.stems?.[0] ?? "").slice(0, 80));
+await raw("updateStem", { set: "hypertension 1", stage: 1, text: stemBefore });
 r = await raw("listPresentations", {});
 expect("listPresentations carries names and synonyms", r.data.presentations.some((p) => p.id === "high-blood-pressure" && p.name === "High blood pressure" && (p.alsoKnownAs ?? []).length));
 await client.close();

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { BankEntry, SetPack } from "./types.js";
+import type { BankEntry, SetPack, SharedNote } from "./types.js";
 import type { Config } from "./config.js";
 import { setLabel } from "./util.js";
 import { presentationMatches } from "./presentations.js";
@@ -211,6 +211,28 @@ export class BankClient {
     PACKS.delete(bankId);
     INDEX = null;
     return (await res.json()) as BankEntry;
+  }
+
+  private notesUrl(presentation: string): string {
+    const u = new URL("/api/notes", this.config.siteUrl);
+    u.searchParams.set("presentation", presentation);
+    return u.toString();
+  }
+
+  /** The shared notes of one presentation, as the site stores them. */
+  async listNotes(presentation: string): Promise<SharedNote[]> {
+    const res = await this.check(await fetch(this.notesUrl(presentation), { cache: "no-store" }), `Reading notes for ${presentation}`);
+    return ((await res.json()) as { notes: SharedNote[] }).notes;
+  }
+
+  /** Create or replace a shared note; baseRevision guards against overwriting a newer edit. */
+  async saveNote(note: SharedNote, baseRevision?: string): Promise<SharedNote> {
+    const res = await fetch(this.notesUrl(note.presentationId), { method: "PUT", headers: this.writeHeaders(), body: JSON.stringify({ note, baseRevision }) });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new BankError(body.error ?? `Saving the note failed (${res.status}).`, res.status);
+    }
+    return ((await res.json()) as { note: SharedNote }).note;
   }
 
   async deleteSet(bankId: string): Promise<void> {

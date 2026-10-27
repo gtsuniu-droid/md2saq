@@ -47,6 +47,23 @@ export interface QuestionSet {
   [key: string]: unknown;
 }
 
+/** A note in the shared library, one of several under a presentation. */
+export interface SharedNote {
+  id: string;
+  presentationId: string;
+  kind: string;
+  section?: "overview" | "ddx" | "hx-exam" | "ix" | "mx" | "extras";
+  title: string;
+  doc: unknown;
+  text: string;
+  source: string;
+  ownerId: string;
+  createdAt: number;
+  _m: number;
+  revision: string;
+  deleted: boolean;
+}
+
 export interface SetPack {
   format: "saq-practice-set";
   version: 1;

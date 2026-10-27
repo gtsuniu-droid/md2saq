@@ -2,7 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { BankClient, setCode } from "./client.js";
 import type { Question, SetPack, SubPart } from "./types.js";
-import { cleanTitle, describeQuestion, entryTitle, examStyleWarnings, fail, findPart, findQuestion, hasModelAnswers, metadataWarnings, ok, packToMarkdown, plainText, presentationName, questionStyleWarnings, searchableText, setLabel } from "./util.js";
+import { cleanTitle, describeQuestion, entryTitle, examStyleWarnings, fail, findPart, findQuestion, hasModelAnswers, metadataWarnings, ok, packToMarkdown, plainText, presentationName, questionStyleWarnings, richValue, searchableText, setLabel } from "./util.js";
+import { registerNoteTools } from "./tools-notes.js";
 import { registerMoreReadTools, registerMoreWriteTools } from "./tools-more.js";
 import { PRESENTATIONS, resolvePresentation } from "./presentations.js";
 
@@ -220,8 +221,10 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
   });
 
   registerMoreReadTools(server, bank);
+  registerNoteTools(server, bank, true);
   if (readOnly) return;
   registerMoreWriteTools(server, bank);
+  registerNoteTools(server, bank, false);
 
   const partInput = z.object({ label: z.string().describe("e.g. \"a\""), text: z.string().min(1), marks: z.number().min(0).optional(), modelAnswer: z.string().optional() });
   const questionInput = z.object({
@@ -297,10 +300,10 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
         if (a.part) {
           const p = q.parts.find((x) => x.label.toLowerCase() === a.part!.toLowerCase());
           if (!p) { missing.push(`Q${a.questionNumber}(${a.part})`); continue; }
-          p.modelAnswer = plainText(a.modelAnswer); delete p.modelAnswerDoc; if (a.marks !== undefined) p.marks = a.marks;
+          { const v = richValue(a.modelAnswer); p.modelAnswer = v.text; if (v.doc) p.modelAnswerDoc = v.doc; else delete p.modelAnswerDoc; } if (a.marks !== undefined) p.marks = a.marks;
           applied.push(`Q${a.questionNumber}(${p.label})`);
         } else {
-          q.modelAnswer = plainText(a.modelAnswer); delete q.modelAnswerDoc; if (a.marks !== undefined) q.marks = a.marks;
+          { const v = richValue(a.modelAnswer); q.modelAnswer = v.text; if (v.doc) q.modelAnswerDoc = v.doc; else delete q.modelAnswerDoc; } if (a.marks !== undefined) q.marks = a.marks;
           applied.push(`Q${a.questionNumber}`);
         }
       }
@@ -317,7 +320,7 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       set: setRef, ...questionRef,
       text: z.string().optional().describe("New question text, plain text. Line breaks are kept."),
       marks: z.number().min(0).nullable().optional().describe("New marks for the question; null clears it."),
-      modelAnswer: z.string().nullable().optional().describe("New model answer, plain text, one marking point per line; null clears it."),
+      modelAnswer: z.string().nullable().optional().describe("New model answer, one marking point per line; Markdown tables, lists and bold are kept; null clears it."),
     },
     annotations: WRITE,
   }, async ({ set: ref, questionNumber, questionId, text, marks, modelAnswer }) => {
@@ -328,9 +331,9 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       const { question, index } = findQuestion(pack, { number: questionNumber, questionId });
       const next: Question = { ...question };
       const dropped: string[] = [];
-      if (text !== undefined) { next.text = plainText(text); if (question.textDoc) { delete next.textDoc; dropped.push("question formatting"); } }
+      if (text !== undefined) { const v = richValue(text); next.text = v.text; if (v.doc) next.textDoc = v.doc; else if (question.textDoc) { delete next.textDoc; dropped.push("question formatting"); } }
       if (marks !== undefined) next.marks = marks ?? undefined;
-      if (modelAnswer !== undefined) { next.modelAnswer = modelAnswer === null ? undefined : plainText(modelAnswer); if (question.modelAnswerDoc) { delete next.modelAnswerDoc; dropped.push("model answer formatting"); } }
+      if (modelAnswer !== undefined) { const v = modelAnswer === null ? { text: "" } : richValue(modelAnswer); next.modelAnswer = v.text || undefined; if (v.doc) next.modelAnswerDoc = v.doc; else if (question.modelAnswerDoc) { delete next.modelAnswerDoc; dropped.push("model answer formatting"); } }
       const entry = await bank.updatePack(bankId, withoutFlag(withQuestion(pack, index, next), question.id));
       const style = text !== undefined ? questionStyleWarnings(next, index + 1) : [];
       return ok({ success: true, code: setCode(bankId), bankId, label: setLabel(entry), question: describeQuestion(next, index), changed: [text !== undefined && "text", marks !== undefined && "marks", modelAnswer !== undefined && "modelAnswer"].filter(Boolean), warning: dropped.length ? `Replaced ${dropped.join(" and ")}; pictures or formatting in it are gone.` : undefined, styleWarnings: style.length ? style : undefined, message: "Saved and published. Students receive it when they next open the site." });
@@ -357,9 +360,9 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       const current = findPart(question, part);
       const nextPart: SubPart = { ...current };
       const dropped: string[] = [];
-      if (text !== undefined) { nextPart.text = plainText(text); if (current.textDoc) { delete nextPart.textDoc; dropped.push("part formatting"); } }
+      if (text !== undefined) { const v = richValue(text); nextPart.text = v.text; if (v.doc) nextPart.textDoc = v.doc; else if (current.textDoc) { delete nextPart.textDoc; dropped.push("part formatting"); } }
       if (marks !== undefined) nextPart.marks = marks ?? undefined;
-      if (modelAnswer !== undefined) { nextPart.modelAnswer = modelAnswer === null ? undefined : plainText(modelAnswer); if (current.modelAnswerDoc) { delete nextPart.modelAnswerDoc; dropped.push("model answer formatting"); } }
+      if (modelAnswer !== undefined) { const v = modelAnswer === null ? { text: "" } : richValue(modelAnswer); nextPart.modelAnswer = v.text || undefined; if (v.doc) nextPart.modelAnswerDoc = v.doc; else if (current.modelAnswerDoc) { delete nextPart.modelAnswerDoc; dropped.push("model answer formatting"); } }
       const next: Question = { ...question, parts: question.parts.map((p) => (p === current ? nextPart : p)) };
       const entry = await bank.updatePack(bankId, withoutFlag(withQuestion(pack, index, next), question.id));
       const style = text !== undefined ? examStyleWarnings(`Question ${index + 1}(${current.label})`, nextPart.text) : [];
@@ -369,7 +372,7 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
 
   server.registerTool("updateStem", {
     title: "Update a case stem",
-    description: "Rewrite a case stem. Stems are shared: every question in the set that shows the same stem text is updated together, so the case reads the same from every question. Stage 1 is the opening presentation; later stages add information before later questions. Replacing a stem with pictures drops them.",
+    description: "Rewrite a case stem. Stems are shared: every question in the set that shows the same stem text is updated together, so the case reads the same from every question. Stage 1 is the opening presentation; later stages add information before later questions. Markdown is accepted: a pipe table (| Obs | Value |), bullet points, bold. Replacing a stem with pictures drops them.",
     inputSchema: {
       set: setRef,
       stage: z.number().int().min(1).default(1).describe("Which stem: 1 for the opening stem, 2 for the next stage, and so on."),
@@ -389,9 +392,10 @@ export function registerTools(server: McpServer, bank: BankClient, readOnly: boo
       const questions = ordered.map((q, i) => {
         if ((q.stems?.length ?? 0) < stage || q.stems![stage - 1] !== old) return { ...q, order: i };
         touched++;
-        const stems = [...q.stems!]; stems[stage - 1] = plainText(text);
-        const stemDocs = q.stemDocs ? [...q.stemDocs] : undefined;
-        if (stemDocs && stemDocs[stage - 1]) { stemDocs[stage - 1] = null; dropped = true; }
+        const v = richValue(text);
+        const stems = [...q.stems!]; stems[stage - 1] = v.text;
+        const stemDocs = q.stemDocs ? [...q.stemDocs] : v.doc ? stems.map(() => null) : undefined;
+        if (stemDocs) { if (stemDocs[stage - 1] && !v.doc) dropped = true; stemDocs[stage - 1] = v.doc ?? null; }
         return { ...q, order: i, stems, stemDocs };
       });
       const entry = await bank.updatePack(bankId, { ...pack, set: { ...pack.set, updatedAt: Date.now() }, questions });
