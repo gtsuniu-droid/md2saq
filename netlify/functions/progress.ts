@@ -129,7 +129,7 @@ async function handle(req: Request): Promise<Response> {
     const f = fresh(uid)
       ? { week: { questions: num(n?.count) ?? 0, sets: num(n?.sets) ?? 0 }, last: { questions: num(n?.prevCount) ?? 0, sets: num(n?.prevSets) ?? 0 } }
       : figures.get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
-    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n?.visible?.booleanValue === true, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt) };
+    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n !== undefined && n.visible?.booleanValue !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt) };
   }).sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
   const body: CacheBody = { at: now, week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
   cache = body;
