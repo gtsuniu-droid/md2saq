@@ -52,7 +52,7 @@ export default function LeaderboardPage() {
       {sorted.length > 0 && (
         <>
           <Podium rows={sorted} unit={unit} me={user.uid} />
-          {line && <div className="lb-standing"><p><strong>{firstSentence(line)}</strong>{line.includes(". ") ? ` ${line.slice(line.indexOf(". ") + 2)}` : ""}</p><Link to="/new" className="button primary">Practise now</Link></div>}
+          {line && <div className="lb-standing"><p><strong>{firstSentence(line)}</strong>{line.includes(". ") ? ` ${line.slice(line.indexOf(". ") + 2)}` : ""}</p><Link to="/home#new-session" className="button primary">Practise now</Link></div>}
           <BoardRows rows={sorted} unit={unit} me={user.uid} />
         </>
       )}

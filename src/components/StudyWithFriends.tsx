@@ -112,7 +112,6 @@ export default function StudyWithFriends({ buildPaper, sets, presentations, mode
       <CodeBoxes value={code} onChange={(c) => { setCode(c); setError(""); }} disabled={busy} />
       {busy && <p className="muted" role="status">Looking for that session…</p>}
       {error && <p className="field-error" role="alert">{error}</p>}
-      {recent.length > 0 && <p className="study-recent muted">Recent: {recent.map((r, i) => <span key={r.code}>{i > 0 && ", "}<Link to={`/study/${r.code}`}>{formatCode(r.code)}</Link> ({r.role === "host" ? "yours" : r.hostName}, {formatDate(r.startedAt)})</span>)}</p>}
     </div>
   );
 

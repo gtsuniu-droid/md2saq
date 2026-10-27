@@ -267,7 +267,7 @@ export default function App() {
       <main className={shell}>
         <Routes key={`${account?.cloudUser?.uid ?? ""}:${sessionOwner()}`}>
           <Route path="/home" element={<HomePage />} />
-          <Route path="/new" element={<HomePage view="new" />} />
+          <Route path="/new" element={<Navigate to="/home#new-session" replace />} />
           <Route path="/create" element={<CreatePage />} />
           <Route path="/browse" element={<BrowsePage />} />
           <Route path="/notes" element={<NotesPage />} />
