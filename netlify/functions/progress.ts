@@ -118,6 +118,10 @@ async function handle(req: Request): Promise<Response> {
   const now = Date.now();
   const since = weekStart(now) - 7 * 24 * 3600 * 1000;
   const nick = new Map(board.map((d) => [d.name.split("/").pop()!, d.fields]));
+  // Records written before the joined flag existed were all opt-ins: stamp the flag on them so
+  // the board lists them through every path from now on, not only this one.
+  await Promise.all(board.filter((d) => d.fields && d.fields.visible === undefined).map((d) =>
+    fetch(`https://firestore.googleapis.com/v1/${d.name}?updateMask.fieldPaths=visible`, { method: "PATCH", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ fields: { visible: { booleanValue: true } } }) }).catch(() => undefined)));
   const thisWeek = weekKey(now); const lastWeek = weekKey(now - 7 * 24 * 3600 * 1000);
   type Pair = { week: { questions: number; sets: number }; last: { questions: number; sets: number } };
   const zero: Pair = { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
