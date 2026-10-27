@@ -1,10 +1,10 @@
 import { presentationName } from "../data/presentations";
 import { primaryPresentation } from "./primaryPresentation";
-import { setLabel, type SetSummary } from "./sets";
+import { setHeadline, type SetSummary } from "./sets";
 
 export function browseSetTitle(summary: SetSummary): string {
   const presentation = primaryPresentation(summary.set, summary.questions);
-  return presentation ? `${presentationName(presentation)} — ${setLabel(summary.set)}` : setLabel(summary.set);
+  return presentation ? `${presentationName(presentation)} — ${setHeadline(summary.set)}` : setHeadline(summary.set);
 }
 
 /** Search prompts and metadata without revealing or matching hidden model answers. */

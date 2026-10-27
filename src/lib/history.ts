@@ -1,6 +1,6 @@
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 import { belongsToAccount } from "./progressAccount";
-import { setLabel } from "./sets";
+import { setHeadline } from "./sets";
 import { primaryPresentation } from "./primaryPresentation";
 import { stemsOf } from "./questions";
 
@@ -30,7 +30,7 @@ export function historyEntries(attempts: Attempt[], marks: Mark[], questions: Qu
       const set = bySet.get(question?.setId ?? attempt.qref?.setId ?? "");
       const order = question?.order ?? attempt.qref?.order;
       return { attempt, mark: byAttempt.get(attempt.id), question, set,
-        label: `${set ? setLabel(set) : attempt.qref?.setNumber !== undefined ? `Set ${String(attempt.qref.setNumber).padStart(2, "0")}` : attempt.qref?.setName || "Question set"}${order !== undefined ? `, Question ${order + 1}` : ""}`,
+        label: `${set ? setHeadline(set) : attempt.qref?.setNumber !== undefined ? `Set ${String(attempt.qref.setNumber).padStart(2, "0")}` : attempt.qref?.setName || "Question set"}${order !== undefined ? `, Question ${order + 1}` : ""}`,
         text: question?.text || question?.parts[0]?.text || attempt.qref?.text || "Question no longer available on this device.",
       };
     });
@@ -77,11 +77,12 @@ export function historyGroups(entries: HistoryEntry[], questions: Question[], pr
     const marked = members.filter((m) => m.mark);
     const presentationId = set ? primaryPresentation(set, bySet.get(set.id) ?? []) : undefined;
     const presentation = presentationId ? presentationName(presentationId) : undefined;
-    const setName = set ? setLabel(set) : first.attempt.qref?.setNumber !== undefined ? `Set ${String(first.attempt.qref.setNumber).padStart(2, "0")}` : first.attempt.qref?.setName || "Question set";
+    const setName = set ? setHeadline(set) : first.attempt.qref?.setNumber !== undefined ? `Set ${String(first.attempt.qref.setNumber).padStart(2, "0")}` : first.attempt.qref?.setName || "Question set";
     return {
       key, kind: single ? "question" : "set", entries: ordered, anchor: first.attempt, set, presentation,
       label: single ? first.label : presentation ? `${presentation} — ${setName}` : setName,
-      text: single ? first.text : set?.name && set.name !== setName ? set.name : (first.question && stemsOf(first.question)[0]) || first.text,
+      // The headline already carries the title, so the second line is the case stem; a stale "Set 3" name never shows.
+      text: single ? first.text : (first.question && stemsOf(first.question)[0]) || (set?.name && !/^(set|case)\s*\d*$/i.test(set.name.trim()) && !setName.includes(set.name.trim()) ? set.name : "") || first.text,
       submittedAt: Math.max(...members.map((m) => m.attempt.submittedAt ?? 0)),
       mode: first.attempt.mode,
       marked: marked.length, total: members.length,

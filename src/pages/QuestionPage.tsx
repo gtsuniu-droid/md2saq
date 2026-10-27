@@ -71,7 +71,7 @@ export default function QuestionPage() {
       <div className="card" style={{ marginTop: "0.8rem" }}>
         {stemsOf(q).map((st, si) => (
           <div key={si} className="stem-block">
-            {stemsOf(q).length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
+            {si > 0 && <div className="stem-more">More information</div>}
             <AmbossText cacheKey={q.id} texts={qTexts} text={st} doc={q.stemDocs?.[si]} />
           </div>
         ))}

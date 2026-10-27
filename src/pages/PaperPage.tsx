@@ -389,6 +389,18 @@ export default function PaperPage() {
     return () => { cancelAnimationFrame(frame); restoredPosition.current = false; };
   }, [!!data]);
 
+  // Marking a submitted set is not writing time: the practice clock stops until the next set opens.
+  const submittedKey = data?.attempts.map((a) => a.submittedAt ?? 0).join(",");
+  useEffect(() => {
+    if (!session || !data || session.mode !== "practice") return;
+    const groups = sessionSetGroups(session, data.questions);
+    const current = groups.find((g) => g.indices.includes(session.index));
+    const marking = !!current && current.indices.every((i) => data.attempts[i]?.submittedAt !== undefined);
+    if (marking) { pauseSession(ownerRef.current); const paused = loadSession(ownerRef.current); if (paused) setSession(paused); }
+    else { const resumed = resumeSession(ownerRef.current); if (resumed) setSession(resumed); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.mode, session?.index, submittedKey]);
+
   const goTo = (i: number, label = "") => {
     if (imageJobs.current.size) return;
     if (gate.gated && session && data) {
@@ -483,7 +495,7 @@ export default function PaperPage() {
             const set = data.sets.find((s) => s.id === group.setId);
             const submitted = group.indices.filter((i) => data.attempts[i].submittedAt !== undefined);
             const unmarked = submitted.find((i) => !marked.has(data.attempts[i].id));
-            return <div className="session-summary-row" key={group.setId}><div><strong>{setMode ? `${number + 1}. ` : ""}{set ? setLabel(set) : "Set"}</strong><p>{set?.name}</p><span className="muted">{submitted.length} / {group.indices.length} submitted, {group.indices.filter((i) => marked.has(data.attempts[i].id)).length} marked</span></div><div className="row"><button onClick={() => goTo(group.indices[0])}>Open set</button>{session.mode === "practice" && submitted.length > 0 && <button onClick={() => nav(`/mark/${data.attempts[unmarked ?? submitted[0]].id}`)}>{unmarked !== undefined ? "Mark set" : "Review"}</button>}</div></div>;
+            return <div className="session-summary-row" key={group.setId}><div><strong>{setMode ? `${number + 1}. ` : ""}{set ? setLabel(set) : "Set"}</strong>{set && set.name !== setLabel(set) && <p>{set.name}</p>}<span className="muted">{submitted.length} / {group.indices.length} submitted, {group.indices.filter((i) => marked.has(data.attempts[i].id)).length} marked</span></div><div className="row"><button onClick={() => goTo(group.indices[0])}>Open set</button>{session.mode === "practice" && submitted.length > 0 && <button onClick={() => nav(`/mark/${data.attempts[unmarked ?? submitted[0]].id}`)}>{unmarked !== undefined ? "Mark set" : "Review"}</button>}</div></div>;
           })}
           {setMode && openedGroups.length < setGroups.length && <p className="muted">{setGroups.length - openedGroups.length} sets still to open.</p>}
           <div className="row"><button onClick={() => setSummaryOpen(false)}>Back to question</button>{setMode && openedGroups.length < setGroups.length && <button className="primary" onClick={() => goTo(setGroups[openedGroups.length].indices[0])}>Open next set</button>}{unsubmitted === 0 && <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish session</button>}</div>
@@ -498,8 +510,8 @@ export default function PaperPage() {
             <button className="small hl-btn" onMouseDown={(e) => e.preventDefault()} onClick={highlightSelection} title="Highlight the selected text (⌘⇧H). Select highlighted text and press again to remove.">Highlight</button>
           </div>
           {stems.map((st, si) => (
-            <div key={si} className="stem-block">
-              {stems.length > 1 && <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.2rem" }}>Stage {si + 1}</div>}
+            <div key={si} className={"stem-block" + (si > 0 && si === stems.length - 1 ? " revealed" : "")}>
+              {si > 0 && <div className="stem-more">More information</div>}
               <AmbossText cacheKey={question.id} texts={stemTexts} text={st} doc={question.stemDocs?.[si]} disabled={!ambossOnPaper} highlights={groupHighlights(si)} dataStem={si} />
             </div>
           ))}

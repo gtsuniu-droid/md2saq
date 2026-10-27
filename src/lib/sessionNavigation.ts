@@ -33,15 +33,25 @@ export function sessionAtQuestion(session: Session, questions: Question[], index
   return next;
 }
 
-/** Display one case at a time, including when separate cases have identical or empty stems. */
+/**
+ * The questions shown together: every question of this set whose case information is the
+ * opening of the current question's, so earlier questions stay on the page as more is
+ * revealed, and nothing from a later reveal shows early. Separate cases with identical or
+ * empty stems never merge.
+ */
 export function paperQuestionGroup(questions: Question[], index: number, stems: (question: Question) => string[]): number[] {
   const question = questions[index];
   if (!question) return [];
   const currentStems = stems(question);
-  const key = currentStems.join("\u2029");
-  return questions.flatMap((q, i) => q.setId === question.setId && (
-    currentStems.length ? stems(q).join("\u2029") === key && JSON.stringify(q.stemDocs ?? []) === JSON.stringify(question.stemDocs ?? []) : i === index || (!stems(q).length && !q.parts.length && !question.parts.length)
-  ) ? [i] : []);
+  const currentDocs = question.stemDocs ?? [];
+  return questions.flatMap((q, i) => {
+    if (q.setId !== question.setId) return [];
+    if (!currentStems.length) return i === index || (!stems(q).length && !q.parts.length && !question.parts.length) ? [i] : [];
+    const qs = stems(q);
+    const opening = qs.length > 0 && qs.length <= currentStems.length && qs.every((text, k) => text === currentStems[k])
+      && JSON.stringify((q.stemDocs ?? []).slice(0, qs.length)) === JSON.stringify(currentDocs.slice(0, qs.length));
+    return opening ? [i] : [];
+  });
 }
 
 /** One continuous question list; reveal the next complete set only when it is reached. */

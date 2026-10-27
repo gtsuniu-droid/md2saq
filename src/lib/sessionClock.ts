@@ -9,14 +9,19 @@ import type { Session } from "../data/types";
  * or with the tab closed.
  */
 
+/** Exams run continuously, whatever the student does with the tab; practice papers can pause. */
+export function continuousClock(s: Pick<Session, "mode" | "examFormat">): boolean {
+  return s.mode === "exam" || s.examFormat === "six-stem";
+}
+
 export function pausedSession(s: Session, now: number): Session {
-  if (s.examFormat === "six-stem" || s.pausedAt !== undefined) return s;
+  if (continuousClock(s) || s.pausedAt !== undefined) return s;
   return { ...s, pausedAt: now };
 }
 
 export function resumedSession(s: Session, now: number): Session {
   if (s.pausedAt === undefined) return s;
-  if (s.examFormat === "six-stem") { const { pausedAt: _paused, ...running } = s; void _paused; return running; }
+  if (continuousClock(s)) { const { pausedAt: _paused, ...running } = s; void _paused; return running; }
   const away = Math.max(0, now - s.pausedAt);
   const { pausedAt: _dropped, ...rest } = s;
   void _dropped;
@@ -26,7 +31,7 @@ export function resumedSession(s: Session, now: number): Session {
 /** Seconds left on the exam clock, frozen while paused; null when untimed. */
 export function remainingSec(s: Session, now: number): number | null {
   if (!s.totalSec) return null;
-  const at = s.examFormat === "six-stem" ? now : s.pausedAt ?? now;
+  const at = continuousClock(s) ? now : s.pausedAt ?? now;
   return Math.min(s.totalSec, Math.max(0, Math.ceil((s.startedAt + ((s.readingSec ?? 0) + s.totalSec) * 1000 - at) / 1000)));
 }
 
@@ -37,13 +42,13 @@ export function shouldAutoSubmit(s: Session, now: number): boolean {
 
 export function overtimeSec(s: Session, now: number): number {
   if (!s.totalSec) return 0;
-  return Math.max(0, Math.floor(((s.pausedAt ?? now) - s.startedAt) / 1000) - s.totalSec);
+  return Math.max(0, Math.floor(((continuousClock(s) ? now : s.pausedAt ?? now) - s.startedAt) / 1000) - s.totalSec);
 }
 
 /** Reading and writing deadlines use the saved start and never reset on reload. */
 export function readingRemainingSec(s: Session, now: number): number {
   if (!s.readingSec) return 0;
-  const at = s.examFormat === "six-stem" ? now : s.pausedAt ?? now;
+  const at = continuousClock(s) ? now : s.pausedAt ?? now;
   return Math.max(0, Math.ceil((s.startedAt + (s.readingSec ?? 0) * 1000 - at) / 1000));
 }
 

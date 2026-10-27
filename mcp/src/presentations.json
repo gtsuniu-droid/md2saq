@@ -14,7 +14,10 @@
       "luq",
       "suprapubic",
       "peritonitis",
-      "peritonism"
+      "peritonism",
+      "distension",
+      "distended",
+      "bloating"
     ],
     "parent": null
   },
@@ -38,6 +41,24 @@
       "bowel habit",
       "change in bowel",
       "altered bowel"
+    ],
+    "parent": null
+  },
+  {
+    "id": "altered-conscious-state",
+    "name": "Altered conscious state",
+    "synonyms": [
+      "altered conscious",
+      "reduced conscious",
+      "conscious state",
+      "drowsy",
+      "drowsiness",
+      "obtunded",
+      "coma",
+      "comatose",
+      "intoxicated",
+      "intoxication",
+      "gcs of"
     ],
     "parent": null
   },
@@ -67,15 +88,37 @@
     "parent": null
   },
   {
-    "id": "cognitive-impairment",
-    "name": "Cognitive impairment",
+    "id": "bleeding-bruising",
+    "name": "Bleeding, bruising and pallor",
     "synonyms": [
-      "cognitive",
-      "dementia",
-      "memory loss",
-      "forgetful",
-      "mmse",
-      "moca"
+      "bruising",
+      "bruise",
+      "easy bruising",
+      "bleeding gums",
+      "petechiae",
+      "purpura",
+      "epistaxis",
+      "nosebleed",
+      "pallor",
+      "pale",
+      "anaemia",
+      "anaemic",
+      "anemia",
+      "abnormal bleeding"
+    ],
+    "parent": null
+  },
+  {
+    "id": "breast-symptoms",
+    "name": "Breast symptoms",
+    "synonyms": [
+      "breast lump",
+      "breast pain",
+      "mastalgia",
+      "nipple discharge",
+      "lactation",
+      "mastitis",
+      "breast"
     ],
     "parent": null
   },
@@ -87,6 +130,19 @@
       "chest tightness",
       "angina",
       "pleuritic"
+    ],
+    "parent": null
+  },
+  {
+    "id": "cognitive-impairment",
+    "name": "Cognitive impairment",
+    "synonyms": [
+      "cognitive",
+      "dementia",
+      "memory loss",
+      "forgetful",
+      "mmse",
+      "moca"
     ],
     "parent": null
   },
@@ -172,6 +228,38 @@
     "parent": null
   },
   {
+    "id": "ent-symptoms",
+    "name": "Ear, nose and throat",
+    "synonyms": [
+      "ear pain",
+      "otalgia",
+      "earache",
+      "otitis",
+      "rhinorrhoea",
+      "runny nose",
+      "nasal",
+      "sinusitis",
+      "tinnitus",
+      "ringing in"
+    ],
+    "parent": null
+  },
+  {
+    "id": "eye-symptoms",
+    "name": "Eye symptoms",
+    "synonyms": [
+      "red eye",
+      "eye pain",
+      "painful eye",
+      "conjunctivitis",
+      "photophobia",
+      "uveitis",
+      "glaucoma",
+      "foreign body sensation"
+    ],
+    "parent": null
+  },
+  {
     "id": "falls",
     "name": "Falls",
     "synonyms": [
@@ -203,7 +291,30 @@
       "pyrexia",
       "temperature of",
       "rigors",
-      "sepsis"
+      "sepsis",
+      "sweating",
+      "night sweats"
+    ],
+    "parent": null
+  },
+  {
+    "id": "groin-genital",
+    "name": "Groin and genital symptoms",
+    "synonyms": [
+      "inguinoscrotal",
+      "scrotal pain",
+      "scrotal swelling",
+      "testicular",
+      "testicle",
+      "groin pain",
+      "groin lump",
+      "inguinal",
+      "erectile dysfunction",
+      "impotence",
+      "perianal pain",
+      "anal pain",
+      "haemorrhoids",
+      "fissure"
     ],
     "parent": null
   },
@@ -248,7 +359,30 @@
       "headache",
       "migraine",
       "thunderclap",
-      "head ache"
+      "head ache",
+      "facial pain",
+      "jaw pain",
+      "trigeminal"
+    ],
+    "parent": null
+  },
+  {
+    "id": "health-assessment",
+    "name": "Health assessments",
+    "synonyms": [
+      "pre-operative",
+      "preoperative",
+      "pre-op",
+      "preventative",
+      "preventive",
+      "screening",
+      "health check",
+      "chronic disease",
+      "diabetes review",
+      "asthma review",
+      "copd review",
+      "chronic kidney disease",
+      "chronic pain"
     ],
     "parent": null
   },
@@ -365,6 +499,54 @@
     "parent": null
   },
   {
+    "id": "lumps",
+    "name": "Lumps",
+    "synonyms": [
+      "lump",
+      "neck lump",
+      "skin lump",
+      "thyroid nodule",
+      "goitre",
+      "lymphadenopathy",
+      "lymph node",
+      "swollen gland",
+      "perianal lump",
+      "cyst",
+      "lipoma"
+    ],
+    "parent": null
+  },
+  {
+    "id": "mental-health",
+    "name": "Mental health and substance use",
+    "synonyms": [
+      "agitation",
+      "agitated",
+      "aggression",
+      "aggressive",
+      "unusual thoughts",
+      "unusual behaviour",
+      "delusion",
+      "hallucination",
+      "psychosis",
+      "psychotic",
+      "depression",
+      "depressed",
+      "suicidal",
+      "self-harm",
+      "anxiety",
+      "mania",
+      "alcohol",
+      "drinking",
+      "withdrawal",
+      "drug misuse",
+      "overdose",
+      "substance",
+      "intravenous drug"
+    ],
+    "parent": null
+  },
+  {
     "id": "muscle-weakness",
     "name": "Muscle weakness",
     "synonyms": [
@@ -374,7 +556,9 @@
       "paralysis",
       "hemiparesis",
       "myopathy",
-      "foot drop"
+      "foot drop",
+      "difficulty walking",
+      "gait"
     ],
     "parent": null
   },
@@ -450,6 +634,24 @@
     "parent": null
   },
   {
+    "id": "seizure",
+    "name": "Seizure",
+    "synonyms": [
+      "seizure",
+      "seizures",
+      "fit",
+      "fitting",
+      "convulsion",
+      "epilepsy",
+      "epileptic",
+      "status epilepticus",
+      "tonic-clonic",
+      "post-ictal",
+      "postictal"
+    ],
+    "parent": null
+  },
+  {
     "id": "sensory-disturbance",
     "name": "Sensory disturbance",
     "synonyms": [
@@ -462,6 +664,26 @@
       "sensory loss",
       "sensory disturbance",
       "altered sensation"
+    ],
+    "parent": null
+  },
+  {
+    "id": "skin-symptoms",
+    "name": "Skin symptoms",
+    "synonyms": [
+      "rash",
+      "itch",
+      "itchy",
+      "pruritus",
+      "urticaria",
+      "hives",
+      "eczema",
+      "psoriasis",
+      "skin ulcer",
+      "cellulitis",
+      "blister",
+      "dermatitis",
+      "skin lesion"
     ],
     "parent": null
   },
@@ -488,8 +710,7 @@
       "peripheral oedema",
       "leg swelling",
       "ankle swelling",
-      "lower limb swelling",
-      "lump"
+      "lower limb swelling"
     ],
     "parent": null
   },

@@ -115,8 +115,27 @@ export function startSet(summary: SetSummary, mode: "practice" | "exam", minutes
 }
 
 /** How a set is referred to everywhere: "Set 01", or its name until it has a number. */
+/** "Set 03", or the set's own name when it was never numbered. Short, stable, and what students say aloud. */
 export function setLabel(set: Pick<QuestionSet, "number" | "name">): string {
   return set.number !== undefined ? setNumberLabel(set.number) : set.name || "Set";
+}
+
+/** A title cut at a word boundary so it fits a list row. */
+export function shortTitle(title: string, max = 48): string {
+  const t = title.trim().replace(/\s+/g, " ");
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > max * 0.5 ? cut.slice(0, at) : t.slice(0, max)).replace(/[,;:.\-–—]+$/, "")}…`;
+}
+
+/**
+ * The number with a short reminder of the case: "Set 03 · Breathless after a long flight".
+ * Lists use this so a number means something; the set page shows the full title.
+ */
+export function setHeadline(set: Pick<QuestionSet, "number" | "name" | "source">, max = 48): string {
+  const title = setTitle(set);
+  return title ? `${setLabel(set)} · ${shortTitle(title, max)}` : setLabel(set);
 }
 
 /** Every set on the device with the group it is numbered in. */

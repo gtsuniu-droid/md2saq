@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Session } from "../data/types";
 import { pausedSession, remainingSec, resumedSession } from "./sessionClock";
 
-const base: Session = { id: "s", mode: "exam", questionIds: ["q1", "q2"], index: 0, totalSec: 600, startedAt: 1_000_000, attemptIds: [] };
+// A timed practice paper: the only kind that pauses. Exams run on regardless.
+const base: Session = { id: "s", mode: "practice", questionIds: ["q1", "q2"], index: 0, totalSec: 600, startedAt: 1_000_000, attemptIds: [] };
 
 describe("session clock", () => {
   it("freezes the clock while paused and hands the time back on resume", () => {
@@ -34,9 +35,10 @@ describe("session clock", () => {
 it("auto-submits only timed exams, including when reopened after expiry", async () => {
   const { shouldAutoSubmit, overtimeSec } = await import("./sessionClock");
   const after = base.startedAt + 630_000;
-  expect(shouldAutoSubmit(base, after)).toBe(true);
-  expect(shouldAutoSubmit(base, base.startedAt + 599_000)).toBe(false);
-  expect(shouldAutoSubmit({ ...base, totalSec: undefined }, after)).toBe(false);
+  const timedExam: Session = { ...base, mode: "exam" };
+  expect(shouldAutoSubmit(timedExam, after)).toBe(true);
+  expect(shouldAutoSubmit(timedExam, base.startedAt + 599_000)).toBe(false);
+  expect(shouldAutoSubmit({ ...timedExam, totalSec: undefined }, after)).toBe(false);
   const practice = { ...base, mode: "practice" as const };
   expect(remainingSec(practice, after)).toBe(0);
   expect(shouldAutoSubmit(practice, after)).toBe(false);
@@ -47,7 +49,7 @@ it("auto-submits only timed exams, including when reopened after expiry", async 
 });
 
 describe("six-stem exam phases", () => {
-  const exam: Session = { ...base, examFormat: "six-stem", readingSec: 900, totalSec: 7200 };
+  const exam: Session = { ...base, mode: "exam", examFormat: "six-stem", readingSec: 900, totalSec: 7200 };
   it("locks reading for 15 minutes then gives a full two hours to write", async () => {
     const { readingRemainingSec, canWriteAnswers, shouldAutoSubmit } = await import("./sessionClock");
     expect(readingRemainingSec(exam, exam.startedAt)).toBe(900);
@@ -67,4 +69,15 @@ describe("six-stem exam phases", () => {
     expect(remainingSec(restored, exam.startedAt + 1_000_000)).toBe(7100);
     expect(remainingSec({ ...restored, pausedAt: exam.startedAt }, exam.startedAt + 8_101_000)).toBe(0);
   });
+});
+
+it("an exam clock keeps running while the tab is away and submits the moment it reaches zero", async () => {
+  const { pausedSession, remainingSec, resumedSession, shouldAutoSubmit } = await import("./sessionClock");
+  const exam = { id: "e", mode: "exam" as const, questionIds: ["q"], attemptIds: ["a"], index: 0, startedAt: 1_000_000, totalSec: 600 };
+  const paused = pausedSession(exam, exam.startedAt + 100_000);
+  expect(paused.pausedAt).toBeUndefined();
+  expect(remainingSec({ ...exam, pausedAt: exam.startedAt + 100_000 }, exam.startedAt + 400_000)).toBe(200);
+  expect(resumedSession({ ...exam, pausedAt: exam.startedAt + 100_000 }, exam.startedAt + 400_000).startedAt).toBe(exam.startedAt);
+  expect(shouldAutoSubmit(exam, exam.startedAt + 600_000)).toBe(true);
+  expect(shouldAutoSubmit({ ...exam, mode: "practice" }, exam.startedAt + 600_000)).toBe(false);
 });

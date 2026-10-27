@@ -288,7 +288,7 @@ export default function HomePage() {
           {!!selectedQuestions.length && <details className="session-selection-preview"><summary>Preview selected {unit === "sets" ? "sets" : "questions"}</summary>{[...pickedSetIds].map((id) => {
             const set = data.sets.find((s) => s.id === id);
             const qs = selectedQuestions.filter((q) => q.setId === id);
-            return <div key={id}><strong>{set ? setLabel(set) : "Set"}, {qs.length} questions</strong><p className="muted">{set?.name}</p>{unit === "questions" && <ul>{qs.map((q) => <li key={q.id}>{q.text.slice(0, 150)}{q.text.length > 150 ? "…" : ""}</li>)}</ul>}</div>;
+            return <div key={id}><strong>{set ? setLabel(set) : "Set"}, {qs.length} questions</strong>{set && set.name !== setLabel(set) && <p className="muted">{set.name}</p>}{unit === "questions" && <ul>{qs.map((q) => <li key={q.id}>{q.text.slice(0, 150)}{q.text.length > 150 ? "…" : ""}</li>)}</ul>}</div>;
           })}</details>}
         </div>
           <div className="session-preview" aria-live="polite">

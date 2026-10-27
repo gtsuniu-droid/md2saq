@@ -22,6 +22,12 @@ describe("progressive whole-set sessions", () => {
     expect(paperQuestionGroup(questions, 2, stemsOf)).toEqual([2, 3]);
     expect(paperQuestionGroup(questions.map((q) => ({ ...q, stems: [] })), 2, stemsOf)).toEqual([2, 3]);
   });
+  it("keeps earlier questions on the page as a case reveals more, never showing a later reveal early", () => {
+    const unfolding: Question[] = [["s1"], ["s1"], ["s1", "s2"], ["s1", "s2", "s3"]].map((stems, i) => ({ id: `u${i}`, setId: "u", order: i, text: "Question", stems, parts: [], presentations: [], tags: [], createdAt: 1 }));
+    expect(paperQuestionGroup(unfolding, 0, stemsOf)).toEqual([0, 1]);
+    expect(paperQuestionGroup(unfolding, 2, stemsOf)).toEqual([0, 1, 2]);
+    expect(paperQuestionGroup(unfolding, 3, stemsOf)).toEqual([0, 1, 2, 3]);
+  });
   it("restores opened progress and handles older sessions without set metadata", () => {
     const restored = JSON.parse(JSON.stringify(sessionAtQuestion(session, questions, 2))) as Session;
     expect(openedSetCount(restored, sessionSetGroups(restored, questions))).toBe(2);
