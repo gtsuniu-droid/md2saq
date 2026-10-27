@@ -74,9 +74,11 @@ async function attemptsOf(base: string, token: string, uid: string, since: numbe
 }
 
 /**
+ * The logic: each device publishes a small record on every sync (nickname, photo, joined
+ * flag, its own counts). The server adds up every account's submitted answers and that
+ * figure wins; an account's record stands in only when the server cannot read its answers.
  * Reads are the scarce resource (the free Firestore quota is a daily budget), so the result
- * is cached for every visitor in the bank's blob store, and attempts are read only for
- * accounts whose own device has not published a fresh figure this week.
+ * is cached for every visitor in the bank's blob store for ten minutes.
  */
 const CACHE_KEY = "progress-cache";
 const CACHE_MS = 10 * 60_000;
@@ -116,20 +118,36 @@ async function handle(req: Request): Promise<Response> {
   const now = Date.now();
   const since = weekStart(now) - 7 * 24 * 3600 * 1000;
   const nick = new Map(board.map((d) => [d.name.split("/").pop()!, d.fields]));
-  const thisWeek = weekKey(now);
-  // A device that published this week within the last day is trusted; others are computed from their attempts.
-  const fresh = (uid: string) => { const n = nick.get(uid); const at = num(n?.updatedAt); return str(n?.week) === thisWeek && at !== undefined && now - at < 24 * 3600 * 1000; };
-  const uids = members.map((m) => m.name.split("/").pop()!).filter((uid) => !fresh(uid));
-  const attempts: AttemptRow[] = [];
-  for (let i = 0; i < uids.length; i += 8) attempts.push(...(await Promise.all(uids.slice(i, i + 8).map((uid) => attemptsOf(base, token, uid, since)))).flat());
-  const figures = weeklyFigures(attempts, questionCount, now);
+  const thisWeek = weekKey(now); const lastWeek = weekKey(now - 7 * 24 * 3600 * 1000);
+  type Pair = { week: { questions: number; sets: number }; last: { questions: number; sets: number } };
+  const zero: Pair = { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
+  // The device's own record, as a stand-in when the server cannot read that account's answers.
+  const fromRecord = (n?: Record<string, FsValue>): Pair => {
+    if (!n) return zero;
+    const w = str(n.week);
+    if (w === thisWeek) return { week: { questions: num(n.count) ?? 0, sets: num(n.sets) ?? 0 }, last: { questions: num(n.prevCount) ?? 0, sets: num(n.prevSets) ?? 0 } };
+    if (w === lastWeek) return { week: { questions: 0, sets: 0 }, last: { questions: num(n.count) ?? 0, sets: num(n.sets) ?? 0 } };
+    return zero;
+  };
+  // Server first: add up each account's submitted answers. Per account, a failed read falls back to the record.
+  const uids = members.map((m) => m.name.split("/").pop()!);
+  const figures = new Map<string, { pair: Pair; source: "server" | "device" | "none" }>();
+  for (let i = 0; i < uids.length; i += 8) {
+    await Promise.all(uids.slice(i, i + 8).map(async (uid) => {
+      try {
+        const rows = await attemptsOf(base, token, uid, since);
+        const f = weeklyFigures(rows, questionCount, now).get(uid) ?? zero;
+        figures.set(uid, { pair: f, source: "server" });
+      } catch {
+        figures.set(uid, { pair: fromRecord(nick.get(uid)), source: nick.has(uid) ? "device" : "none" });
+      }
+    }));
+  }
   const rows = members.map((m) => {
     const uid = m.name.split("/").pop()!;
     const n = nick.get(uid);
-    const f = fresh(uid)
-      ? { week: { questions: num(n?.count) ?? 0, sets: num(n?.sets) ?? 0 }, last: { questions: num(n?.prevCount) ?? 0, sets: num(n?.prevSets) ?? 0 } }
-      : figures.get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
-    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n !== undefined && n.visible?.booleanValue !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt) };
+    const { pair: f, source } = figures.get(uid) ?? { pair: zero, source: "none" as const };
+    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n !== undefined && n.visible?.booleanValue !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt), source };
   }).sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
   const body: CacheBody = { at: now, week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
   cache = body;

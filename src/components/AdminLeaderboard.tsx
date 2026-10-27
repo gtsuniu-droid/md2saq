@@ -3,7 +3,7 @@ import { idToken } from "../lib/firebase";
 import { fetchLeaderboard, sortRows, weekLabel, weekStart, type LeaderboardRow } from "../lib/leaderboard";
 import { Avatar } from "./LeaderboardBoard";
 
-interface ProgressRow { uid: string; name: string; email?: string; photo?: string; nickname?: string; joined: boolean; questions: number; sets: number; prevQuestions: number; prevSets: number; lastSeenAt?: number }
+interface ProgressRow { uid: string; name: string; email?: string; photo?: string; nickname?: string; joined: boolean; questions: number; sets: number; prevQuestions: number; prevSets: number; lastSeenAt?: number; source?: "server" | "device" | "none" }
 
 /** Every account's figures this week, computed on the server from their submitted answers. */
 export default function AdminLeaderboard({ owner }: { owner: boolean }) {
@@ -34,7 +34,7 @@ export default function AdminLeaderboard({ owner }: { owner: boolean }) {
   return (
     <details className="section admin-progress" open>
       <summary><h2>Student progress this week</h2></summary>
-      <p className="muted">{weekLabel(weekStart(Date.now()))}. Every account, computed from their submitted answers, whether or not they joined the public board.</p>
+      <p className="muted">{weekLabel(weekStart(Date.now()))}. Every account, added up on the server from their submitted answers, whether or not they joined the public board. A starred figure is the one their own device published, used when the server could not read that account.</p>
       {note && <p className="muted" role="status">{note}</p>}
       {error && <p className="field-error" role="alert">{error}</p>}
       {!rows && !error && <p className="muted" role="status">Loading…</p>}
@@ -47,7 +47,7 @@ export default function AdminLeaderboard({ owner }: { owner: boolean }) {
               <td className="muted">{i + 1}</td>
               <td><span className="admin-progress-name"><Avatar name={r.name} rank={99} photo={r.photo} />{r.name}{r.nickname && r.nickname !== r.name ? <span className="muted"> as {r.nickname}</span> : null}</span></td>
               {owner && <td className="muted">{r.email ?? ""}</td>}
-              <td><strong>{r.questions}</strong></td>
+              <td><strong>{r.questions}</strong>{r.source === "device" && <span className="muted" title="The server could not read this account's answers; this is the figure their device published."> *</span>}</td>
               <td>{r.sets}</td>
               <td className="muted">{r.prevQuestions} questions, {r.prevSets} sets</td>
               <td>{r.joined ? <span className="muted">joined</span> : <span className="lb-you">not joined</span>}</td>
