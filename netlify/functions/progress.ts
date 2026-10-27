@@ -79,10 +79,15 @@ export default async (req: Request): Promise<Response> => {
   if (req.method !== "GET") return json({ error: "Method not allowed." }, 405);
   const who = await caller(req);
   if (who instanceof Response) return who;
-  if (who.role === "student") return json({ error: "Admins only." }, 403);
+  // ?board=1 is the public leaderboard: any signed-in student, joined accounts only, nicknames only.
+  const publicBoard = new URL(req.url).searchParams.has("board");
+  if (who.role === "student" && !publicBoard) return json({ error: "Admins only." }, 403);
   const sa = serviceAccount();
   if (!sa) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);
-  const respond = (body: { week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] }) => json({ week: body.week, accounts: body.accounts, emailsIncluded: who.role === "owner", rows: who.role === "owner" ? body.rowsWithEmail : body.rowsWithEmail.map((r) => ({ ...r, email: undefined })) });
+  const respond = (body: { week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] }) => {
+    if (publicBoard) return json({ week: body.week, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) });
+    return json({ week: body.week, accounts: body.accounts, emailsIncluded: who.role === "owner", rows: who.role === "owner" ? body.rowsWithEmail : body.rowsWithEmail.map((r) => ({ ...r, email: undefined })) });
+  };
   if (cache && Date.now() - cache.at < 60_000) return respond(cache.body as { week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] });
   const { projectId } = firebaseEnv();
   const base = `https://firestore.googleapis.com/v1/projects/${projectId ?? sa.project_id}/databases/(default)/documents`;
@@ -104,7 +109,7 @@ export default async (req: Request): Promise<Response> => {
     const uid = m.name.split("/").pop()!;
     const f = figures.get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
     const n = nick.get(uid);
-    return { uid, name: str(m.fields?.name) || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n?.visible?.booleanValue === true, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt) };
+    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n?.visible?.booleanValue === true, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt) };
   }).sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
   const body = { week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
   cache = { at: now, body };

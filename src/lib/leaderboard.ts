@@ -1,6 +1,6 @@
 import { db, getSettings } from "../data/db";
 import type { Attempt, Question } from "../data/types";
-import { cloudConfigured, communityServices } from "./firebase";
+import { cloudConfigured, communityServices, idToken } from "./firebase";
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
 
@@ -104,8 +104,22 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
   await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
 }
 
-/** This week's board, unsorted; sortRows orders it for a unit. Admins may ask for hidden rows too. */
+/**
+ * This week's board. The server adds it up from everyone's submitted answers when it can
+ * (joined accounts only), so nobody is missing because their device has not been opened;
+ * otherwise the rows students published themselves. Admins may ask for hidden rows too.
+ */
 export async function fetchLeaderboard(includeHidden = false): Promise<LeaderboardRow[]> {
+  if (!includeHidden) {
+    try {
+      const token = await idToken();
+      const res = token ? await fetch("/api/progress?board=1", { headers: { authorization: `Bearer ${token}` } }) : null;
+      if (res?.ok) {
+        const body = (await res.json()) as { rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
+        return body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() }));
+      }
+    } catch { /* fall back to the published rows */ }
+  }
   const { firestore } = await communityServices();
   const { collection, getDocs, limit, query, where } = await import("firebase/firestore");
   const filters = [where("week", "==", weekKey(Date.now())), ...(includeHidden ? [] : [where("visible", "==", true)])];
