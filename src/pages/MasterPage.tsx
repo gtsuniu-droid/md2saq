@@ -2,7 +2,7 @@ import SetAdditionUndo from "../components/SetAdditionUndo";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { db, patchSettings } from "../data/db";
+import { db, getSettings, patchSettings } from "../data/db";
 import PasscodeGate from "../components/PasscodeGate";
 import { CreateTools } from "./CreatePage";
 import { BankPasscodeError, ensureSetContent, listBank, syncFromBank, type BankEntry } from "../lib/bank";
@@ -15,6 +15,8 @@ import { presentationName } from "../data/presentations";
 import PresentationSelect from "../components/PresentationSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
 import PeopleSection from "../components/PeopleSection";
+import AdminLeaderboard from "../components/AdminLeaderboard";
+import { isOwnerEmail } from "../lib/members";
 
 /**
  * The single place for building the bank: add sets (drop or paste), edit,
@@ -32,6 +34,7 @@ export default function MasterPage() {
 function MasterContents() {
   const nav = useNavigate();
   const summaries = useLiveQuery(loadSummaries, []);
+  const account = useLiveQuery(getSettings, []);
   const [bank, setBank] = useState<BankEntry[] | null>(null);
   const [bankError, setBankError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -221,6 +224,7 @@ function MasterContents() {
       </details>
 
       <PeopleSection />
+      <AdminLeaderboard owner={isOwnerEmail(account?.cloudUser?.email)} />
 
       <details className="section" open>
         <summary><h2>Sets</h2></summary>

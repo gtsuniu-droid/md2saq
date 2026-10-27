@@ -6,7 +6,7 @@ import type { Attempt } from "../data/types";
 it("accepts sensible usernames and refuses the rest", () => {
   expect(validUsername("Eiden")).toBeNull();
   expect(validUsername("emma aria_2")).toBeNull();
-  expect(validUsername("ab")).toMatch(/at least 3/);
+  expect(validUsername("")).toBeNull();
   expect(validUsername("a".repeat(21))).toMatch(/20 characters/);
   expect(validUsername("bad<name>")).toMatch(/letters/);
   expect(validUsername(" spaced ")).toBeNull();
@@ -31,7 +31,7 @@ it("counts a week from Monday, by questions and by whole sets, for the account o
 });
 
 it("orders by the chosen unit and describes where you stand", () => {
-  const row = (uid: string, count: number, sets: number, prevCount = 0): LeaderboardRow => ({ uid, name: uid, count, sets, prevCount, prevSets: 0, updatedAt: 0 });
+  const row = (uid: string, count: number, sets: number, prevCount = 0): LeaderboardRow => ({ uid, name: uid, count, sets, prevCount, prevSets: 0, visible: true, updatedAt: 0 });
   const rows = [row("Jackson", 41, 9, 50), row("Eiden", 58, 4), row("Emma", 37, 7, 37)];
   expect(sortRows(rows, "questions").map((r) => r.uid)).toEqual(["Eiden", "Jackson", "Emma"]);
   expect(sortRows(rows, "sets").map((r) => r.uid)).toEqual(["Jackson", "Emma", "Eiden"]);

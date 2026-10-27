@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { getSettings } from "../data/db";
 import { cloudConfigured } from "../lib/firebase";
-import { fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
+import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
 import { BoardRows, Podium, UnitToggle, useBoardEntrance } from "../components/LeaderboardBoard";
 
 /** Everyone who opted in, ranked by questions answered or sets completed this week. */
@@ -41,9 +41,9 @@ export default function LeaderboardPage() {
     <div className="leaderboard" ref={root}>
       <header className="row spread leaderboard-head">
         <div><h1>Leaderboard</h1><p className="muted">{unit === "sets" ? "Sets completed" : "Questions answered"} this week, {weekLabel(start)}. Resets every Monday.</p></div>
-        {social?.leaderboard && social.username
-          ? <span className="lb-chip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>On the board as {social.username}</span>
-          : <Link className="button small" to="/settings#social">Join the leaderboard</Link>}
+        {social?.leaderboard !== true
+          ? <Link className="button small" to="/settings#social">Join the board</Link>
+          : <span className="lb-chip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>On the board as {boardName(settings)}</span>}
       </header>
       <div className="row spread lb-controls"><span className="muted">Count by</span><UnitToggle unit={unit} onChange={setUnit} /></div>
       {error && <p className="field-error" role="alert">{error}</p>}
@@ -56,7 +56,7 @@ export default function LeaderboardPage() {
           <BoardRows rows={sorted} unit={unit} me={user.uid} />
         </>
       )}
-      <p className="muted leaderboard-foot">Only usernames chosen in Settings are shown, never real names. Counts update when a device syncs, usually within a minute of submitting.</p>
+      <p className="muted leaderboard-foot">Only students who joined are shown, under a nickname: their first name unless they chose another in Settings. Counts update when a device syncs.</p>
     </div>
   );
 }

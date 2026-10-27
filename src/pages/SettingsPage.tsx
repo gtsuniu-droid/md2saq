@@ -171,10 +171,10 @@ export default function SettingsPage() {
           {cloudConfigured() && (
             <section className="settings-section" id="social" aria-labelledby="settings-social">
               <h2 id="settings-social">Leaderboard</h2>
-              <p className="muted">Off until you turn it on. Other students only ever see the username you choose here, never your real name or email.</p>
+              <p className="muted">Everyone can see the weekly board; joining puts you on it under a nickname, your first name unless you pick another. Your own figures are kept either way.</p>
               <div className="card">
                 {!settings.cloudUser ? <Row title="Sign in first" help="The leaderboard is tied to your account." /> : (() => {
-                  const form = social ?? { username: settings.social?.username ?? "", leaderboard: settings.social?.leaderboard ?? false };
+                  const form = social ?? { username: settings.social?.username ?? "", leaderboard: settings.social?.leaderboard === true };
                   const save = async () => {
                     setSocialBusy(true); setSocialMsg("");
                     try { await saveSocialSettings(form); setSocial(null); setSocialMsg("Saved."); }
@@ -183,13 +183,13 @@ export default function SettingsPage() {
                   };
                   return (
                     <>
-                      <Row title="Show me on the leaderboard" help="Questions answered and sets completed this week, Monday to Sunday, against everyone else who opted in. The leaderboard then shows on your home page.">
-                        <input type="checkbox" aria-label="Show me on the leaderboard" checked={form.leaderboard} onChange={(e) => setSocial({ ...form, leaderboard: e.target.checked })} />
+                      <Row title="Join the leaderboard" help="Show your week to other students. Off keeps you out of the public board; admins can still see your figures.">
+                        <input type="checkbox" aria-label="Join the leaderboard" checked={form.leaderboard} onChange={(e) => setSocial({ ...form, leaderboard: e.target.checked })} />
                       </Row>
-                      <Row title="Username" help={`What others see. Letters, numbers, spaces and underscores, up to ${USERNAME_MAX} characters.`}>
-                        <input aria-label="Username" maxLength={USERNAME_MAX} placeholder="e.g. Eiden" value={form.username} onChange={(e) => setSocial({ ...form, username: e.target.value })} />
+                      <Row title="Nickname" help={`Shown instead of your name. Leave blank to use your first name. Up to ${USERNAME_MAX} characters.`}>
+                        <input aria-label="Nickname" maxLength={USERNAME_MAX} placeholder={settings.cloudUser.name?.split(" ")[0] ?? "Your first name"} value={form.username} onChange={(e) => setSocial({ ...form, username: e.target.value })} />
                       </Row>
-                      <Row title="Save" help={form.leaderboard ? "Your username becomes visible to other students." : "Turning it off removes you from the leaderboard and hides it on your home page."}>
+                      <Row title="Save">
                         <button className="primary small" disabled={socialBusy || !social} onClick={() => void save()}>{socialBusy ? "Saving…" : "Save"}</button>
                       </Row>
                       {socialMsg && <p className={`settings-message${/Saved/.test(socialMsg) ? "" : " field-error"}`} role="status">{socialMsg}</p>}

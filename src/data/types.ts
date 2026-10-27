@@ -243,12 +243,10 @@ export interface Settings {
 }
 
 export interface SocialSettings {
-  /** The name other students see, never the account's real name. */
+  /** The nickname other students see; empty means the account's first name. */
   username: string;
-  /** Appear on the weekly leaderboard. */
+  /** Opted in to the weekly leaderboard; otherwise the row is kept for admins only. */
   leaderboard: boolean;
-  /** Said no to the one-time invitation; the home panel stays hidden until Settings turns it on. */
-  declined?: boolean;
 }
 
 /** Device-only credential record. Never included in settings, sync or backups. */

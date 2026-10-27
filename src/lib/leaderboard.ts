@@ -23,7 +23,16 @@ export interface LeaderboardRow {
   prevSets: number;
   /** The account's Google picture, when it has one. */
   photo?: string;
+  /** Opted in: shown to other students. Other rows reach admins only. */
+  visible: boolean;
   updatedAt: number;
+}
+
+/** The nickname shown on the board: the chosen one, else the first name from the account. */
+export function boardName(settings: { social?: { username?: string }; cloudUser?: { name?: string; email?: string } }): string {
+  const chosen = settings.social?.username?.trim();
+  const first = settings.cloudUser?.name?.trim().split(/\s+/)[0] || settings.cloudUser?.email?.split("@")[0] || "Student";
+  return (chosen || first).slice(0, 20);
 }
 
 const DAY = 24 * 3600 * 1000;
@@ -77,17 +86,16 @@ export function weekLabel(start: number): string {
   return `${fmt(start)} to ${fmt(start + 6 * DAY)}`;
 }
 
-/** Publish this week's figures for the signed-in person, when they have opted in. */
+/** Publish this week's figures for the signed-in person. Always kept; shown to others only once they opt in. */
 export async function publishWeeklyCount(uid: string): Promise<void> {
   if (!cloudConfigured()) return;
   const settings = await getSettings();
-  const social = settings.social;
-  if (!social?.leaderboard || !social.username || settings.cloudUser?.uid !== uid) return;
+  if (settings.cloudUser?.uid !== uid) return;
   const [attempts, library] = await Promise.all([db.attempts.filter((a) => belongsToAccount(a, uid) && a.submittedAt !== undefined).toArray(), loadLibrary()]);
   const start = weekStart(Date.now());
   const photo = settings.cloudUser?.photo && /^https:\/\//.test(settings.cloudUser.photo) ? settings.cloudUser.photo.slice(0, 2000) : undefined;
   const row = {
-    uid, name: social.username, week: weekKey(Date.now()), ...(photo ? { photo } : {}),
+    uid, name: boardName(settings), visible: settings.social?.leaderboard === true, week: weekKey(Date.now()), ...(photo ? { photo } : {}),
     count: questionsInWeek(attempts, uid, start), sets: setsInWeek(attempts, library.questions, uid, start),
     prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
   };
@@ -96,16 +104,17 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
   await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
 }
 
-/** This week's board, unsorted; sortRows orders it for a unit. */
-export async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
+/** This week's board, unsorted; sortRows orders it for a unit. Admins may ask for hidden rows too. */
+export async function fetchLeaderboard(includeHidden = false): Promise<LeaderboardRow[]> {
   const { firestore } = await communityServices();
   const { collection, getDocs, limit, query, where } = await import("firebase/firestore");
-  const snap = await getDocs(query(collection(firestore, "leaderboard"), where("week", "==", weekKey(Date.now())), limit(200)));
+  const filters = [where("week", "==", weekKey(Date.now())), ...(includeHidden ? [] : [where("visible", "==", true)])];
+  const snap = await getDocs(query(collection(firestore, "leaderboard"), ...filters, limit(200)));
   return snap.docs.map((d) => {
     const v = d.data() as Record<string, unknown>;
     const n = (k: string) => (typeof v[k] === "number" ? (v[k] as number) : 0);
     const at = v.updatedAt as { toMillis?: () => number } | undefined;
-    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: n("count"), sets: n("sets"), prevCount: n("prevCount"), prevSets: n("prevSets"), photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, updatedAt: at?.toMillis?.() ?? 0 };
+    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: n("count"), sets: n("sets"), prevCount: n("prevCount"), prevSets: n("prevSets"), photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, visible: v.visible !== false, updatedAt: at?.toMillis?.() ?? 0 };
   });
 }
 

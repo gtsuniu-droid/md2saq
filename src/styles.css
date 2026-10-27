@@ -1748,3 +1748,7 @@ details.section > summary h2 { font-size: 1.15rem; }
   .study-join-boxes { align-items: center; }
   .code-boxes input { width: 40px; height: 50px; }
 }
+.lb-join { display: inline; padding: 0; min-height: 0; font: inherit; font-weight: 600; color: var(--brand); }
+.admin-progress-table { width: 100%; }
+.admin-progress-name { display: inline-flex; align-items: center; gap: .5rem; }
+.admin-progress-name .lb-avatar { width: 28px; height: 28px; font-size: .8rem; }

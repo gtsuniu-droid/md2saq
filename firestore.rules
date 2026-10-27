@@ -55,10 +55,18 @@ service cloud.firestore {
     }
     match /leaderboard/{uid} {
       function signedIn() { return request.auth != null; }
+      function owner() {
+        return signedIn() && request.auth.token.email_verified == true
+          && request.auth.token.email == 'gtsuniu@gmail.com';
+      }
+      function admin() {
+        return owner() || (signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'admin');
+      }
       function validRow() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['uid', 'name', 'week', 'count', 'sets', 'prevCount', 'prevSets', 'photo', 'updatedAt'])
-          && d.uid == uid && d.name is string && d.name.size() >= 3 && d.name.size() <= 20
+        return d.keys().hasOnly(['uid', 'name', 'week', 'count', 'sets', 'prevCount', 'prevSets', 'photo', 'visible', 'updatedAt'])
+          && d.uid == uid && d.name is string && d.name.size() >= 1 && d.name.size() <= 20 && d.visible is bool
           && (!('photo' in d) || (d.photo is string && d.photo.size() <= 2000 && d.photo.matches('^https://.*')))
           && d.week is string && d.week.matches('^[0-9]{4}-W[0-9]{2}$')
           && d.count is int && d.count >= 0 && d.count <= 10000
@@ -67,8 +75,10 @@ service cloud.firestore {
           && d.prevSets is int && d.prevSets >= 0 && d.prevSets <= 10000
           && d.updatedAt == request.time;
       }
-      allow get: if signedIn();
-      allow list: if signedIn() && request.query.limit != null && request.query.limit <= 200;
+      // Hidden rows stay readable by their owner and by admins, who follow everyone's progress.
+      allow get: if signedIn() && (resource.data.visible == true || request.auth.uid == uid || admin());
+      allow list: if signedIn() && request.query.limit != null && request.query.limit <= 200
+        && (resource.data.visible == true || admin());
       allow create, update: if signedIn() && request.auth.uid == uid && validRow();
       allow delete: if signedIn() && request.auth.uid == uid;
     }
