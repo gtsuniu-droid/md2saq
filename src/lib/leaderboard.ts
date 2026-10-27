@@ -120,15 +120,21 @@ export async function fetchLeaderboard(includeHidden = false): Promise<Leaderboa
       }
     } catch { /* fall back to the published rows */ }
   }
+  // Fallback: the records students' own devices published. Someone who joined but has not
+  // opened the site this week keeps their place with a zero, rather than vanishing.
   const { firestore } = await communityServices();
   const { collection, getDocs, limit, query, where } = await import("firebase/firestore");
-  const filters = [where("week", "==", weekKey(Date.now())), ...(includeHidden ? [] : [where("visible", "==", true)])];
+  const filters = includeHidden ? [] : [where("visible", "==", true)];
   const snap = await getDocs(query(collection(firestore, "leaderboard"), ...filters, limit(200)));
+  const thisWeek = weekKey(Date.now()); const lastWeek = weekKey(Date.now() - 7 * DAY);
   return snap.docs.map((d) => {
     const v = d.data() as Record<string, unknown>;
     const n = (k: string) => (typeof v[k] === "number" ? (v[k] as number) : 0);
     const at = v.updatedAt as { toMillis?: () => number } | undefined;
-    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: n("count"), sets: n("sets"), prevCount: n("prevCount"), prevSets: n("prevSets"), photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, visible: v.visible !== false, updatedAt: at?.toMillis?.() ?? 0 };
+    const week = typeof v.week === "string" ? v.week : "";
+    const current = week === thisWeek;
+    const prev = current ? { count: n("prevCount"), sets: n("prevSets") } : week === lastWeek ? { count: n("count"), sets: n("sets") } : { count: 0, sets: 0 };
+    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: current ? n("count") : 0, sets: current ? n("sets") : 0, prevCount: prev.count, prevSets: prev.sets, photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, visible: v.visible !== false, updatedAt: at?.toMillis?.() ?? 0 };
   });
 }
 
