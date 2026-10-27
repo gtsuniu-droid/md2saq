@@ -1729,3 +1729,29 @@ details.section > summary h2 { font-size: 1.15rem; }
 .exam-setup .seg { margin-bottom: .9rem; }
 .exam-count-row { margin: .9rem 0 .6rem; align-items: center; gap: .75rem 1rem; flex-wrap: wrap; }
 .exam-count-row input { width: 5rem; margin-left: .5rem; }
+
+/* Two ways in: start a session, or join a friend's with a code. */
+.entry-cards { display: grid; gap: 1rem; margin-bottom: 1.2rem; }
+.entry-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.1rem; padding: 1.3rem 1.4rem; border-radius: 20px; background: var(--card); border: 1px solid var(--border); color: inherit; text-decoration: none; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+a.entry-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px #0f172a14; border-color: color-mix(in srgb, var(--brand) 35%, var(--border)); }
+.entry-icon { width: 56px; height: 56px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--brand); background: var(--brand-soft); }
+.entry-icon svg { width: 30px; height: 30px; }
+.entry-text { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.entry-text strong { font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; }
+.entry-text span { color: var(--muted); font-size: .98rem; line-height: 1.4; }
+.entry-chevron { color: var(--muted); display: inline-flex; }
+.entry-chevron svg { width: 24px; height: 24px; }
+.entry-card.join { grid-template-columns: auto minmax(0, 1fr); }
+.entry-join { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: .6rem; padding-top: .5rem; }
+.entry-join p { margin: 0; text-align: center; }
+.study-join-boxes { display: flex; flex-direction: column; align-items: center; gap: .6rem; width: 100%; }
+.code-boxes { display: flex; gap: .55rem; }
+.code-boxes input { width: 56px; height: 76px; padding: 0; border: 2px solid var(--border); border-radius: 12px; background: var(--card); text-align: center; font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.code-boxes input:focus { border-color: var(--brand); outline: 0; box-shadow: 0 0 0 3px var(--brand-soft); }
+.code-boxes input:not(:placeholder-shown) { border-color: color-mix(in srgb, var(--brand) 60%, var(--border)); }
+@media (max-width: 540px) {
+  .entry-card { padding: 1.1rem 1.1rem; gap: .8rem; }
+  .entry-icon { width: 46px; height: 46px; } .entry-icon svg { width: 24px; height: 24px; }
+  .entry-text strong { font-size: 1.1rem; }
+  .code-boxes { gap: .4rem; } .code-boxes input { width: 44px; height: 60px; font-size: 1.5rem; }
+}

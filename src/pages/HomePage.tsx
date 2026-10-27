@@ -8,7 +8,7 @@ import AttemptHistory from "../components/AttemptHistory";
 import { belongsToAccount } from "../lib/progressAccount";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import Heatmap from "../components/Heatmap";
@@ -30,7 +30,8 @@ type Range = "week" | "year" | "overall";
 const DAY_MS = 24 * 3600 * 1000;
 const PARENT_OF = new Map(PRESENTATIONS.filter((p) => p.parent).map((p) => [p.id, p.parent!]));
 
-export default function HomePage() {
+/** The front room (home) and the session builder (/new) share one component so starting a paper works from both. */
+export default function HomePage({ view = "home" }: { view?: "home" | "new" }) {
   const nav = useNavigate();
   const [range, setRange] = useState<Range>("year");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -70,7 +71,7 @@ export default function HomePage() {
     return { questions, attempts: attempts.filter((a) => belongsToAccount(a, ownerId)), marks: marks.filter((m) => belongsToAccount(m, ownerId)), settings, sets };
   }, []);
 
-  const view = useMemo(() => {
+  const stats = useMemo(() => {
     if (!data) return null;
     const now = Date.now();
     const submitted = data.attempts.filter((a) => a.submittedAt !== undefined);
@@ -92,10 +93,10 @@ export default function HomePage() {
     random: seededRandom(seed), parentOf: PARENT_OF,
   }) : [], [data, unit, selected, newOnly, count, chooseSets, selectedSets, seed]);
 
-  if (!data || !view) return null;
-  const { summary } = view;
-  const progress = unit === "sets" ? view.setProgress.progress : view.progress;
-  const allProgress = unit === "sets" ? view.setProgress.all : {
+  if (!data || !stats) return null;
+  const { summary } = stats;
+  const progress = unit === "sets" ? stats.setProgress.progress : stats.progress;
+  const allProgress = unit === "sets" ? stats.setProgress.all : {
     total: data.questions.length,
     marked: new Set(data.marks.filter((m) => data.questions.some((q) => q.id === m.questionId)).map((m) => m.questionId)).size,
   };
@@ -219,10 +220,10 @@ export default function HomePage() {
     <div>
       <LibraryStatus /><header className="home-intro">
         <div><h1>{data.settings.cloudUser?.name ? `Welcome back, ${data.settings.cloudUser.name.split(" ")[0]}` : "Your practice"}</h1><p className="muted">Pick a presentation, sit a case, then mark it against the model answer.</p></div>
-        <div className="home-shortcuts"><a href="#new-session">New session</a><a href="#history">View history</a></div>
+        <div className="home-shortcuts">{view === "home" ? <><Link to="/new">New session</Link><a href="#history">View history</a></> : <Link to="/home">Back to home</Link>}</div>
       </header>
-      <HomeLeaderboard settings={data.settings} />
-      {session && inProgress && (
+      {view === "home" && <HomeLeaderboard settings={data.settings} />}
+      {view === "home" && session && inProgress && (
         <div className="card home-card resume">
           <div>
             <div className="resume-title">{submittedAll ? "Paper submitted, waiting to be marked" : `${session.mode === "exam" ? "Exam" : "Practice"} in progress`}</div>
@@ -243,7 +244,7 @@ export default function HomePage() {
           <button onClick={() => setDiscarding(true)}>Discard</button>
         </div>
       )}
-      <div className="card home-card home-progress-card">
+      {view === "home" && <div className="card home-card home-progress-card">
         <div className="row spread">
           <h2 className="section-heading">Your progress</h2>
           <div className="seg" role="group" aria-label="Progress period">
@@ -260,9 +261,26 @@ export default function HomePage() {
           <div><div className="stat-value">{summary.dailyAvg}</div><div className="stat-label">per active day</div></div>
           <div><div className="stat-value">{summary.secondsPerQuestion === null ? "–" : formatDuration(summary.secondsPerQuestion)}</div><div className="stat-label">per question</div></div>
         </div>
-        <details className="activity-details"><summary>Activity calendar</summary><Heatmap grid={view.grid} /></details>
-      </div>
+        <details className="activity-details"><summary>Activity calendar</summary><Heatmap grid={stats.grid} /></details>
+      </div>}
 
+      {view === "home" && <>
+        <div className="entry-cards">
+          <Link to="/new" className="entry-card">
+            <span className="entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 7v10M7 12h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></span>
+            <span className="entry-text"><strong>New session</strong><span>Practise by yourself, sit an exam, or make a code so friends get the same paper.</span></span>
+            <span className="entry-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+          </Link>
+          <section className="entry-card join" aria-labelledby="join-heading">
+            <span className="entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M4 12h11M11 8l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+            <span className="entry-text"><strong id="join-heading">Join a study session</strong><span>Enter a friend's six-digit code to sit their questions or exam.</span></span>
+            <div className="entry-join">
+              <StudyWithFriends variant="join" mode="practice" buildPaper={() => []} sets={data.sets} presentations={[]} minutes={0} signedIn={!!data.settings.cloudUser} canCreate={false} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
+            </div>
+          </section>
+        </div>
+      </>}
+      {view === "new" && (
       <div className="card home-card session-card" id="new-session" tabIndex={-1} aria-labelledby="new-session-heading">
         <h2 className="section-heading" id="new-session-heading">New session</h2>{startError && <p role="alert">{startError}</p>}{starting && <p role="status">Preparing questions…</p>}
         <div className="seg session-mode-picker" role="group" aria-label="Session mode">
@@ -321,7 +339,8 @@ export default function HomePage() {
         </>}
         <StudyWithFriends mode={mode} buildPaper={() => mode === "exam" ? buildExam() : selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} examTiming={examClock} signedIn={!!data.settings.cloudUser} canCreate={!starting && (mode === "exam" ? examReady : !!selectedQuestions.length && validMinutes && validCount)} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
       </div>
-      <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
+      )}
+      {view === "home" && <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />}
 
       <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing; setReplacing(null); if (mode === "exam") void startExam(true); else if (mode && typeof mode === "object") void startStudy(mode.questionIds, mode.study, true); else void start(true); }}>
         <p>You have a paper in progress. Starting a new one replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
