@@ -25,6 +25,7 @@ import SessionReviewPage from "./pages/SessionReviewPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
+import StudyPage from "./pages/StudyPage";
 import NoticesBell from "./components/NoticesBell";
 import LandingPage, { BrandMark } from "./pages/LandingPage";
 import AmbossPanel from "./components/AmbossPanel";
@@ -274,6 +275,7 @@ export default function App() {
           <Route path="/history/:attemptId" element={<ContentGate kind="attempt"><SetAttemptPage /></ContentGate>} />
           <Route path="/session/:id" element={<ContentGate kind="session"><SessionReviewPage /></ContentGate>} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/study/:code" element={<StudyPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/master" element={<Navigate to="/admin" replace />} />
           <Route path="/bank" element={<Navigate to="/admin" replace />} />

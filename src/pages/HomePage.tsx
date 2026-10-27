@@ -16,7 +16,9 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import AccountGate from "../components/AccountGate";
 import { useAccountGate } from "../lib/accountGate";
 import { formatDuration, truncate, stemsOf } from "../lib/questions";
-import { discardSession, startSession } from "../lib/session";
+import { discardSession, saveSession, startSession } from "../lib/session";
+import { attachSession } from "../lib/study";
+import StudyWithFriends from "../components/StudyWithFriends";
 import { readingRemainingSec, remainingSec } from "../lib/sessionClock";
 import { useSession } from "../lib/useSession";
 import { answeredPerDay, heatGrid, presentationProgress, summarise } from "../lib/stats";
@@ -44,7 +46,7 @@ export default function HomePage() {
   const [examError, setExamError] = useState("");
   const [minutes, setMinutes] = useState("");
   const [search, setSearch] = useState("");
-  const [replacing, setReplacing] = useState<"practice" | "exam" | null>(null);
+  const [replacing, setReplacing] = useState<"practice" | "exam" | { questionIds: string[]; mins: number; code: string } | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const gate = useAccountGate();
   const [gateOpen, setGateOpen] = useState(false);
@@ -129,6 +131,22 @@ export default function HomePage() {
     finally { setStarting(false); }
   };
 
+  /** Sit a friend's study session, or one just created: the same questions in the same order. */
+  const startStudy = async (questionIds: string[], mins: number, code: string, force = false) => {
+    if (starting) return;
+    if (gate.gated) { setGateOpen(true); return; }
+    if (session && !force) { setReplacing({ questionIds, mins, code }); return; }
+    setStarting(true); setStartError("");
+    try {
+      await ensureQuestionContent(questionIds);
+      const s = startSession(questionIds, "practice", mins > 0 ? Math.round(mins * 60) : undefined, "questions");
+      saveSession({ ...s, studyCode: code });
+      await attachSession(code, s.id);
+      nav("/paper");
+    } catch (error) { setStartError(error instanceof Error ? error.message : "Could not load the questions."); }
+    finally { setStarting(false); }
+  };
+
   const examTopics = examPresentationPool(data.sets, data.questions).size;
   const startExam = async (force = false) => {
     if (starting) return;
@@ -197,7 +215,6 @@ export default function HomePage() {
         </div>
         <details className="activity-details"><summary>Activity calendar</summary><Heatmap grid={view.grid} /></details>
       </div>
-      <HomeLeaderboard settings={data.settings} />
 
       <div className="card home-card session-card" id="new-session" tabIndex={-1} aria-labelledby="new-session-heading">
         <h2 className="section-heading" id="new-session-heading">New session</h2>{startError && <p role="alert">{startError}</p>}{starting && <p role="status">Preparing questions…</p>}
@@ -280,11 +297,13 @@ export default function HomePage() {
             </div>
             <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={() => void start()} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
           </div>
+          <StudyWithFriends selectedQuestions={selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} signedIn={!!data.settings.cloudUser} canCreate={!!selectedQuestions.length && validMinutes && validCount && !starting} starting={starting} onStart={(ids, mins, code) => void startStudy(ids, mins, code)} />
         </>}
       </div>
+      <HomeLeaderboard settings={data.settings} />
       <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
 
-      <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing; setReplacing(null); if (mode === "exam") void startExam(true); else void start(true); }}>
+      <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing; setReplacing(null); if (mode === "exam") void startExam(true); else if (mode && typeof mode === "object") void startStudy(mode.questionIds, mode.mins, mode.code, true); else void start(true); }}>
         <p>You have a paper in progress. Starting a new one replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
       </ConfirmDialog>
       <AccountGate open={gateOpen} guestSubmitted={gate.guestSubmitted} onClose={() => setGateOpen(false)} />

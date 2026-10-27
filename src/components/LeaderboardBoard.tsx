@@ -4,8 +4,8 @@ import { score, trend, type LeaderboardRow, type LeaderboardUnit } from "../lib/
 
 const MEDAL = ["gold", "silver", "bronze"];
 
-export function Avatar({ name, rank }: { name: string; rank: number }) {
-  return <span className={`lb-avatar ${MEDAL[rank - 1] ?? "plain"}`} aria-hidden="true">{name.charAt(0).toUpperCase()}</span>;
+export function Avatar({ name, rank, photo }: { name: string; rank: number; photo?: string }) {
+  return <span className={`lb-avatar ${MEDAL[rank - 1] ?? "plain"}`} aria-hidden="true">{photo ? <img src={photo} alt="" referrerPolicy="no-referrer" /> : name.charAt(0).toUpperCase()}</span>;
 }
 
 /** Questions or sets, the two ways the week can be counted. */
@@ -32,7 +32,7 @@ export function Podium({ rows, unit, me, compact }: { rows: LeaderboardRow[]; un
       {slots.map(({ rank, row }) => row ? (
         <li key={row.uid} className={`lb-podium-item rank-${rank}${row.uid === me ? " me" : ""}`} data-podium={rank} value={rank}>
           {rank === 1 && <Crown />}
-          <span className="lb-avatar-wrap"><Avatar name={row.name} rank={rank} /><span className="lb-rank-badge">{rank}</span></span>
+          <span className="lb-avatar-wrap"><Avatar name={row.name} rank={rank} photo={row.photo} /><span className="lb-rank-badge">{rank}</span></span>
           <strong className="lb-name">{row.name}{row.uid === me && <span className="lb-you">you</span>}</strong>
           <span className={`lb-count ${MEDAL[rank - 1]}`} data-count={score(row, unit)}>{score(row, unit)}</span>
           {!compact && <small className="muted">{score(row, unit) === 1 ? word.slice(0, -1) : word}</small>}
@@ -60,7 +60,7 @@ export function BoardRows({ rows, unit, me }: { rows: LeaderboardRow[]; unit: Le
       {rows.slice(3).map((r, i) => (
         <li key={r.uid} className={r.uid === me ? "me" : undefined} data-row>
           <span className="lb-pos">{i + 4}</span>
-          <Avatar name={r.name} rank={99} />
+          <Avatar name={r.name} rank={99} photo={r.photo} />
           <span className="lb-row-name">{r.name}{r.uid === me && <span className="lb-you">you</span>}</span>
           <span className="lb-score">{score(r, unit)}<TrendArrow row={r} unit={unit} /></span>
         </li>

@@ -21,6 +21,8 @@ export interface LeaderboardRow {
   /** Last week's figures, for the trend arrows. */
   prevCount: number;
   prevSets: number;
+  /** The account's Google picture, when it has one. */
+  photo?: string;
   updatedAt: number;
 }
 
@@ -83,8 +85,9 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
   if (!social?.leaderboard || !social.username || settings.cloudUser?.uid !== uid) return;
   const [attempts, library] = await Promise.all([db.attempts.filter((a) => belongsToAccount(a, uid) && a.submittedAt !== undefined).toArray(), loadLibrary()]);
   const start = weekStart(Date.now());
+  const photo = settings.cloudUser?.photo && /^https:\/\//.test(settings.cloudUser.photo) ? settings.cloudUser.photo.slice(0, 2000) : undefined;
   const row = {
-    uid, name: social.username, week: weekKey(Date.now()),
+    uid, name: social.username, week: weekKey(Date.now()), ...(photo ? { photo } : {}),
     count: questionsInWeek(attempts, uid, start), sets: setsInWeek(attempts, library.questions, uid, start),
     prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
   };
@@ -102,7 +105,7 @@ export async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
     const v = d.data() as Record<string, unknown>;
     const n = (k: string) => (typeof v[k] === "number" ? (v[k] as number) : 0);
     const at = v.updatedAt as { toMillis?: () => number } | undefined;
-    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: n("count"), sets: n("sets"), prevCount: n("prevCount"), prevSets: n("prevSets"), updatedAt: at?.toMillis?.() ?? 0 };
+    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: n("count"), sets: n("sets"), prevCount: n("prevCount"), prevSets: n("prevSets"), photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, updatedAt: at?.toMillis?.() ?? 0 };
   });
 }
 

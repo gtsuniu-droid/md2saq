@@ -7,6 +7,7 @@ import { loadSession, saveSession } from "../lib/session";
 import { setLabel } from "../lib/sets";
 import { stemsOf } from "../lib/questions";
 import { sessionAtQuestion } from "../lib/sessionNavigation";
+import { studyRecords } from "../lib/study";
 
 export default function SessionReviewPage() {
   const { id = "" } = useParams();
@@ -21,6 +22,7 @@ export default function SessionReviewPage() {
     return attempts.map((a, i) => ({ a, q: questions[i], m: byAttempt.get(a.id), set: sets.find((s) => s.id === questions[i]?.setId) }));
   }, [id]);
 
+  const study = useLiveQuery(async () => (await studyRecords()).find((r) => r.sessionId === id) ?? null, [id]);
   if (!data) return null;
   const session = loadSession();
   const ordered = session?.id === id ? [...data].sort((x, y) => session.attemptIds.indexOf(x.a.id) - session.attemptIds.indexOf(y.a.id)) : data;
@@ -76,6 +78,7 @@ export default function SessionReviewPage() {
       <div className="row" style={{ marginTop: "1rem" }}>
         {unmarked.length > 0 && !examLocked && <button className="primary" onClick={() => nav(`/mark/${unmarked[0].a.id}`)}>Mark next set</button>}
         {unfinished.length > 0 && session?.id === id && <button className="primary" onClick={() => resume(unfinished[0].a.questionId)}>Continue session</button>}
+        {study && !unfinished.length && <Link className="button" to={`/study/${study.code}`}>Compare answers with friends</Link>}
         <button className={unmarked.length === 0 ? "primary" : ""} onClick={finish}>{unfinished.length ? "Save & exit" : "Done"}</button>
       </div>
     </div>

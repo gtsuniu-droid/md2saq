@@ -337,6 +337,8 @@ export interface Session {
   attemptIds: string[];
   /** Pauses ordinary papers; fixed-format exams ignore this field. */
   pausedAt?: number;
+  /** The six-digit study code this paper was started from, when friends sit the same questions. */
+  studyCode?: string;
 }
 
 /** Device-local record of one Add/Import action, retained for undo and recovery. */
