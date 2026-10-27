@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { Settings } from "../data/types";
 import { cloudConfigured } from "../lib/firebase";
-import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, type LeaderboardRow } from "../lib/leaderboard";
+import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, questionsInWeek, sortRows, standing, weekStart, type LeaderboardRow } from "../lib/leaderboard";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "../data/db";
+import { belongsToAccount } from "../lib/progressAccount";
 import { joinLeaderboard } from "../lib/social";
 import { useSubmittedCount } from "../lib/useSubmittedCount";
 import { Avatar } from "./LeaderboardBoard";
@@ -18,6 +21,8 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   const [error, setError] = useState("");
   // Re-publish and re-read as soon as a question is submitted, so the count moves at once.
   const submitted = useSubmittedCount(user?.uid);
+  // This device's own figure for the week: shown whenever the board cannot be read, so it is never stale for you.
+  const mine = useLiveQuery(async () => user ? questionsInWeek(await db.attempts.filter((a) => belongsToAccount(a, user.uid) && a.submittedAt !== undefined).toArray(), user.uid, weekStart(Date.now())) : 0, [user?.uid, submitted]) ?? 0;
 
   useEffect(() => {
     if (!user) return;
@@ -38,7 +43,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   return (
     <section className="lb-strip" aria-label="Leaderboard this week">
       <div className="lb-strip-title"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 20h26l2-13-8 6-7-10-7 10-8-6z" fill="#e7ab23" /><rect x="3" y="20" width="26" height="3" rx="1" fill="#c98f12" /></svg><strong>This week</strong></div>
-      {error ? <span className="field-error">{error}</span> : !rows ? <span className="muted" role="status">Loading…</span> : !sorted.length ? <span className="muted">Nobody has answered a question yet this week.</span> : (
+      {error ? <span className="muted">The board cannot be read right now. Your week so far: <strong>{mine}</strong> {mine === 1 ? "question" : "questions"}, saved.</span> : !rows ? <span className="muted" role="status">Loading…</span> : !sorted.length ? <span className="muted">Nobody has answered a question yet this week.</span> : (
         <ol className="lb-chips">
           {sorted.slice(0, 3).map((r, i) => <li key={r.uid} className={`lb-chip-row ${MEDAL[i]}${r.uid === user.uid ? " me" : ""}`}><Avatar name={r.name} rank={i + 1} photo={r.photo} /><span className="lb-chip-name">{r.name}</span><span className="lb-chip-count">{r.count}</span></li>)}
         </ol>
