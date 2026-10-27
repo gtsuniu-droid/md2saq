@@ -25,7 +25,7 @@ export default function AdminLeaderboard({ owner }: { owner: boolean }) {
         const message = res ? ((await res.json().catch(() => ({}))) as { error?: string }).error : "Sign in first.";
         const board: LeaderboardRow[] = await fetchLeaderboard(true);
         if (!live) return;
-        setNote(res?.status === 503 ? `${message} Until then this shows only accounts that have opened the site this week.` : message ?? "");
+        setNote(`${message ?? `The server could not compute progress (${res?.status ?? "no response"}).`} Showing only the accounts that have opened the site this week.`);
         setRows(sortRows(board, "questions").map((r) => ({ uid: r.uid, name: r.name, photo: r.photo, nickname: r.name, joined: r.visible, questions: r.count, sets: r.sets, prevQuestions: r.prevCount, prevSets: r.prevSets })));
       } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load progress."); }
     })();

@@ -73,9 +73,22 @@ async function attemptsOf(base: string, token: string, uid: string, since: numbe
   });
 }
 
-let cache: { at: number; body: unknown } | null = null;
+/**
+ * Reads are the scarce resource (the free Firestore quota is a daily budget), so the result
+ * is cached for every visitor in the bank's blob store, and attempts are read only for
+ * accounts whose own device has not published a fresh figure this week.
+ */
+const CACHE_KEY = "progress-cache";
+const CACHE_MS = 10 * 60_000;
+type CacheBody = { at: number; week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] };
+let cache: CacheBody | null = null;
 
 export default async (req: Request): Promise<Response> => {
+  try { return await handle(req); }
+  catch (e) { console.error("progress:", e); return json({ error: `Progress could not be computed: ${e instanceof Error ? e.message : String(e)}` }, 500); }
+};
+
+async function handle(req: Request): Promise<Response> {
   if (req.method !== "GET") return json({ error: "Method not allowed." }, 405);
   const who = await caller(req);
   if (who instanceof Response) return who;
@@ -84,36 +97,54 @@ export default async (req: Request): Promise<Response> => {
   if (who.role === "student" && !publicBoard) return json({ error: "Admins only." }, 403);
   const sa = serviceAccount();
   if (!sa) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);
-  const respond = (body: { week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] }) => {
+  const respond = (body: CacheBody) => {
     if (publicBoard) return json({ week: body.week, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) });
     return json({ week: body.week, accounts: body.accounts, emailsIncluded: who.role === "owner", rows: who.role === "owner" ? body.rowsWithEmail : body.rowsWithEmail.map((r) => ({ ...r, email: undefined })) });
   };
-  if (cache && Date.now() - cache.at < 60_000) return respond(cache.body as { week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] });
+  const store = openNamedStore("bank");
+  if (!cache || Date.now() - cache.at >= 60_000) cache = ((await store.get(CACHE_KEY, { type: "json" })) as CacheBody | null) ?? cache;
+  if (cache && Date.now() - cache.at < CACHE_MS && cache.week === weekStart(Date.now())) return respond(cache);
   const { projectId } = firebaseEnv();
   const base = `https://firestore.googleapis.com/v1/projects/${projectId ?? sa.project_id}/databases/(default)/documents`;
   const token = await accessToken(sa);
   const [members, board, index] = await Promise.all([
     listAll(base, token, "members"),
     listAll(base, token, "leaderboard"),
-    openNamedStore("bank").get("index", { type: "json" }) as Promise<{ id: string; questionCount: number }[] | null>,
+    store.get("index", { type: "json" }) as Promise<{ id: string; questionCount: number }[] | null>,
   ]);
   const questionCount = new Map((index ?? []).map((e) => [e.id, e.questionCount]));
   const now = Date.now();
   const since = weekStart(now) - 7 * 24 * 3600 * 1000;
-  const uids = members.map((m) => m.name.split("/").pop()!);
+  const nick = new Map(board.map((d) => [d.name.split("/").pop()!, d.fields]));
+  const thisWeek = weekKey(now);
+  // A device that published this week within the last day is trusted; others are computed from their attempts.
+  const fresh = (uid: string) => { const n = nick.get(uid); const at = num(n?.updatedAt); return str(n?.week) === thisWeek && at !== undefined && now - at < 24 * 3600 * 1000; };
+  const uids = members.map((m) => m.name.split("/").pop()!).filter((uid) => !fresh(uid));
   const attempts: AttemptRow[] = [];
   for (let i = 0; i < uids.length; i += 8) attempts.push(...(await Promise.all(uids.slice(i, i + 8).map((uid) => attemptsOf(base, token, uid, since)))).flat());
   const figures = weeklyFigures(attempts, questionCount, now);
-  const nick = new Map(board.map((d) => [d.name.split("/").pop()!, d.fields]));
   const rows = members.map((m) => {
     const uid = m.name.split("/").pop()!;
-    const f = figures.get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
     const n = nick.get(uid);
+    const f = fresh(uid)
+      ? { week: { questions: num(n?.count) ?? 0, sets: num(n?.sets) ?? 0 }, last: { questions: num(n?.prevCount) ?? 0, sets: num(n?.prevSets) ?? 0 } }
+      : figures.get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
     return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n?.visible?.booleanValue === true, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt) };
   }).sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
-  const body = { week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
-  cache = { at: now, body };
+  const body: CacheBody = { at: now, week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
+  cache = body;
+  await store.setJSON(CACHE_KEY, body).catch(() => undefined);
   return respond(body);
-};
+}
+
+/** The ISO week id, matching what devices write on their rows. */
+function weekKey(ts: number): string {
+  const d = new Date(weekStart(ts));
+  const thursday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 3);
+  const year = thursday.getFullYear();
+  const firstWeekStart = weekStart(new Date(year, 0, 4).getTime());
+  const week = Math.round((weekStart(thursday.getTime()) - firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
 
 export const config: Config = { path: "/api/progress" };
