@@ -46,6 +46,7 @@ export interface HistoryGroup {
   set?: QuestionSet;
   label: string;
   presentation?: string;
+  presentationId?: string;
   text: string;
   submittedAt: number;
   mode: Attempt["mode"];
@@ -79,7 +80,7 @@ export function historyGroups(entries: HistoryEntry[], questions: Question[], pr
     const presentation = presentationId ? presentationName(presentationId) : undefined;
     const setName = set ? setHeadline(set) : first.attempt.qref?.setNumber !== undefined ? `Set ${String(first.attempt.qref.setNumber).padStart(2, "0")}` : first.attempt.qref?.setName || "Question set";
     return {
-      key, kind: single ? "question" : "set", entries: ordered, anchor: first.attempt, set, presentation,
+      key, kind: single ? "question" : "set", entries: ordered, anchor: first.attempt, set, presentation, presentationId,
       label: single ? first.label : presentation ? `${presentation} — ${setName}` : setName,
       // The headline already carries the title, so the second line is the case stem; a stale "Set 3" name never shows.
       text: single ? first.text : (first.question && stemsOf(first.question)[0]) || (set?.name && !/^(set|case)\s*\d*$/i.test(set.name.trim()) && !setName.includes(set.name.trim()) ? set.name : "") || first.text,
