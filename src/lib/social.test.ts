@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { validUsername, normaliseUsername } from "./social";
-import { questionsInWeek, setsInWeek, sortRows, standing, trend, weekKey, weekStart, type LeaderboardRow } from "./leaderboard";
+import { firstSentence, questionsInWeek, setsInWeek, sortRows, standing, trend, weekKey, weekStart, type LeaderboardRow } from "./leaderboard";
 import type { Attempt } from "../data/types";
 
 it("accepts sensible usernames and refuses the rest", () => {
@@ -38,6 +38,8 @@ it("orders by the chosen unit and describes where you stand", () => {
   expect(standing(sortRows(rows, "questions"), "Eiden", "questions")).toBe("You lead this week with 58 questions. Jackson is 17 behind.");
   expect(standing(sortRows(rows, "sets"), "Eiden", "sets")).toBe("You're 3rd with 4 sets. 4 more to pass Emma.");
   expect(standing(sortRows(rows, "questions"), "nobody", "questions")).toBeNull();
+  expect(firstSentence("You lead this week with 36 questions.")).toBe("You lead this week with 36 questions.");
+  expect(firstSentence("You're 3rd with 4 sets. 4 more to pass Emma.")).toBe("You're 3rd with 4 sets.");
   expect(trend(rows[0], "questions")).toBe("down");
   expect(trend(rows[1], "questions")).toBe("up");
   expect(trend(rows[2], "questions")).toBe("same");

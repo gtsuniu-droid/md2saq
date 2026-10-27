@@ -121,6 +121,9 @@ export function trend(row: LeaderboardRow, unit: LeaderboardUnit): "up" | "down"
   return now > was ? "up" : now < was ? "down" : "same";
 }
 
+/** The first sentence of a standing line, for tight spaces. */
+export const firstSentence = (line: string): string => line.split(". ")[0].replace(/\.$/, "") + ".";
+
 const ordinal = (n: number): string => { const s = ["th", "st", "nd", "rd"]; const v = n % 100; return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`; };
 
 /** One sentence about where the signed-in person stands, or null when they are not on the board. */

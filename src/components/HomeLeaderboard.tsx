@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { Settings } from "../data/types";
 import { cloudConfigured } from "../lib/firebase";
-import { fetchLeaderboard, publishWeeklyCount, sortRows, standing, type LeaderboardRow } from "../lib/leaderboard";
+import { fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, type LeaderboardRow } from "../lib/leaderboard";
 import { declineLeaderboard, saveSocialSettings, USERNAME_MAX } from "../lib/social";
 import { Avatar } from "./LeaderboardBoard";
 
@@ -64,7 +64,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
           {sorted.slice(0, 3).map((r, i) => <li key={r.uid} className={`lb-chip-row ${MEDAL[i]}${r.uid === user.uid ? " me" : ""}`}><Avatar name={r.name} rank={i + 1} photo={r.photo} /><span className="lb-chip-name">{r.name}</span><span className="lb-chip-count">{r.count}</span></li>)}
         </ol>
       )}
-      {line && <span className="lb-strip-line muted">{line.split(". ")[0]}.</span>}
+      {line && <span className="lb-strip-line muted">{firstSentence(line)}</span>}
       <Link to="/leaderboard" className="lb-more">Full leaderboard</Link>
     </section>
   );

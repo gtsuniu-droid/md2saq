@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { getSettings } from "../data/db";
 import { cloudConfigured } from "../lib/firebase";
-import { fetchLeaderboard, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
+import { fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
 import { BoardRows, Podium, UnitToggle, useBoardEntrance } from "../components/LeaderboardBoard";
 
 /** Everyone who opted in, ranked by questions answered or sets completed this week. */
@@ -52,7 +52,7 @@ export default function LeaderboardPage() {
       {sorted.length > 0 && (
         <>
           <Podium rows={sorted} unit={unit} me={user.uid} />
-          {line && <div className="lb-standing"><p><strong>{line.split(". ")[0]}.</strong>{line.includes(". ") ? ` ${line.slice(line.indexOf(". ") + 2)}` : ""}</p><Link to="/home#new-session" className="button primary">Practise now</Link></div>}
+          {line && <div className="lb-standing"><p><strong>{firstSentence(line)}</strong>{line.includes(". ") ? ` ${line.slice(line.indexOf(". ") + 2)}` : ""}</p><Link to="/home#new-session" className="button primary">Practise now</Link></div>}
           <BoardRows rows={sorted} unit={unit} me={user.uid} />
         </>
       )}

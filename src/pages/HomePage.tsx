@@ -175,6 +175,7 @@ export default function HomePage() {
         <div><h1>{data.settings.cloudUser?.name ? `Welcome back, ${data.settings.cloudUser.name.split(" ")[0]}` : "Your practice"}</h1><p className="muted">Pick a presentation, sit a case, then mark it against the model answer.</p></div>
         <div className="home-shortcuts"><a href="#new-session">New session</a><a href="#history">View history</a></div>
       </header>
+      <HomeLeaderboard settings={data.settings} />
       {session && inProgress && (
         <div className="card home-card resume">
           <div>
@@ -300,7 +301,6 @@ export default function HomePage() {
           <StudyWithFriends selectedQuestions={selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} signedIn={!!data.settings.cloudUser} canCreate={!!selectedQuestions.length && validMinutes && validCount && !starting} starting={starting} onStart={(ids, mins, code) => void startStudy(ids, mins, code)} />
         </>}
       </div>
-      <HomeLeaderboard settings={data.settings} />
       <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
 
       <ConfirmDialog open={replacing !== null} title="Replace your unfinished session?" confirmLabel="Start new session" onCancel={() => setReplacing(null)} onConfirm={() => { const mode = replacing; setReplacing(null); if (mode === "exam") void startExam(true); else if (mode && typeof mode === "object") void startStudy(mode.questionIds, mode.mins, mode.code, true); else void start(true); }}>
