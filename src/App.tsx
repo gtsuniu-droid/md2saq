@@ -39,6 +39,7 @@ import { useRef, useState } from "react";
 import { recordDeletes, requestSync, startSyncLoop, syncNow } from "./lib/sync";
 import { touchMember } from "./lib/members";
 import { publishWeeklyCount } from "./lib/leaderboard";
+import { useSubmittedCount } from "./lib/useSubmittedCount";
 import { setAdminRole } from "./lib/adminRole";
 import { hasEntered, markEntered } from "./lib/entered";
 import { patchSettings } from "./data/db";
@@ -187,15 +188,17 @@ export default function App() {
     };
   }, []);
 
-  // The board follows the student round the site: each page they move to (a new set, the
-  // marking page, home) publishes this week's count, once they have settled on it and only
-  // when the figures changed, so browsing costs nothing.
+  // The board follows the student round the site: every answer submitted, on any page, and
+  // each page they move to publishes this week's count straight to the board, once things
+  // settle and only when the figures changed. Not through cloud sync, which can stall when
+  // Firestore's read budget is spent.
   const boardUid = account?.cloudUser?.uid;
+  const submitted = useSubmittedCount(boardUid);
   useEffect(() => {
     if (!boardUid) return;
     const t = setTimeout(() => void publishWeeklyCount(boardUid, { ifChanged: true }).catch(() => undefined), 1500);
     return () => clearTimeout(t);
-  }, [pathname, boardUid]);
+  }, [pathname, boardUid, submitted]);
 
   // Sets are published, edited and deleted from several places (Admin, Browse, Create, the
   // AI connector), so an open tab re-reads the catalogue when it comes back into view and
