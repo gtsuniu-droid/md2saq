@@ -1,5 +1,5 @@
 import { openNamedStore, type JsonStore } from "./store";
-import { mergeRecord, type BoardRecord, type BoardTable, type Posted, type Rec } from "./progress";
+import { adopt, mergeRecord, type BoardRecord, type BoardTable, type Posted, type Rec } from "./progress";
 
 /**
  * The board's records, all in one blob of the "board" store. Records used to be one blob per
@@ -30,6 +30,17 @@ export async function postRecord(uid: string, post: Posted): Promise<Map<string,
   const table = await store.update<BoardTable>(TABLE_KEY, async (t) => {
     const records = { ...(t ?? await legacy(store)).records };
     records[uid] = mergeRecord(records[uid], post);
+    return { records };
+  });
+  return asMap(table);
+}
+
+/** Take Firestore's records into the table (see `adopt`), so who joined never depends on Firestore again. */
+export async function importRecords(legacyRecs: Map<string, Rec>): Promise<Map<string, Rec>> {
+  const store = board();
+  const table = await store.update<BoardTable>(TABLE_KEY, async (t) => {
+    const records = { ...(t ?? await legacy(store)).records };
+    for (const [uid, r] of legacyRecs) records[uid] = adopt(records[uid], r);
     return { records };
   });
   return asMap(table);

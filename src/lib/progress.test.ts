@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { current, figuresFor, mergeRecord, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, type BoardRecord, type CacheBody, type Posted, type Rec } from "../../netlify/lib/progress";
+import { adopt, current, figuresFor, mergeRecord, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, type BoardRecord, type CacheBody, type Posted, type Rec } from "../../netlify/lib/progress";
 import { newerSocial } from "./social";
 
 it("counts each account's questions and completed sets this week and last", () => {
@@ -87,4 +87,17 @@ it("keeps a student on the board unless they left more recently than they joined
   expect(newerSocial({ username: "", leaderboard: true }, { username: "", leaderboard: false })?.leaderboard).toBe(true);
   expect(newerSocial({ username: "", leaderboard: true }, { username: "", leaderboard: false, chosenAt: 5 })?.leaderboard).toBe(false);
   expect(newerSocial(undefined, { username: "x", leaderboard: true })?.username).toBe("x");
+});
+
+it("takes students who joined in Firestore onto the site's table without losing newer figures", () => {
+  const fs = (visible: boolean | undefined, count = 3): Rec => ({ name: "Ball clapper", week: "2026-W44", count, sets: 0, prevCount: 0, prevSets: 0, at: 1, visible });
+  // Never seen by the site: added as they were, joined (records from before the flag count as joined).
+  expect(adopt(undefined, fs(true))).toMatchObject({ name: "Ball clapper", visible: true, choiceAt: 0, count: 3 });
+  expect(adopt(undefined, fs(undefined)).visible).toBe(true);
+  expect(adopt(undefined, fs(false)).visible).toBe(false);
+  // Known to the site: its own figures stay; an undated "no" from a stale device gives way to the join.
+  const stale: BoardRecord = { name: "Bally", week: "2026-W44", count: 9, sets: 1, prevCount: 0, prevSets: 0, at: 5, visible: false, choiceAt: 0 };
+  expect(adopt(stale, fs(true))).toMatchObject({ name: "Bally", count: 9, visible: true });
+  // A leave chosen in Settings stands.
+  expect(adopt({ ...stale, choiceAt: 500 }, fs(true)).visible).toBe(false);
 });

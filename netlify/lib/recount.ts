@@ -2,7 +2,7 @@ import type { Context } from "@netlify/functions";
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { firebaseEnv } from "../functions/mcp-token";
-import { readRecords } from "./board";
+import { importRecords, readRecords } from "./board";
 import { hosted, openNamedStore } from "./store";
 import { CACHE_KEY, RECOUNT_MS, fromRecord, sortRows, weekStart, weeklyFigures, type AttemptRow, type CacheBody, type Pair, type Rec, type Row } from "./progress";
 
@@ -14,7 +14,7 @@ import { CACHE_KEY, RECOUNT_MS, fromRecord, sortRows, weekStart, weeklyFigures, 
  *
  * It costs a Firestore read per answer, and the free plan's reads are a daily budget, so it
  * runs rarely: when an admin opens the table and the last count is an hour old, or in the
- * background after a board read once the last count is four hours old.
+ * background after a board read once the last count is twelve hours old.
  */
 interface ServiceAccount { client_email: string; private_key: string; project_id: string }
 type FsValue = { stringValue?: string; integerValue?: string; doubleValue?: number; booleanValue?: boolean; mapValue?: { fields?: Record<string, FsValue> }; timestampValue?: string; nullValue?: null };
@@ -92,9 +92,13 @@ export async function recount(posted: Map<string, Rec>, now = Date.now()): Promi
   const [members, board] = await Promise.all([listAll(base, token, "members"), listAll(base, token, "leaderboard")]);
   const questionCount = new Map((index ?? []).map((e) => [e.id, e.questionCount]));
   const since = weekStart(now) - 7 * 24 * 3600 * 1000;
+  // Firestore's records go into the site's table first, before the answer reads that may run
+  // out of budget: from then on everyone who joined is listed whatever Firestore can do.
+  const fromFirestore = new Map<string, Rec>(board.filter((d) => d.fields).map((d) => [d.name.split("/").pop()!, recordOf(d.fields!)]));
+  posted = await importRecords(fromFirestore).catch((e) => { console.warn("progress: records not imported:", e); return posted; });
   // Each account's record: the newer of what its device wrote to Firestore and what it posted
   // here, except that whether it is on the board is always the site's own record's say.
-  const nick = new Map<string, Rec>(board.filter((d) => d.fields).map((d) => [d.name.split("/").pop()!, recordOf(d.fields!)]));
+  const nick = new Map(fromFirestore);
   for (const [uid, r] of posted) { const cur = nick.get(uid); nick.set(uid, !cur || r.at > cur.at ? r : { ...cur, visible: r.visible }); }
   // Records written before the joined flag existed were all opt-ins: stamp the flag on them so
   // the board lists them through every path from now on, not only this one.

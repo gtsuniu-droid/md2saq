@@ -61,6 +61,18 @@ export function mergeRecord(stored: BoardRecord | undefined, post: Posted): Boar
   const choice = !said ? keep : said.choiceAt > keep.choiceAt ? said : said.choiceAt === keep.choiceAt && said.visible ? said : keep;
   return { ...post, ...choice };
 }
+/**
+ * A record from Firestore (where records were kept before the site's own store) taken into the
+ * table. An account the table has no record of gets this one; one it has keeps its own figures
+ * and nickname, and only takes the Firestore record's join under the usual rule (an undated join
+ * beats an undated "no"), so nobody who joined is left off for having been seen by a stale device.
+ */
+export function adopt(stored: BoardRecord | undefined, legacy: Rec): BoardRecord {
+  const visible = legacy.visible !== false;
+  if (!stored) return { ...legacy, name: legacy.name || "Student", visible, choiceAt: 0 };
+  return mergeRecord(stored, { ...stored, visible, choiceAt: 0 });
+}
+
 /** A device's record, whichever store it came from. */
 export type Rec = Omit<BoardRecord, "name" | "visible"> & { name?: string; visible?: boolean };
 export type Pair = { week: { questions: number; sets: number }; last: { questions: number; sets: number } };
@@ -71,7 +83,7 @@ export type CacheBody = { at: number; week: number; accounts: number; rowsWithEm
 export const CACHE_KEY = "progress-cache";
 /** The Admin table recounts once it is older than this; the public board only ever asks for a background recount, less often. */
 export const CACHE_MS = 60 * 60_000;
-export const RECOUNT_MS = 4 * 60 * 60_000;
+export const RECOUNT_MS = 12 * 60 * 60_000;
 export const sortRows = (rows: Row[]) => rows.sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
 
 /** A device's record as this week's and last week's figures, given which week it describes. */
