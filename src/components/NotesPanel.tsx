@@ -7,7 +7,7 @@ import { PRESENTATIONS } from "../data/presentations";
 import { useSession } from "../lib/useSession";
 import { refreshSharedNotes, SHARED_OWNER } from "../lib/sharedNotes";
 import type { NoteSection } from "../data/types";
-import { NOTE_SECTIONS, noteSection } from "../lib/noteModel";
+import { noteSection, openingSection, sectionInfo } from "../lib/noteModel";
 import NoteSectionTabs from "./NoteSectionTabs";
 import { NoteContent, NoteReadingControls, useNoteReadingSize } from "./NoteReading";
 
@@ -17,7 +17,7 @@ export default function NotesPanel({ onClose }: { onClose: () => void }) {
   const { pathname } = useLocation();
   const session = useSession();
   const [presentation, setPresentation] = useState("abdominal-pain");
-  const [section, setSection] = useState<NoteSection>("overview");
+  const [picked, setPicked] = useState<NoteSection | null>(null);
   const [search, setSearch] = useState("");
   const [follow, setFollow] = useState(true);
   const context = useLiveQuery(async () => {
@@ -33,6 +33,8 @@ export default function NotesPanel({ onClose }: { onClose: () => void }) {
     const owner = (await getSettings()).cloudUser?.uid ?? "";
     return db.notes.where("presentationId").equals(presentation).filter((n) => !n.deleted && (n.ownerId === SHARED_OWNER || n.ownerId === owner || n.ownerId === "")).sortBy("createdAt");
   }, [presentation]);
+  // The section chosen here, else the first with notes in this presentation.
+  const section = openingSection(picked, notes ?? []);
   const url = `/notes?presentation=${encodeURIComponent(presentation)}&section=${section}`;
   const openWindow = () => {
     const win = window.open(url, "saq-notes-reference", "popup,width=820,height=900");
@@ -47,12 +49,12 @@ export default function NotesPanel({ onClose }: { onClose: () => void }) {
     <label className="check"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow the current question</label>
     <NoteReadingControls size={readingSize} onChange={setReadingSize} />
     <AmbossNotesStatus />
-    <NoteSectionTabs id="reference-sections" value={section} notes={notes ?? []} onChange={setSection} />
+    <NoteSectionTabs id="reference-sections" value={section} notes={notes ?? []} onChange={setPicked} />
     <div id="reference-sections-panel" role="tabpanel" aria-labelledby={`reference-sections-tab-${section}`} tabIndex={0}>
     <input type="search" aria-label="Search reference notes" placeholder="Search this section…" value={search} onChange={(e) => setSearch(e.target.value)} />
     <div className="notes-dock-list">
       {visible.map((n) => <details key={n.id} className="note-card"><summary><span className="note-kind">{n.kind}{n.ownerId === SHARED_OWNER ? ", Shared" : ", Private"}</span><strong>{n.title}</strong></summary><div className="note-expanded"><NoteContent doc={n.doc} size={readingSize} />{n.source && <p className="muted note-source">Source: {/^https?:\/\//i.test(n.source) ? <a href={n.source} target="_blank" rel="noreferrer">Open reference</a> : n.source}</p>}<a className="muted" href={url} target="_blank" rel="noreferrer">Edit in Notes ↗</a></div></details>)}
-      {notes !== undefined && !visible.length && <div className="notes-empty"><h3>{search ? "No matching notes" : `No ${NOTE_SECTIONS.find((s) => s.id === section)!.label} notes yet`}</h3><a href={url} target="_blank" rel="noreferrer">Add notes in a separate tab ↗</a></div>}
+      {notes !== undefined && !visible.length && <div className="notes-empty"><h3>{search ? "No matching notes" : `No ${sectionInfo(section).label} notes yet`}</h3><a href={url} target="_blank" rel="noreferrer">Add notes in a separate tab ↗</a></div>}
     </div>
     </div>
   </aside>;

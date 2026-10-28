@@ -427,7 +427,7 @@ tr.selected td { background: var(--teal-soft); }
 .note-rich ul, .note-rich ol { padding-left: 1.5rem; }
 .note-source { margin-top: 1.2rem; overflow-wrap: anywhere; }
 .notes-trash { margin-top: 1.2rem; }
-.note-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1.5rem; }
+.note-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin: 1.5rem 0; scroll-margin-top: 1rem; }
 .note-form h2 { margin: 0; color: var(--fg); }
 .note-form input, .note-form select { display: block; width: 100%; margin-top: 0.3rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; }
 .note-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }

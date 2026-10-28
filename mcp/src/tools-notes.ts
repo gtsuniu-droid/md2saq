@@ -9,8 +9,9 @@ import { fail, ok, presentationName } from "./util.js";
 
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
-const SECTIONS = ["overview", "ddx", "hx-exam", "ix", "mx", "extras"] as const;
-const SECTION_HELP = "overview (definitions, objectives), ddx (differentials), hx-exam (history and examination), ix (investigations), mx (management), extras (cases, extra reference).";
+// Overview is no longer offered: notes still in it (listed as "overview") can be moved out with updateNote.
+const SECTIONS = ["ddx", "hx-exam", "ix", "mx", "extras"] as const;
+const SECTION_HELP = "ddx (differentials), hx-exam (history and examination), ix (investigations), mx (management), extras (cases, extra reference).";
 const KINDS = ["Lecture Notes", "My Notes", "Missed Questions", "First Aid", "Sketchy", "Sketchy 2", "Sketchy Extra", "Bootcamp", "Pathoma", "Boards and Beyond", "OneNote"];
 
 const presentationRef = z.string().describe("Presentation id, name or synonym, e.g. \"dizziness\".");
@@ -66,7 +67,7 @@ export function registerNoteTools(server: McpServer, bank: BankClient, readOnly:
       presentation: presentationRef,
       title: z.string().min(1).max(200),
       markdown: z.string().min(1).describe("The note body in Markdown."),
-      section: z.enum(SECTIONS).default("overview").describe(SECTION_HELP),
+      section: z.enum(SECTIONS).default("ddx").describe(SECTION_HELP),
       kind: z.string().max(80).default("Lecture Notes").describe(`Which collection it belongs to; usually one of ${KINDS.join(", ")}.`),
     },
     annotations: WRITE,

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useSearchParams } from "react-router";
 import { db, getSettings, newId } from "../data/db";
@@ -7,7 +7,7 @@ import { PRESENTATIONS, PRESENTATION_BY_ID } from "../data/presentations";
 import { isAdmin } from "../lib/admin";
 import { getSharedNotesIndex, refreshSharedNotesIndex, refreshSharedNotes, saveSharedNote, SHARED_OWNER } from "../lib/sharedNotes";
 import { cloudConfigured } from "../lib/firebase";
-import { NOTE_KINDS, NOTE_SECTIONS, noteSection } from "../lib/noteModel";
+import { NOTE_KINDS, NOTE_SECTIONS, OVERVIEW, noteSection, openingSection, sectionInfo } from "../lib/noteModel";
 import { getNotesSyncState, saveNote, subscribeNotesSync, syncNotes } from "../lib/notes";
 import { AmbossNotesStatus } from "../components/AmbossNotes";
 import NoteEditor from "../components/NoteEditor";
@@ -29,8 +29,6 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
   const [readingSize, setReadingSize] = useNoteReadingSize();
   const [params, setParams] = useSearchParams();
   const selected = params.get("presentation") ?? "abdominal-pain";
-  const section = noteSection(params.get("section"));
-  const sectionInfo = NOTE_SECTIONS.find((s) => s.id === section)!;
   const presentation = PRESENTATION_BY_ID.get(selected);
   const [library, setLibrary] = useState<"shared" | "private">("shared");
   const [sharedError, setSharedError] = useState("");
@@ -53,6 +51,16 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [addingImages, setAddingImages] = useState(false);
+  // The note form sits below the notes, so starting or editing a note takes you down to it.
+  // A draft restored on opening the page does not: the notes come first.
+  const form = useRef<HTMLFormElement>(null);
+  const [goToForm, setGoToForm] = useState(false);
+  useEffect(() => {
+    if (!goToForm || !draft) return;
+    setGoToForm(false);
+    form.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    form.current?.querySelector<HTMLInputElement>("input[aria-label='Note title']")?.focus({ preventScroll: true });
+  }, [goToForm, draft]);
   const sync = useSyncExternalStore(subscribeNotesSync, getNotesSyncState);
   useEffect(() => {
     if (!draft) return;
@@ -70,9 +78,10 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
     if (draft && !confirm("Replace your unfinished draft?")) return;
     setError(""); setMessage("");
     setDraft(note ? { ...note } : {
-      id: library === "shared" ? `shared-${newId()}` : newId(), presentationId: selected, section, kind: kind || "Lecture Notes", title: "", source: "",
+      id: library === "shared" ? `shared-${newId()}` : newId(), presentationId: selected, section: section === "overview" ? "ddx" : section, kind: kind || "Lecture Notes", title: "", source: "",
       doc: EMPTY_DOC, text: "", ownerId: library === "shared" ? SHARED_OWNER : owner, createdAt: Date.now(), _m: 0, revision: "", deleted: false,
     });
+    setGoToForm(true);
   };
   const save = async () => {
     if (!draft || addingImages) return;
@@ -97,6 +106,8 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
   };
   const q = search.trim().toLowerCase();
   const available = (notes ?? []).filter((n) => n.presentationId === selected && n.deleted === trash);
+  const section = openingSection(params.get("section"), available);
+  const info = sectionInfo(section);
   const sectionNotes = available.filter((n) => noteSection(n.section) === section);
   const kinds = [...new Set(sectionNotes.map((n) => n.kind))].sort();
   const visible = sectionNotes.filter((n) => (!kind || n.kind === kind) && (!q || `${n.title} ${n.kind} ${n.text}`.toLowerCase().includes(q))).sort((a, b) => a.createdAt - b.createdAt);
@@ -120,20 +131,6 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
     {error && !draft && <p role="alert" className="notes-error">{error}</p>}
     {message && <p role="status" className="muted">{message}</p>}
     {draft?.ownerId === SHARED_OWNER && draft.revision && notes?.some((n) => n.id === draft.id && n.revision !== draft.revision) && <p role="alert" className="notes-notice">This note was updated elsewhere. Your draft is safe here; copy your changes before reopening the latest version.</p>}
-    {draft && <form className="note-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-      <div className="row spread"><h2>{draft.revision ? "Edit note" : "New note"}</h2><span className="muted">{draft.ownerId === SHARED_OWNER ? "Shared note, saved edits are public" : "Private draft kept on this device"}</span></div>
-      <div className="note-fields">
-        <label>Presentation<select aria-label="Note presentation" disabled={draft.ownerId === SHARED_OWNER && !!draft.revision} value={draft.presentationId} onChange={(e) => setDraft({ ...draft, presentationId: e.target.value })}>{PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>Section<select aria-label="Note section" value={noteSection(draft.section)} onChange={(e) => setDraft({ ...draft, section: noteSection(e.target.value) })}>{NOTE_SECTIONS.map((s) => <option key={s.id} value={s.id}>{s.label}: {s.description}</option>)}</select></label>
-        <label>Note type<input aria-label="Note type" list="note-kinds" maxLength={80} required value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} /></label>
-      </div>
-      <datalist id="note-kinds">{[...new Set([...NOTE_KINDS, ...(notes ?? []).map((n) => n.kind)])].map((k) => <option key={k} value={k} />)}</datalist>
-      <label>Title<input aria-label="Note title" type="text" autoFocus required maxLength={200} placeholder="e.g. Approach to abdominal pain" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
-      <NoteEditor key={draft.id} initial={draft.doc} onBusyChange={setAddingImages} onChange={(doc, text) => setDraft((d) => d ? { ...d, doc, text } : d)} />
-      <label>Source (optional)<input aria-label="Note source" type="text" placeholder="Book, lecture, or page link" value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} /></label>
-      {error && <p role="alert" className="notes-error">{error} Your draft has been kept.</p>}
-      <div className="row note-form-actions"><button className="primary" disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : saving ? "Saving…" : draft.ownerId === SHARED_OWNER ? "Publish shared note" : "Save note"}</button><button type="button" disabled={saving || addingImages} onClick={() => { if (confirm("Discard this unfinished draft?")) finishDraft(); }}>Discard draft</button></div>
-    </form>}
     <div className="notes-layout">
       <aside className="notes-sidebar" aria-label="Core presentations"><div className="notes-sidebar-heading">Core presentations</div>
         {filteredPresentations.map((p) => {
@@ -153,7 +150,7 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
         <AmbossNotesStatus />
         <div className="note-kind-pills" aria-label="Filter note types"><button aria-pressed={!kind} onClick={() => setKind("")}>All types <span>{sectionNotes.length}</span></button>{kinds.map((k) => <button key={k} aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{k}</button>)}</div>
         <div className="row spread notes-list-tools"><span className="muted">{visible.length} {trash ? "deleted " : ""}note{visible.length === 1 ? "" : "s"}</span><span className="row"><button className="small link" onClick={() => setExpanded(new Set(visible.map((n) => n.id)))}>Expand all</button><button className="small link" onClick={() => setExpanded(new Set())}>Collapse all</button></span></div>
-        {notes === undefined ? <p>Loading…</p> : !visible.length ? <div className="notes-empty"><span aria-hidden="true">✎</span><h3>{q || kind ? "No matching notes" : trash ? "No deleted notes" : `No ${sectionInfo.label} notes yet`}</h3><p>{q || kind ? "Try another search or note type." : trash ? "Deleted notes appear here and can be restored." : library === "shared" && !admin ? "Shared notes have not been added here yet. Use My private notes to add your own." : "Add a note to this section, then paste or write your content."}</p>{!trash && !q && !kind && <div className="row notes-suggestions">{["Lecture Notes", "First Aid", "Sketchy", "My Notes"].map((k) => <span key={k}>{k}</span>)}</div>}</div> : visible.map((n) => {
+        {notes === undefined ? <p>Loading…</p> : !visible.length ? <div className="notes-empty"><span aria-hidden="true">✎</span><h3>{q || kind ? "No matching notes" : trash ? "No deleted notes" : `No ${info.label} notes yet`}</h3><p>{q || kind ? "Try another search or note type." : trash ? "Deleted notes appear here and can be restored." : library === "shared" && !admin ? "Shared notes have not been added here yet. Use My private notes to add your own." : "Add a note to this section, then paste or write your content."}</p>{!trash && !q && !kind && <div className="row notes-suggestions">{["Lecture Notes", "First Aid", "Sketchy", "My Notes"].map((k) => <span key={k}>{k}</span>)}</div>}</div> : visible.map((n) => {
           const open = expanded.has(n.id);
           return <article key={n.id} className={"note-card" + (open ? " open" : "")}>
             <button className="note-toggle" aria-expanded={open} aria-controls={`note-${n.id}`} onClick={() => toggle(n.id)}><span className="note-caret">{open ? "▾" : "▸"}</span><span><span className="note-kind">{n.kind}</span><strong>{n.title}</strong></span></button>
@@ -167,5 +164,19 @@ function NotesWorkspace({ owner, signedIn, admin }: { owner: string; signedIn: b
         <button className="small link notes-trash" onClick={() => { setTrash(!trash); setKind(""); }}>{trash ? "Back to notes" : `Deleted notes (${(notes ?? []).filter((n) => n.presentationId === selected && n.deleted).length})`}</button>
       </section>
     </div>
+    {draft && <form ref={form} className="note-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      <div className="row spread"><h2>{draft.revision ? "Edit note" : "New note"}</h2><span className="muted">{draft.ownerId === SHARED_OWNER ? "Shared note, saved edits are public" : "Private draft kept on this device"}</span></div>
+      <div className="note-fields">
+        <label>Presentation<select aria-label="Note presentation" disabled={draft.ownerId === SHARED_OWNER && !!draft.revision} value={draft.presentationId} onChange={(e) => setDraft({ ...draft, presentationId: e.target.value })}>{PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <label>Section<select aria-label="Note section" value={noteSection(draft.section)} onChange={(e) => setDraft({ ...draft, section: noteSection(e.target.value) })}>{[...(noteSection(draft.section) === "overview" ? [OVERVIEW] : []), ...NOTE_SECTIONS].map((s) => <option key={s.id} value={s.id}>{s.label}: {s.description}</option>)}</select></label>
+        <label>Note type<input aria-label="Note type" list="note-kinds" maxLength={80} required value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} /></label>
+      </div>
+      <datalist id="note-kinds">{[...new Set([...NOTE_KINDS, ...(notes ?? []).map((n) => n.kind)])].map((k) => <option key={k} value={k} />)}</datalist>
+      <label>Title<input aria-label="Note title" type="text" required maxLength={200} placeholder="e.g. Approach to abdominal pain" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
+      <NoteEditor key={draft.id} initial={draft.doc} onBusyChange={setAddingImages} onChange={(doc, text) => setDraft((d) => d ? { ...d, doc, text } : d)} />
+      <label>Source (optional)<input aria-label="Note source" type="text" placeholder="Book, lecture, or page link" value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} /></label>
+      {error && <p role="alert" className="notes-error">{error} Your draft has been kept.</p>}
+      <div className="row note-form-actions"><button className="primary" disabled={saving || addingImages}>{addingImages ? "Adding pictures…" : saving ? "Saving…" : draft.ownerId === SHARED_OWNER ? "Publish shared note" : "Save note"}</button><button type="button" disabled={saving || addingImages} onClick={() => { if (confirm("Discard this unfinished draft?")) finishDraft(); }}>Discard draft</button></div>
+    </form>}
   </div>;
 }
