@@ -3,7 +3,8 @@ import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { caller, firebaseEnv } from "./mcp-token";
 import { hosted, openNamedStore } from "../lib/store";
-import { weekStart, weeklyFigures, type AttemptRow } from "../lib/progress";
+import { fromRecord, sortRows, staleTable, weekStart, weeklyFigures, type AttemptRow, type CacheBody, type Pair, type Rec, type Row } from "../lib/progress";
+import type { BoardRecord } from "../lib/progress";
 
 /**
  * Every account's weekly figures for the Admin page, computed here from each student's
@@ -82,7 +83,6 @@ async function attemptsOf(base: string, token: string, uid: string, since: numbe
  */
 const CACHE_KEY = "progress-cache";
 const CACHE_MS = 10 * 60_000;
-type CacheBody = { at: number; week: number; accounts: number; rowsWithEmail: Record<string, unknown>[] };
 let cache: CacheBody | null = null;
 
 export default async (req: Request): Promise<Response> => {
@@ -100,39 +100,40 @@ async function handle(req: Request): Promise<Response> {
   const sa = serviceAccount();
   if (!sa) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);
   const respond = (body: CacheBody) => {
-    if (publicBoard) return json({ week: body.week, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) });
-    return json({ week: body.week, accounts: body.accounts, emailsIncluded: who.role === "owner", rows: who.role === "owner" ? body.rowsWithEmail : body.rowsWithEmail.map((r) => ({ ...r, email: undefined })) });
+    const state = body.stale ? { stale: true, asOf: body.asOf, reason: body.reason } : {};
+    if (publicBoard) return json({ week: body.week, ...state, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) });
+    return json({ week: body.week, ...state, accounts: body.accounts, emailsIncluded: who.role === "owner", rows: who.role === "owner" ? body.rowsWithEmail : body.rowsWithEmail.map((r) => ({ ...r, email: undefined })) });
   };
   const store = openNamedStore("bank");
-  if (!cache || Date.now() - cache.at >= 60_000) cache = ((await store.get(CACHE_KEY, { type: "json" })) as CacheBody | null) ?? cache;
-  if (cache && Date.now() - cache.at < CACHE_MS && cache.week === weekStart(Date.now())) return respond(cache);
+  const now = Date.now();
+  if (!cache || now - cache.at >= 60_000) cache = ((await store.get(CACHE_KEY, { type: "json" })) as CacheBody | null) ?? cache;
+  if (cache && now - cache.at < CACHE_MS && cache.week === weekStart(now)) return respond(cache);
   const { projectId } = firebaseEnv();
   const base = `https://firestore.googleapis.com/v1/projects/${projectId ?? sa.project_id}/databases/(default)/documents`;
-  const token = await accessToken(sa);
-  const [members, board, index] = await Promise.all([
-    listAll(base, token, "members"),
-    listAll(base, token, "leaderboard"),
+  // The records devices posted to the site's own store: readable whatever Firestore's budget says.
+  const [posted, index] = await Promise.all([
+    postedRecords().catch(() => new Map<string, Rec>()),
     store.get("index", { type: "json" }) as Promise<{ id: string; questionCount: number }[] | null>,
   ]);
+  let token: string, members: FsDoc[], board: FsDoc[];
+  try {
+    token = await accessToken(sa);
+    [members, board] = await Promise.all([listAll(base, token, "members"), listAll(base, token, "leaderboard")]);
+  } catch (e) {
+    // Firestore refused (its daily read budget, most likely). The last full table stands, brought
+    // up to date with every record devices have posted here since it was made.
+    console.warn("progress: Firestore unreadable, serving the last table:", e);
+    return respond(staleTable(cache, posted, now, e instanceof Error ? e.message : String(e)));
+  }
   const questionCount = new Map((index ?? []).map((e) => [e.id, e.questionCount]));
-  const now = Date.now();
   const since = weekStart(now) - 7 * 24 * 3600 * 1000;
-  const nick = new Map(board.map((d) => [d.name.split("/").pop()!, d.fields]));
+  // Each account's record: the newer of what its device wrote to Firestore and what it posted here.
+  const nick = new Map<string, Rec>(board.filter((d) => d.fields).map((d) => [d.name.split("/").pop()!, recordOf(d.fields!)]));
+  for (const [uid, r] of posted) { const cur = nick.get(uid); if (!cur || r.at > cur.at) nick.set(uid, r); }
   // Records written before the joined flag existed were all opt-ins: stamp the flag on them so
   // the board lists them through every path from now on, not only this one.
   await Promise.all(board.filter((d) => d.fields && d.fields.visible === undefined).map((d) =>
     fetch(`https://firestore.googleapis.com/v1/${d.name}?updateMask.fieldPaths=visible`, { method: "PATCH", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ fields: { visible: { booleanValue: true } } }) }).catch(() => undefined)));
-  const thisWeek = weekKey(now); const lastWeek = weekKey(now - 7 * 24 * 3600 * 1000);
-  type Pair = { week: { questions: number; sets: number }; last: { questions: number; sets: number } };
-  const zero: Pair = { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
-  // The device's own record, as a stand-in when the server cannot read that account's answers.
-  const fromRecord = (n?: Record<string, FsValue>): Pair => {
-    if (!n) return zero;
-    const w = str(n.week);
-    if (w === thisWeek) return { week: { questions: num(n.count) ?? 0, sets: num(n.sets) ?? 0 }, last: { questions: num(n.prevCount) ?? 0, sets: num(n.prevSets) ?? 0 } };
-    if (w === lastWeek) return { week: { questions: 0, sets: 0 }, last: { questions: num(n.count) ?? 0, sets: num(n.sets) ?? 0 } };
-    return zero;
-  };
   // Server first: add up each account's submitted answers. Per account, a failed read falls back to the record.
   const uids = members.map((m) => m.name.split("/").pop()!);
   const figures = new Map<string, { pair: Pair; source: "server" | "device" | "none" }>();
@@ -140,33 +141,37 @@ async function handle(req: Request): Promise<Response> {
     await Promise.all(uids.slice(i, i + 8).map(async (uid) => {
       try {
         const rows = await attemptsOf(base, token, uid, since);
-        const f = weeklyFigures(rows, questionCount, now).get(uid) ?? zero;
+        const f = weeklyFigures(rows, questionCount, now).get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
         figures.set(uid, { pair: f, source: "server" });
       } catch {
-        figures.set(uid, { pair: fromRecord(nick.get(uid)), source: nick.has(uid) ? "device" : "none" });
+        figures.set(uid, { pair: fromRecord(nick.get(uid), now), source: nick.has(uid) ? "device" : "none" });
       }
     }));
   }
-  const rows = members.map((m) => {
+  const rows: Row[] = members.map((m) => {
     const uid = m.name.split("/").pop()!;
     const n = nick.get(uid);
-    const { pair: f, source } = figures.get(uid) ?? { pair: zero, source: "none" as const };
-    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || str(n?.name) || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || str(n?.photo), nickname: str(n?.name), joined: n !== undefined && n.visible?.booleanValue !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt), source };
-  }).sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
+    const { pair: f, source } = figures.get(uid) ?? { pair: { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } } as Pair, source: "none" as const };
+    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || n?.name || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || n?.photo, nickname: n?.name, joined: n !== undefined && n.visible !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt), source };
+  });
+  sortRows(rows);
   const body: CacheBody = { at: now, week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
   cache = body;
   await store.setJSON(CACHE_KEY, body).catch(() => undefined);
   return respond(body);
 }
 
-/** The ISO week id, matching what devices write on their rows. */
-function weekKey(ts: number): string {
-  const d = new Date(weekStart(ts));
-  const thursday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 3);
-  const year = thursday.getFullYear();
-  const firstWeekStart = weekStart(new Date(year, 0, 4).getTime());
-  const week = Math.round((weekStart(thursday.getTime()) - firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
-  return `${year}-W${String(week).padStart(2, "0")}`;
+/** A Firestore leaderboard document as a record. Records from before the joined flag existed count as joined. */
+function recordOf(f: Record<string, FsValue>): Rec {
+  return { name: str(f.name), photo: str(f.photo), visible: f.visible?.booleanValue, week: str(f.week) ?? "", count: num(f.count) ?? 0, sets: num(f.sets) ?? 0, prevCount: num(f.prevCount) ?? 0, prevSets: num(f.prevSets) ?? 0, at: num(f.updatedAt) ?? 0 };
+}
+
+/** Every record devices posted to the site's own store, by account. */
+async function postedRecords(): Promise<Map<string, Rec>> {
+  const store = openNamedStore("board");
+  const keys = await store.list("board/");
+  const recs = await Promise.all(keys.map(async (k) => [k.slice("board/".length), (await store.get(k, { type: "json" })) as BoardRecord | null] as const));
+  return new Map(recs.filter((r): r is readonly [string, BoardRecord] => !!r[1] && typeof r[1].at === "number"));
 }
 
 export const config: Config = { path: "/api/progress" };

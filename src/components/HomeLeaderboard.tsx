@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { Settings } from "../data/types";
 import { cloudConfigured } from "../lib/firebase";
-import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, questionsInWeek, sortRows, standing, weekStart, type LeaderboardRow } from "../lib/leaderboard";
+import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, questionsInWeek, sortRows, staleNote, standing, weekStart, type LeaderboardRow } from "../lib/leaderboard";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../data/db";
 import { belongsToAccount } from "../lib/progressAccount";
@@ -19,6 +19,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   const [joining, setJoining] = useState(false);
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [error, setError] = useState("");
+  const [staleSince, setStaleSince] = useState<number | null | undefined>(undefined);
   // Re-publish and re-read as soon as a question is submitted, so the count moves at once.
   const submitted = useSubmittedCount(user?.uid);
   // This device's own figure for the week: shown whenever the board cannot be read, so it is never stale for you.
@@ -31,7 +32,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
       try {
         await publishWeeklyCount(user.uid).catch(() => undefined);
         const board = await fetchLeaderboard();
-        if (live) setRows(board);
+        if (live) { setRows(board.rows); setStaleSince(board.staleSince); }
       } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
     })();
     return () => { live = false; };
@@ -51,6 +52,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
       {!joined ? <span className="lb-strip-line muted">Not on it yet. <button type="button" className="link lb-join" disabled={joining} onClick={() => { setJoining(true); void joinLeaderboard().finally(() => setJoining(false)); }}>{joining ? "Joining…" : `Join as ${boardName(settings)}`}</button> or <Link to="/settings#social">pick a nickname</Link>.</span>
         : line ? <span className="lb-strip-line muted">{firstSentence(line)}</span>
         : rows ? <span className="lb-strip-line muted">On the board as {boardName(settings)}.</span> : null}
+      {rows && staleNote(staleSince) ? <span className="lb-strip-line muted">{staleNote(staleSince)}</span> : null}
       <Link to="/leaderboard" className="lb-more">Full leaderboard</Link>
     </section>
   );

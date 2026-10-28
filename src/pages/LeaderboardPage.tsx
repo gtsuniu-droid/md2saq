@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { getSettings } from "../data/db";
 import { cloudConfigured } from "../lib/firebase";
-import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
+import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, staleNote, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
 import { BoardRows, Podium, UnitToggle, useBoardEntrance } from "../components/LeaderboardBoard";
 import { useSubmittedCount } from "../lib/useSubmittedCount";
 
@@ -13,6 +13,7 @@ export default function LeaderboardPage() {
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [unit, setUnit] = useState<LeaderboardUnit>("questions");
   const [error, setError] = useState("");
+  const [staleSince, setStaleSince] = useState<number | null | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null);
   const user = settings?.cloudUser;
   const social = settings?.social;
@@ -25,7 +26,7 @@ export default function LeaderboardPage() {
       try {
         await publishWeeklyCount(user.uid).catch(() => undefined);
         const board = await fetchLeaderboard();
-        if (live) setRows(board);
+        if (live) { setRows(board.rows); setStaleSince(board.staleSince); }
       } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
     })();
     return () => { live = false; };
@@ -50,6 +51,7 @@ export default function LeaderboardPage() {
       <div className="row spread lb-controls"><span className="muted">Count by</span><UnitToggle unit={unit} onChange={setUnit} /></div>
       {error && <p className="field-error" role="alert">{error}</p>}
       {!rows && !error && <p className="muted" role="status">Loading…</p>}
+      {rows && staleNote(staleSince) && <p className="muted" role="status">{staleNote(staleSince)}</p>}
       {rows && !sorted.length && <p className="muted">Nobody has answered a question yet this week.</p>}
       {sorted.length > 0 && (
         <>

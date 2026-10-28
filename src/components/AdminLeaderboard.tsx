@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { idToken } from "../lib/firebase";
-import { fetchLeaderboard, sortRows, weekLabel, weekStart, type LeaderboardRow } from "../lib/leaderboard";
+import { fetchLeaderboard, sortRows, staleNote, weekLabel, weekStart } from "../lib/leaderboard";
 import { Avatar } from "./LeaderboardBoard";
 
 interface ProgressRow { uid: string; name: string; email?: string; photo?: string; nickname?: string; joined: boolean; questions: number; sets: number; prevQuestions: number; prevSets: number; lastSeenAt?: number; source?: "server" | "device" | "none" }
@@ -17,13 +17,15 @@ export default function AdminLeaderboard({ owner }: { owner: boolean }) {
         const token = await idToken();
         const res = token ? await fetch("/api/progress", { headers: { authorization: `Bearer ${token}` } }) : null;
         if (res?.ok) {
-          const body = (await res.json()) as { rows: ProgressRow[] };
-          if (live) setRows(body.rows);
+          const body = (await res.json()) as { rows: ProgressRow[]; stale?: boolean; asOf?: number; reason?: string };
+          if (!live) return;
+          setRows(body.rows);
+          if (body.stale) setNote(`${staleNote(body.asOf ?? null)} Firestore said: ${body.reason ?? "unreadable"}.`);
           return;
         }
         // Not configured yet: fall back to the rows students have published themselves.
         const message = res ? ((await res.json().catch(() => ({}))) as { error?: string }).error : "Sign in first.";
-        const board: LeaderboardRow[] = await fetchLeaderboard(true);
+        const { rows: board } = await fetchLeaderboard(true);
         if (!live) return;
         setNote(`${message ?? `The server could not compute progress (${res?.status ?? "no response"}).`} Showing only the accounts that have opened the site this week.`);
         setRows(sortRows(board, "questions").map((r) => ({ uid: r.uid, name: r.name, photo: r.photo, nickname: r.name, joined: r.visible, questions: r.count, sets: r.sets, prevQuestions: r.prevCount, prevSets: r.prevSets })));

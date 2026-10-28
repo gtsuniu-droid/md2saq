@@ -99,9 +99,33 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
     count: questionsInWeek(attempts, uid, start), sets: setsInWeek(attempts, library.questions, uid, start),
     prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
   };
-  const { firestore } = await communityServices();
-  const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
-  await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
+  // Two copies: Firestore, and the site's own store, which keeps taking records (and can be
+  // read) while Firestore's daily read budget is spent. One of the two must succeed.
+  const [cloud, posted] = await Promise.allSettled([
+    (async () => {
+      const { firestore } = await communityServices();
+      const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
+      await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
+    })(),
+    (async () => {
+      const token = await idToken();
+      if (!token) throw new Error("Sign in first.");
+      const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(row) });
+      if (!res.ok) throw new Error(`The board store answered ${res.status}.`);
+    })(),
+  ]);
+  if (cloud.status === "rejected" && posted.status === "rejected") throw cloud.reason;
+}
+
+/** The board as read: `staleSince` is set when it is the last full count plus what devices reported since (null: no full count at all). */
+export interface BoardRead { rows: LeaderboardRow[]; staleSince?: number | null }
+
+export function staleNote(staleSince: number | null | undefined): string | null {
+  if (staleSince === undefined) return null;
+  if (!staleSince) return "The board cannot be fully counted right now. Showing what devices have reported.";
+  const at = new Date(staleSince);
+  const when = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : at.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return `Last fully counted at ${when}. Newer activity is added as devices report it.`;
 }
 
 /**
@@ -109,14 +133,14 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
  * (joined accounts only), so nobody is missing because their device has not been opened;
  * otherwise the rows students published themselves. Admins may ask for hidden rows too.
  */
-export async function fetchLeaderboard(includeHidden = false): Promise<LeaderboardRow[]> {
+export async function fetchLeaderboard(includeHidden = false): Promise<BoardRead> {
   if (!includeHidden) {
     try {
       const token = await idToken();
       const res = token ? await fetch("/api/progress?board=1", { headers: { authorization: `Bearer ${token}` } }) : null;
       if (res?.ok) {
-        const body = (await res.json()) as { rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
-        return body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() }));
+        const body = (await res.json()) as { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
+        return { rows: body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() })), ...(body.stale ? { staleSince: body.asOf ?? null } : {}) };
       }
     } catch { /* fall back to the published rows */ }
   }
@@ -127,7 +151,7 @@ export async function fetchLeaderboard(includeHidden = false): Promise<Leaderboa
   const filters = includeHidden ? [] : [where("visible", "==", true)];
   const snap = await getDocs(query(collection(firestore, "leaderboard"), ...filters, limit(200)));
   const thisWeek = weekKey(Date.now()); const lastWeek = weekKey(Date.now() - 7 * DAY);
-  return snap.docs.map((d) => {
+  const rows = snap.docs.map((d) => {
     const v = d.data() as Record<string, unknown>;
     const n = (k: string) => (typeof v[k] === "number" ? (v[k] as number) : 0);
     const at = v.updatedAt as { toMillis?: () => number } | undefined;
@@ -136,6 +160,7 @@ export async function fetchLeaderboard(includeHidden = false): Promise<Leaderboa
     const prev = current ? { count: n("prevCount"), sets: n("prevSets") } : week === lastWeek ? { count: n("count"), sets: n("sets") } : { count: 0, sets: 0 };
     return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: current ? n("count") : 0, sets: current ? n("sets") : 0, prevCount: prev.count, prevSets: prev.sets, photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, visible: v.visible !== false, updatedAt: at?.toMillis?.() ?? 0 };
   });
+  return { rows };
 }
 
 export const score = (row: LeaderboardRow, unit: LeaderboardUnit): number => (unit === "sets" ? row.sets : row.count);
