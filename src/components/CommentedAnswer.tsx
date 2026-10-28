@@ -1,13 +1,11 @@
-import { generateHTML } from "@tiptap/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import DOMPurify from "dompurify";
 import gsap from "gsap";
 import type { AnswerComment } from "../data/types";
 import { getSettings, newId } from "../data/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { EDITOR_EXTENSIONS } from "./Editor";
 import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, validCommentAnchor, writeAnswerComment, type AnswerAnchor } from "../lib/answerComments";
 import { requestSync } from "../lib/sync";
+import { renderAnswer } from "../lib/answerRender";
 
 interface Props {
   attemptId: string;
@@ -26,6 +24,8 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   const root = useRef<HTMLDivElement>(null);
   const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
   const author = <span className="comment-author">{me?.photo ? <img src={me.photo} alt="" referrerPolicy="no-referrer" /> : <span className="comment-avatar">{(me?.name ?? me?.email ?? "You").charAt(0).toUpperCase()}</span>}<span>{me?.name ?? me?.email ?? "You"}</span></span>;
+  // Comments sent back as suggested marks, from whoever the student asked to mark the set.
+  const marker = <span className="comment-author"><span className="comment-avatar">✓</span><span>Marker</span></span>;
   const shell = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
@@ -44,11 +44,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   const mine = comments.filter((c) => c.partLabel === partLabel);
   const current = mine.find((c) => c.id === active);
   const rendered = useMemo(() => {
-    let html = "";
-    try { if (doc && typeof doc === "object") html = generateHTML(doc as Parameters<typeof generateHTML>[0], EDITOR_EXTENSIONS); } catch { /* Legacy plain answer. */ }
-    const container = document.createElement("div");
-    if (html) container.innerHTML = DOMPurify.sanitize(html);
-    else { const p = document.createElement("p"); p.className = "pre"; p.textContent = text || "No answer written."; container.append(p); }
+    const container = renderAnswer(doc, text);
     const plain = container.textContent ?? "";
     const valid = comments.filter((c) => c.partLabel === partLabel && validCommentAnchor(plain, c));
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -224,7 +220,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
         if (editing) return draftCard(true);
         return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (!isGeneralComment(c) && tops[c.id] === undefined ? " orphan" : "") + (isGeneralComment(c) ? " general" : "")} style={{ top: laid[c.id] ?? tops[c.id] ?? 0 }} role="region" aria-label="Answer comment">
           <button type="button" className="comment-card-body" onClick={() => { setActive(open ? null : c.id); setDraft(null); setStatus(""); }} aria-expanded={open}>
-            {author}
+            {c.by === "marker" ? marker : author}
             <p className="pre">{c.text}</p>
           </button>
           {open && <div className="row comment-actions">

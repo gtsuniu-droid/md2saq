@@ -1,5 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { Link, useNavigate } from "react-router";
 import { db, getSettings, newId } from "../data/db";
@@ -24,6 +24,8 @@ import { loadSession, saveSession } from "../lib/session";
 import { sessionAtQuestion } from "../lib/sessionNavigation";
 import { questionRef, requestSync } from "../lib/sync";
 import { clearMarkingDraft, loadMarkingDraft, writeMarkingDraft } from "../lib/markingDrafts";
+import { buildSetForMarking, setText } from "../lib/setForMarking";
+import { keepForMarking, markFilled, newSuggestions, placeSuggestedComments } from "../lib/suggestedMarks";
 
 interface Props {
   attemptId: string;
@@ -99,6 +101,48 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     }, rootRef);
     return () => ctx.revert();
   }, [readyNow]);
+
+  // The set laid out for marking: copied by "Copy set", and kept in the student's private store
+  // so that marks suggested for it (through their connector) can come back to this page.
+  const forMarking = useMemo(() => data ? buildSetForMarking(data.anchor.id, data.set ? setLabel(data.set) : data.anchor.qref?.setName || "Set", data.rows, data.set) : null, [data]);
+  const forMarkingJson = useMemo(() => forMarking ? JSON.stringify(forMarking) : "", [forMarking]);
+  useEffect(() => { if (forMarking && data?.ownerId) void keepForMarking(forMarking).catch(() => undefined); }, [forMarkingJson]);
+  const [copied, setCopied] = useState(false);
+  const copy = () => { if (forMarking) void navigator.clipboard.writeText(setText(forMarking)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
+  // Parts given a suggested score, per attempt, so their score boxes show it.
+  const [suggested, setSuggested] = useState<Record<string, Set<string>>>({});
+  useEffect(() => {
+    if (!readyNow || !data?.ownerId) return;
+    const { anchor, rows, ownerId } = data;
+    let live = true;
+    // Filled in when the page opens, and on coming back to it from wherever the set was marked.
+    const check = async () => {
+      const marks = await newSuggestions(anchor.id).catch(() => null);
+      if (!marks || !live) return;
+      setDrafts((current) => {
+        const next = { ...current };
+        for (const { question, attempt, mark } of rows) {
+          const draft = attempt && current[attempt.id];
+          const parts = marks.parts.filter((p) => p.attemptId === attempt?.id);
+          if (!draft || !question || !parts.length) continue;
+          next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score } : pm; }) };
+          writeMarkingDraft(ownerId, attempt.id, question.id, next[attempt.id], mark);
+        }
+        // The overall note goes with the first question, unless the student wrote one there already.
+        const first = rows.find((r) => r.attempt && next[r.attempt.id]);
+        if (marks.summary && first?.attempt && !next[first.attempt.id].notes.trim()) next[first.attempt.id] = { ...next[first.attempt.id], notes: marks.summary };
+        return next;
+      });
+      setSuggested(Object.fromEntries(rows.flatMap((r) => r.attempt ? [[r.attempt.id, new Set(marks.parts.filter((p) => p.attemptId === r.attempt!.id).map((p) => p.label))]] : [])));
+      await placeSuggestedComments(marks);
+      markFilled(anchor.id, marks);
+      if (live) setMessage("Suggested marks filled in. Check them, then save.");
+    };
+    void check();
+    const onVisible = () => { if (document.visibilityState === "visible") void check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { live = false; document.removeEventListener("visibilitychange", onVisible); };
+  }, [readyNow, data?.anchor.id, data?.ownerId]);
 
   if (data === undefined) return <p className="muted" role="status" style={{ padding: "1.5rem" }}>Loading your set…</p>;
   if (!data) return <div style={{ padding: "1.5rem" }}><Link to="/home#history">Back to history</Link><p>Attempt not found for this account.</p></div>;
@@ -210,7 +254,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
             }
             const previous = data.attempts.filter((a) => a.questionId === question.id && a.id !== attempt.id && a.submittedAt !== undefined && (a.submittedAt ?? 0) < (attempt.submittedAt ?? attempt.startedAt)).sort((a, b) => b.submittedAt! - a.submittedAt!)[0];
             const previousMark = previous ? data.marks.filter((m) => m.attemptId === previous.id).sort((a, b) => b.markedAt - a.markedAt)[0] : undefined;
-            return <MarkingBlock key={question.id} question={question} attempt={attempt} set={set} order={order} draft={draft} previous={previous} previousMark={previousMark} admin={data.admin} hasMark={!!mark} stemTexts={stemTexts} idFor={(label) => idFor(question, order, label)}
+            return <MarkingBlock key={question.id} question={question} attempt={attempt} set={set} order={order} draft={draft} suggested={suggested[attempt.id]} previous={previous} previousMark={previousMark} admin={data.admin} hasMark={!!mark} stemTexts={stemTexts} idFor={(label) => idFor(question, order, label)}
               onFocusPart={(id) => setActive(id)} onEdit={(q) => { setEditingMode("question"); setEditing(q); }}
               onChange={(value) => {
                 setDrafts((current) => ({ ...current, [attempt.id]: value }));
@@ -238,6 +282,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         <span>{rows.length} question{rows.length === 1 ? "" : "s"}</span>
       </span>
       <span style={{ flex: 1 }} />
+      {forMarking?.questions.length ? <button title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}
       <Link className="button" to={inSession ? `/session/${inSession.id}` : "/home#history"}>{inSession ? "Session summary" : "Back to history"}</Link>
     </div>}
     <div className={embedded ? "paper mark-paper embedded" : "paper mark-paper"}>
@@ -263,6 +308,8 @@ interface BlockProps {
   admin: boolean;
   /** A saved mark exists, so its scores are real values rather than untouched zeros. */
   hasMark: boolean;
+  /** Parts given a suggested score, which shows even when it is zero. */
+  suggested?: Set<string>;
   stemTexts: string[];
   onChange: (draft: MarkingDraft) => void;
   onEdit: (question: Question) => void;
@@ -271,7 +318,7 @@ interface BlockProps {
 }
 
 /** One question: its parts, each with your answer, the model answer and a score. */
-function MarkingBlock({ question, attempt, set, order, draft, previous, previousMark, admin, hasMark, stemTexts, onChange, onEdit, onFocusPart, idFor }: BlockProps) {
+function MarkingBlock({ question, attempt, set, order, draft, previous, previousMark, admin, hasMark, suggested, stemTexts, onChange, onEdit, onFocusPart, idFor }: BlockProps) {
   const [typing, setTyping] = useState<Record<string, string>>({});
   const [noteOpen, setNoteOpen] = useState(!!draft.notes || !!draft.learningPoint || draft.errorTags.length > 0);
   const [folded, setFolded] = useState<Record<string, boolean>>({});
@@ -335,7 +382,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               <span style={{ flex: 1 }} />
               <div className="mark-score">
                 <label>Score</label>
-                {scoreField(`score:${pi.part.label}`, pm.score, (n) => setPart(pi.part.label, { score: n }), pm.maxScore || undefined, `Score${pi.part.label ? ` for part ${pi.part.label}` : ""}`, !hasMark)}
+                {scoreField(`score:${pi.part.label}`, pm.score, (n) => setPart(pi.part.label, { score: n }), pm.maxScore || undefined, `Score${pi.part.label ? ` for part ${pi.part.label}` : ""}`, !hasMark && !suggested?.has(pi.part.label))}
                 <span className="mark-score-sep">/</span>
                 {scoreField(`max:${pi.part.label}`, pm.maxScore, (n) => setPart(pi.part.label, { maxScore: n }), undefined, `Maximum score${pi.part.label ? ` for part ${pi.part.label}` : ""}`)}
               </div>

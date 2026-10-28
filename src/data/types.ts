@@ -152,6 +152,8 @@ export interface AnswerComment {
   text: string;
   createdAt: number;
   updatedAt: number;
+  /** "marker": left with suggested marks, rather than written by the student. */
+  by?: "marker";
 }
 
 export interface Attempt {

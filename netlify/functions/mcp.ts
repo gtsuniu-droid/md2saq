@@ -7,6 +7,7 @@ import { BankClient, type BankReader } from "../../mcp/src/client";
 import type { BankEntry, SetPack } from "../../mcp/src/types";
 import { SERVER_INSTRUCTIONS } from "../../mcp/src/instructions";
 import { registerTools } from "../../mcp/src/tools";
+import { registerAnswerTools } from "../lib/answerTools";
 
 /**
  * The hosted MCP endpoint, one per connection link: /api/mcp/<token>. The same
@@ -42,6 +43,8 @@ export default async (req: Request): Promise<Response> => {
   const bank = new BankClient({ siteUrl: url.origin, passcode: canEdit ? passcode : "", readOnly: !canEdit || !passcode }, reader);
   const server = new McpServer({ name: "saq-practice", version: "0.1.0" }, { instructions: `${SERVER_INSTRUCTIONS} Connected as ${record.name || record.email} (${canEdit ? "can edit the bank" : "read only"}).` });
   registerTools(server, bank, !canEdit || !passcode);
+  // Everyone, whatever their role: their own answers, for marking.
+  registerAnswerTools(server, record.uid);
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   try {
