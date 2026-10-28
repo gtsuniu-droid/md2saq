@@ -1335,7 +1335,11 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .mark-guide-notes { margin-top: 1.5rem; font-size: .9rem; }
 .mark-guide-notes summary { cursor: pointer; color: var(--muted); }
 .mark-answers .col-head-total { font-weight: 600; font-variant-numeric: tabular-nums; }
-.mark-answers .col-head .hl-btn { margin-right: .75rem; }
+.mark-answers .col-head .hl-btn, .mark-answers .col-head .fix-with-ai { margin-right: .75rem; }
+/* On the navy header the assistant menu's button matches the header's own buttons. */
+.col-head .fix-with-ai > summary { background: transparent; color: var(--navy-fg); border-color: rgba(255,255,255,0.4); }
+.col-head .fix-with-ai > summary:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.6); }
+.col-head .fix-with-ai-menu { color: var(--fg); font-weight: 400; }
 .mark-set-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .mark-block .marking-prompt { font-weight: 600; }
 .mark-part { margin-bottom: 2rem; }

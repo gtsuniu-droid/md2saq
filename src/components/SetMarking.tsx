@@ -12,6 +12,7 @@ import CommentedAnswer from "./CommentedAnswer";
 import ModelAnswerContent from "./ModelAnswerContent";
 import QuestionCommunity from "./QuestionCommunity";
 import FixWithClaude from "./FixWithClaude";
+import AssistantMenu from "./AssistantMenu";
 import { belongsToAccount } from "../lib/progressAccount";
 import { setAttemptReview } from "../lib/setAttemptReview";
 import { introducedStems, markingDraft, reconcileMarkingParts, type MarkingDraft } from "../lib/markingSet";
@@ -109,6 +110,12 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   useEffect(() => { if (forMarking && data?.ownerId) void keepForMarking(forMarking).catch(() => undefined); }, [forMarkingJson]);
   const [copied, setCopied] = useState(false);
   const copy = () => { if (forMarking) void navigator.clipboard.writeText(setText(forMarking)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
+  // Admins only: their assistant reads the set through the connector and sends marks back here.
+  const markPrompt = forMarking ? [
+    `Using the SAQ Practice connector: mark my answers to "${forMarking.name}".`,
+    `Read them with getMyAnswers (set: "${forMarking.name}"), mark every part against its model answer and the marking notes, quote the passages of my answers you comment on, then send the marks with markMyAnswers.`,
+    "I will check and save them on the marking page.",
+  ].join("\n") : "";
   // Parts given a suggested score, per attempt, so their score boxes show it.
   const [suggested, setSuggested] = useState<Record<string, Set<string>>>({});
   useEffect(() => {
@@ -238,7 +245,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         {set?.markingNotes && <details className="mark-guide-notes"><summary>Set marking notes</summary><p className="pre">{set.markingNotes}</p></details>}
       </div>
       <div className="paper-answers mark-answers">
-        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}<span className="col-head-total">{total} / {maximum}</span></div>
+        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPrompt} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}<span className="col-head-total">{total} / {maximum}</span></div>
         <fieldset className="mark-set-fields" disabled={saving}>
           {rows.map(({ question, attempt, mark, order }) => {
             const draft = attempt ? drafts[attempt.id] : undefined;
