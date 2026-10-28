@@ -90,8 +90,10 @@ export function weekLabel(start: number): string {
  * Publish this week's figures for the signed-in person. Always kept; shown to others only once
  * they opt in. Resolves with the board as it stands with these figures in it, when the site
  * could hand it back, so opening the board takes one request; null means read it yourself.
+ * With `ifChanged`, nothing is sent when the same figures went up in the last quarter hour.
+ * Every board that comes back is passed to the views listening with `onBoard`.
  */
-export async function publishWeeklyCount(uid: string): Promise<BoardRead | null> {
+export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolean } = {}): Promise<BoardRead | null> {
   if (!cloudConfigured()) return null;
   const settings = await getSettings();
   if (settings.cloudUser?.uid !== uid) return null;
@@ -120,16 +122,39 @@ export async function publishWeeklyCount(uid: string): Promise<BoardRead | null>
     try { localStorage.setItem(key, JSON.stringify({ sig, at: Date.now() })); } catch { /* fine */ }
   })();
   cloud.catch(() => undefined); // finishes in the background; only matters below if the post fails
+  const body = JSON.stringify({ ...row, ...(choice ? { ...choice, choiceAt: social?.chosenAt ?? 0 } : {}) });
+  if (opts.ifChanged && lastPost?.uid === uid && lastPost.body === body && Date.now() - lastPost.at < 15 * 60_000) return null;
+  lastPost = { uid, body, at: Date.now() };
   try {
     const token = await idToken();
     if (!token) throw new Error("Sign in first.");
-    const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ ...row, ...(choice ? { ...choice, choiceAt: social?.chosenAt ?? 0 } : {}) }) });
+    const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body });
     if (!res.ok) throw new Error(`The board store answered ${res.status}.`);
-    return boardFrom(await res.json());
+    const board = boardFrom(await res.json());
+    for (const listener of listeners) listener(board);
+    return board;
   } catch (e) {
+    lastPost = null;
     await cloud.catch(() => { throw e; });
     return null;
   }
+}
+
+/** The last figures sent, so moving between pages only posts when they changed. */
+let lastPost: { uid: string; body: string; at: number } | null = null;
+
+function withMine(board: BoardRead): BoardRead {
+  if (!lastPost) return board;
+  const mine = JSON.parse(lastPost.body) as { count: number; sets: number; week: string };
+  if (mine.week !== weekKey(Date.now())) return board;
+  const uid = lastPost.uid;
+  return { ...board, rows: board.rows.map((r) => r.uid === uid ? { ...r, count: Math.max(r.count, mine.count), sets: Math.max(r.sets, mine.sets) } : r) };
+}
+const listeners = new Set<(board: BoardRead) => void>();
+/** Hear about every board a post brings back, wherever in the app it was made. */
+export function onBoard(listener: (board: BoardRead) => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 type BoardBody = { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
@@ -157,9 +182,10 @@ export function staleNote(staleSince: number | null | undefined): string | null 
 export async function fetchLeaderboard(includeHidden = false): Promise<BoardRead> {
   if (!includeHidden) {
     try {
-      // The same for everyone, so no sign-in is sent.
+      // The same for everyone, so no sign-in is sent, and the copy may be up to half a minute
+      // old: this device's own figures, if it posted newer ones since, are kept.
       const res = await fetch("/api/progress?board=1");
-      if (res.ok) return boardFrom(await res.json());
+      if (res.ok) return withMine(boardFrom(await res.json()));
     } catch { /* fall back to the published rows */ }
   }
   // Fallback: the records students' own devices published. Someone who joined but has not

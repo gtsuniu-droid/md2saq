@@ -37,6 +37,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
 import { recordDeletes, requestSync, startSyncLoop, syncNow } from "./lib/sync";
 import { touchMember } from "./lib/members";
+import { publishWeeklyCount } from "./lib/leaderboard";
 import { setAdminRole } from "./lib/adminRole";
 import { hasEntered, markEntered } from "./lib/entered";
 import { patchSettings } from "./data/db";
@@ -184,6 +185,16 @@ export default function App() {
       unsub?.();
     };
   }, []);
+
+  // The board follows the student round the site: each page they move to (a new set, the
+  // marking page, home) publishes this week's count, once they have settled on it and only
+  // when the figures changed, so browsing costs nothing.
+  const boardUid = account?.cloudUser?.uid;
+  useEffect(() => {
+    if (!boardUid) return;
+    const t = setTimeout(() => void publishWeeklyCount(boardUid, { ifChanged: true }).catch(() => undefined), 1500);
+    return () => clearTimeout(t);
+  }, [pathname, boardUid]);
 
   // Sets are published, edited and deleted from several places (Admin, Browse, Create, the
   // AI connector), so an open tab re-reads the catalogue when it comes back into view and

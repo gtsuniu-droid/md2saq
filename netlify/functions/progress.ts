@@ -32,7 +32,12 @@ async function handle(req: Request, context?: Context): Promise<Response> {
   ]);
   if (isBoard) {
     recountLater(last, context);
-    return json(publicBoard(current(last, posted, now)));
+    // The same for everyone, so Netlify's CDN may answer repeat reads for half a minute without
+    // running this at all: open boards refresh themselves, and that keeps it cheap.
+    return new Response(JSON.stringify(publicBoard(current(last, posted, now))), { headers: {
+      "content-type": "application/json", "cache-control": "public, max-age=0, must-revalidate",
+      "netlify-cdn-cache-control": "public, durable, s-maxage=30, stale-while-revalidate=30", "netlify-vary": "query=board",
+    } });
   }
   if (!serviceAccount()) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);
   let body: CacheBody;

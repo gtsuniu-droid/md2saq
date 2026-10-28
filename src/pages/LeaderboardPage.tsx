@@ -1,34 +1,24 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { getSettings } from "../data/db";
 import { cloudConfigured } from "../lib/firebase";
-import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, sortRows, standing, weekLabel, weekStart, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
+import { boardName, firstSentence, sortRows, standing, weekLabel, weekStart, type LeaderboardUnit } from "../lib/leaderboard";
 import { BoardRows, Podium, SignInToJoin, UnitToggle, useBoardEntrance } from "../components/LeaderboardBoard";
+import { useLeaderboard } from "../lib/useLeaderboard";
 import { useSubmittedCount } from "../lib/useSubmittedCount";
 
 /** Everyone who opted in, ranked by questions answered or sets completed this week. */
 export default function LeaderboardPage() {
   const settings = useLiveQuery(getSettings, []);
-  const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [unit, setUnit] = useState<LeaderboardUnit>("questions");
-  const [error, setError] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const user = settings?.cloudUser;
   const social = settings?.social;
   const submitted = useSubmittedCount(user?.uid);
 
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        // Signed in: publish this week's count and get the board back with it, in one request.
-        const board = (user ? await publishWeeklyCount(user.uid).catch(() => null) : null) ?? await fetchLeaderboard();
-        if (live) setRows(board.rows);
-      } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
-    })();
-    return () => { live = false; };
-  }, [user?.uid, social?.leaderboard, social?.username, submitted]);
+  // Published on opening and on every submitted answer, then refreshed every minute while in view.
+  const { rows, error } = useLeaderboard(user?.uid, [social?.leaderboard, social?.username, submitted]);
 
   const sorted = rows ? sortRows(rows, unit) : [];
   useBoardEntrance(root, [rows !== null, unit]);

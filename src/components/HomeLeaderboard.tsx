@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import type { Settings } from "../data/types";
 import { cloudConfigured } from "../lib/firebase";
-import { boardName, fetchLeaderboard, firstSentence, publishWeeklyCount, questionsInWeek, sortRows, standing, weekStart, type LeaderboardRow } from "../lib/leaderboard";
+import { boardName, firstSentence, questionsInWeek, sortRows, standing, weekStart } from "../lib/leaderboard";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../data/db";
 import { belongsToAccount } from "../lib/progressAccount";
 import { joinLeaderboard } from "../lib/social";
+import { useLeaderboard } from "../lib/useLeaderboard";
 import { useSubmittedCount } from "../lib/useSubmittedCount";
 import { Avatar, SignInToJoin } from "./LeaderboardBoard";
 
@@ -17,24 +18,12 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   const user = settings.cloudUser;
   const joined = settings.social?.leaderboard === true;
   const [joining, setJoining] = useState(false);
-  const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
-  const [error, setError] = useState("");
-  // Re-publish and re-read as soon as a question is submitted, so the count moves at once.
+  // Re-publish and re-read as soon as a question is submitted, so the count moves at once;
+  // otherwise the strip refreshes every two minutes while the home page is in view.
   const submitted = useSubmittedCount(user?.uid);
+  const { rows, error } = useLeaderboard(user?.uid, [joined, settings.social?.username, submitted], 2 * 60_000);
   // This device's own figure for the week: shown whenever the board cannot be read, so it is never stale for you.
   const mine = useLiveQuery(async () => user ? questionsInWeek(await db.attempts.filter((a) => belongsToAccount(a, user.uid) && a.submittedAt !== undefined).toArray(), user.uid, weekStart(Date.now())) : 0, [user?.uid, submitted]) ?? 0;
-
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        // Signed in: publish this week's count and get the board back with it, in one request.
-        const board = (user ? await publishWeeklyCount(user.uid).catch(() => null) : null) ?? await fetchLeaderboard();
-        if (live) setRows(board.rows);
-      } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
-    })();
-    return () => { live = false; };
-  }, [user?.uid, joined, settings.social?.username, submitted]);
 
   if (!cloudConfigured() || (error && !user)) return null;
   const sorted = rows ? sortRows(rows, "questions") : [];
