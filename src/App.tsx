@@ -30,6 +30,7 @@ import NoticesBell from "./components/NoticesBell";
 import LandingPage, { BrandMark } from "./pages/LandingPage";
 import AmbossPanel from "./components/AmbossPanel";
 import AmbossHover from "./components/AmbossHover";
+import ImageViewer from "./components/ImageViewer";
 import { restoreAmbossSession } from "./lib/amboss";
 import { authErrorMessage, cloudConfigured, onCloudUser, refreshVerification, resendVerification, signOutCloud, type CloudUser } from "./lib/firebase";
 import SignInPanel from "./components/SignInPanel";
@@ -306,6 +307,7 @@ export default function App() {
       </div>
       <AmbossPanel />
       <AmbossHover />
+      <ImageViewer />
     </div>
   );
 }
