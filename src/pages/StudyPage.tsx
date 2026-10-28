@@ -1,14 +1,60 @@
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { db, getSettings } from "../data/db";
 import { PRESENTATIONS } from "../data/presentations";
 import type { Question } from "../data/types";
 import ModelAnswerContent from "../components/ModelAnswerContent";
-import { fetchStudySession, formatCode, shareMyAnswers, studyRecord, subscribeSharedAnswers, type SharedAnswers, type StudySession } from "../lib/study";
+import { deleteComment, fetchStudySession, formatCode, postComment, shareMyAnswers, studyRecord, subscribeComments, subscribeSharedAnswers, type SharedAnswers, type StudyComment, type StudySession } from "../lib/study";
 
 function Face({ name, photo }: { name: string; photo?: string }) {
   return <span className="lb-avatar plain" aria-hidden="true">{photo ? <img src={photo} alt="" referrerPolicy="no-referrer" /> : name.charAt(0).toUpperCase()}</span>;
+}
+
+const timeOf = (t: number) => { const d = new Date(t); return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : d.toLocaleDateString(undefined, { day: "numeric", month: "short" }); };
+
+/** One person's answer: a card that opens in full, with everyone's comments on it, when clicked. */
+function AnswerCard({ code, index, person, answer, comments, me, open, onToggle }: { code: string; index: number; person: { uid: string; name: string; photo?: string }; answer: { text: string; score?: number; maxScore?: number }; comments: StudyComment[]; me: string; open: boolean; onToggle: () => void }) {
+  const [draft, setDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState("");
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (open) box.current?.focus({ preventScroll: true }); }, [open]);
+  const send = async () => {
+    if (!draft.trim()) return;
+    setPosting(true); setError("");
+    try { await postComment(code, index, person.uid, draft); setDraft(""); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not post that."); }
+    finally { setPosting(false); }
+  };
+  const score = answer.score !== undefined ? <span className={`study-score${answer.maxScore && answer.score / answer.maxScore >= 0.7 ? " good" : ""}`}>{answer.score} / {answer.maxScore}</span> : <span className="study-score none">not marked</span>;
+  if (!open) {
+    return (
+      <button type="button" className="study-answer" onClick={onToggle} aria-expanded={false} aria-label={`${person.name}'s answer, open in full`}>
+        <span className="row spread"><span className="study-answer-name">{person.name}</span>{score}</span>
+        <span className="pre study-answer-text">{answer.text || "(blank)"}</span>
+        <span className="study-answer-foot muted">{comments.length ? `${comments.length} ${comments.length === 1 ? "comment" : "comments"}` : "Comment"}</span>
+      </button>
+    );
+  }
+  return (
+    <div className="study-answer open">
+      <div className="row spread"><span className="study-answer-name"><Face name={person.name} photo={person.photo} />{person.name}{person.uid === me && <span className="lb-you">you</span>}</span><span className="row">{score}<button type="button" className="link" onClick={onToggle}>Close</button></span></div>
+      <p className="pre">{answer.text || "(blank)"}</p>
+      <div className="study-comments">
+        {comments.map((c) => (
+          <div key={c.id} className="study-comment">
+            <Face name={c.name} photo={c.photo} />
+            <div><span className="study-comment-head"><strong>{c.name}</strong><span className="muted">{timeOf(c.createdAt)}</span>{c.uid === me && <button type="button" className="link" onClick={() => void deleteComment(code, c.id).catch(() => undefined)}>Delete</button>}</span><p className="pre">{c.text}</p></div>
+          </div>
+        ))}
+        <form className="study-comment-form" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+          <textarea ref={box} rows={2} value={draft} maxLength={1000} placeholder={person.uid === me ? "Add a note on your own answer" : `Comment on ${person.name}'s answer`} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); } }} />
+          <div className="row spread"><span className="muted">{error || "Everyone in the session can see comments."}</span><button type="submit" className="button small primary" disabled={posting || !draft.trim()}>{posting ? "Posting…" : "Comment"}</button></div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 /** Everyone's answers to a study session's questions, side by side, with self-marked scores. */
@@ -20,11 +66,13 @@ export default function StudyPage() {
   const [mine, setMine] = useState<"shared" | "none" | "pending">("pending");
   const [error, setError] = useState("");
   const [local, setLocal] = useState<(Question | undefined)[]>([]);
+  const [comments, setComments] = useState<StudyComment[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
   const me = settings?.cloudUser?.uid;
 
   useEffect(() => {
     if (!me) return;
-    let live = true; let stop: (() => void) | undefined;
+    let live = true; let stop: (() => void) | undefined; let stopComments: (() => void) | undefined;
     void (async () => {
       try {
         const s = await fetchStudySession(code);
@@ -36,9 +84,10 @@ export default function StudyPage() {
         const posted = await shareMyAnswers(code).catch(() => null);
         if (live) setMine(posted ? "shared" : "none");
         stop = await subscribeSharedAnswers(code, (rows) => { if (live) setShared(rows); }, (m) => { if (live) setError(m); });
+        stopComments = await subscribeComments(code, (rows) => { if (live) setComments(rows); }, () => undefined);
       } catch (e) { if (live) { setError(e instanceof Error ? e.message : "Could not load this session."); setStudy(null); } }
     })();
-    return () => { live = false; stop?.(); };
+    return () => { live = false; stop?.(); stopComments?.(); };
   }, [code, me]);
 
   const people = useMemo(() => {
@@ -75,11 +124,12 @@ export default function StudyPage() {
         return (
           <section key={i} className="card study-question" aria-label={`Question ${i + 1}`}>
             <div className="row spread study-question-head"><p><span className="study-qnum">{i + 1}</span>{q.text}</p>{q.marks !== undefined && <span className="muted">{q.marks} marks</span>}</div>
-            <div className="study-answers" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, people.length))}, minmax(0, 1fr))` }}>
+            <div className={`study-answers${open?.startsWith(`${i}:`) ? " has-open" : ""}`} style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, people.length))}, minmax(0, 1fr))` }}>
               {people.map((p) => {
                 const a = p.answers?.answers.find((x) => x.index === i);
                 if (!a) return <div key={p.uid} className="study-answer empty"><span className="muted">{p.name} has not shared this one yet</span></div>;
-                return <div key={p.uid} className="study-answer"><div className="row spread"><span className="study-answer-name">{p.name}</span>{a.score !== undefined ? <span className={`study-score${a.maxScore && a.score / a.maxScore >= 0.7 ? " good" : ""}`}>{a.score} / {a.maxScore}</span> : <span className="study-score none">not marked</span>}</div><p className="pre">{a.text || "(blank)"}</p></div>;
+                const key = `${i}:${p.uid}`;
+                return <AnswerCard key={p.uid} code={study.code} index={i} person={p} answer={a} comments={comments.filter((c) => c.index === i && c.targetUid === p.uid)} me={me} open={open === key} onToggle={() => setOpen(open === key ? null : key)} />;
               })}
             </div>
             {lq && (lq.modelAnswer || lq.modelAnswerDoc || lq.parts.some((p) => p.modelAnswer || p.modelAnswerDoc)) && (
@@ -91,7 +141,7 @@ export default function StudyPage() {
           </section>
         );
       })}
-      <p className="muted">Answers are shared when each person opens this page after finishing. Scores appear once they have marked themselves.</p>
+      <p className="muted">Answers are shared when each person opens this page after finishing. Scores appear once they have marked themselves. Click an answer to read it in full and comment on it.</p>
     </div>
   );
 }

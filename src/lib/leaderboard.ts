@@ -1,6 +1,6 @@
 import { db, getSettings } from "../data/db";
 import type { Attempt, Question } from "../data/types";
-import { cloudConfigured, communityServices, idToken } from "./firebase";
+import { cloudConfigured, communityServices, idToken, services } from "./firebase";
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
 
@@ -117,15 +117,15 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
   if (cloud.status === "rejected" && posted.status === "rejected") throw cloud.reason;
 }
 
-/** The board as read: `staleSince` is set when it is the last full count plus what devices reported since (null: no full count at all). */
+/** The board as read. `staleSince` is set when it is the last full count plus what devices reported since (null: no full count yet); the board itself never says so, only the Admin table. */
 export interface BoardRead { rows: LeaderboardRow[]; staleSince?: number | null }
 
 export function staleNote(staleSince: number | null | undefined): string | null {
   if (staleSince === undefined) return null;
-  if (!staleSince) return "The board cannot be fully counted right now. Showing what devices have reported.";
+  if (!staleSince) return "No full count yet: showing what devices have reported.";
   const at = new Date(staleSince);
   const when = at.toDateString() === new Date().toDateString() ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : at.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  return `Last fully counted at ${when}. Newer activity is added as devices report it.`;
+  return `Last fully counted at ${when}; newer activity added from devices' records.`;
 }
 
 /**
@@ -136,9 +136,9 @@ export function staleNote(staleSince: number | null | undefined): string | null 
 export async function fetchLeaderboard(includeHidden = false): Promise<BoardRead> {
   if (!includeHidden) {
     try {
-      const token = await idToken();
-      const res = token ? await fetch("/api/progress?board=1", { headers: { authorization: `Bearer ${token}` } }) : null;
-      if (res?.ok) {
+      const token = await idToken().catch(() => null);
+      const res = await fetch("/api/progress?board=1", { headers: token ? { authorization: `Bearer ${token}` } : {} });
+      if (res.ok) {
         const body = (await res.json()) as { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
         return { rows: body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() })), ...(body.stale ? { staleSince: body.asOf ?? null } : {}) };
       }
@@ -146,7 +146,7 @@ export async function fetchLeaderboard(includeHidden = false): Promise<BoardRead
   }
   // Fallback: the records students' own devices published. Someone who joined but has not
   // opened the site this week keeps their place with a zero, rather than vanishing.
-  const { firestore } = await communityServices();
+  const { firestore } = await services();
   const { collection, getDocs, limit, query, where } = await import("firebase/firestore");
   const filters = includeHidden ? [] : [where("visible", "==", true)];
   const snap = await getDocs(query(collection(firestore, "leaderboard"), ...filters, limit(200)));

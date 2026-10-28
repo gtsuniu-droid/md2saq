@@ -118,6 +118,25 @@ service cloud.firestore {
         allow create, update: if signedIn() && request.auth.uid == uid && validAnswers();
         allow delete: if signedIn() && request.auth.uid == uid;
       }
+      // Comments on one another's answers: anyone in the session reads, each writes as themselves.
+      match /comments/{id} {
+        function validComment() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'name', 'photo', 'index', 'targetUid', 'text', 'createdAt'])
+            && d.uid == request.auth.uid && d.name is string && d.name.size() <= 40
+            && (!('photo' in d) || (d.photo is string && d.photo.size() <= 2000))
+            && d.index is int && d.index >= 0 && d.index < 60
+            && d.targetUid is string && d.targetUid.size() <= 128
+            && d.text is string && d.text.size() >= 1 && d.text.size() <= 1000
+            && d.createdAt == request.time;
+        }
+        allow get: if signedIn();
+        allow list: if signedIn() && request.query.limit != null && request.query.limit <= 500;
+        allow create: if signedIn() && validComment();
+        allow update: if false;
+        allow delete: if signedIn() && (resource.data.uid == request.auth.uid
+          || get(/databases/$(database)/documents/studySessions/$(code)).data.hostUid == request.auth.uid);
+      }
     }
     // Notices behind the bell: the owner and admins post, every signed-in person reads.
     match /notices/{id} {

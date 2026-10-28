@@ -92,10 +92,10 @@ export default async (req: Request): Promise<Response> => {
 
 async function handle(req: Request): Promise<Response> {
   if (req.method !== "GET") return json({ error: "Method not allowed." }, 405);
-  const who = await caller(req);
-  if (who instanceof Response) return who;
-  // ?board=1 is the public leaderboard: any signed-in student, joined accounts only, nicknames only.
+  // ?board=1 is the public leaderboard: anyone, signed in or not; joined accounts only, nicknames only.
   const publicBoard = new URL(req.url).searchParams.has("board");
+  const who: { role: "owner" | "admin" | "student" } | Response = publicBoard && !req.headers.get("authorization") ? { role: "student" } : await caller(req);
+  if (who instanceof Response) return who;
   if (who.role === "student" && !publicBoard) return json({ error: "Admins only." }, 403);
   const sa = serviceAccount();
   if (!sa) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);

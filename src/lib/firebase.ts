@@ -34,7 +34,7 @@ export function cloudConfigured(): boolean {
 
 let ready: Promise<{ app: FirebaseApp; auth: Auth; firestore: Firestore }> | null = null;
 
-async function services() {
+export async function services() {
   if (!cloudConfigured()) throw new Error("Cloud sync is not configured on this site.");
   if (!ready) {
     ready = (async () => {

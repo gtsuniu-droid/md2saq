@@ -1,6 +1,8 @@
 import gsap from "gsap";
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
+import { cloudConfigured, signInWithGoogle } from "../lib/firebase";
 import { score, trend, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
+import { setProgressAccount } from "../lib/progressAccount";
 
 const MEDAL = ["gold", "silver", "bronze"];
 
@@ -99,4 +101,22 @@ export function useBoardEntrance(root: RefObject<HTMLElement | null>, deps: unkn
     return () => { tl.kill(); gsap.set([...order, ...rows, ...arrows, ...(crown ? [crown] : [])], { clearProps: "all" }); for (const c of counts) c.textContent = c.dataset.count ?? ""; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
+}
+
+/** One click to sign in with Google and be able to join the board. */
+export function SignInToJoin({ small = false }: { small?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const go = async () => {
+    setBusy(true); setError("");
+    try { await setProgressAccount(await signInWithGoogle()); }
+    catch (e) { setError(e instanceof Error && /popup-closed|cancelled/.test(e.message) ? "" : "Sign-in did not go through. Try again."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <span className="lb-signin">
+      <button type="button" className={`button primary${small ? " small" : ""}`} disabled={busy || !cloudConfigured()} onClick={() => void go()}>{busy ? "Signing in…" : "Sign in with Google"}</button>
+      {error && <span className="field-error">{error}</span>}
+    </span>
+  );
 }

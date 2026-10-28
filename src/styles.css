@@ -1584,6 +1584,9 @@ details.section > summary h2 { font-size: 1.15rem; }
 .lb-chip-count { font-weight: 700; }
 .lb-chip-row.gold .lb-chip-count { color: #b7791f; } .lb-chip-row.silver .lb-chip-count { color: var(--brand); } .lb-chip-row.bronze .lb-chip-count { color: var(--teal); }
 .lb-strip-line { flex: 1; }
+.lb-strip-invite { display: inline-flex; align-items: center; gap: .6rem 1rem; flex-wrap: wrap; }
+.lb-signin { display: inline-flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.lb-invite { margin-top: .5rem; }
 .lb-seg button { padding-inline: 1rem; }
 .lb-seg button.on { background: var(--brand-soft); color: var(--brand); }
 .lb-more { display: inline-block; font-weight: 600; text-decoration: none; white-space: nowrap; }
@@ -1682,8 +1685,25 @@ details.section > summary h2 { font-size: 1.15rem; }
 .study-answers { display: grid; gap: .75rem; }
 .study-answer { padding: .75rem .9rem; border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; gap: .4rem; }
 .study-answer.empty { align-items: center; justify-content: center; min-height: 90px; background: var(--card); border: 1px dashed var(--border); font-size: .85rem; }
-.study-answer-name { font-size: .85rem; font-weight: 600; }
+.study-answer-name { font-size: .85rem; font-weight: 600; display: inline-flex; align-items: center; gap: .45rem; }
+.study-answer-name .lb-avatar { width: 26px; height: 26px; font-size: .75rem; }
 .study-answer p { margin: 0; font-size: .88rem; line-height: 1.5; }
+button.study-answer { font: inherit; color: inherit; text-align: left; border: 1px solid transparent; cursor: pointer; width: 100%; }
+button.study-answer:hover, button.study-answer:focus-visible { border-color: var(--accent); background: var(--card); outline: none; }
+button.study-answer > .row { display: flex; width: 100%; }
+.study-answer-text { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; font-size: .88rem; line-height: 1.5; }
+.study-answer-foot { font-size: .78rem; margin-top: auto; }
+.study-answer.open { grid-column: 1 / -1; background: var(--card); border: 1px solid var(--accent); gap: .7rem; }
+.study-answer.open > .row .row { gap: .6rem; align-items: center; }
+.study-comments { border-top: 1px solid var(--border); padding-top: .7rem; display: flex; flex-direction: column; gap: .7rem; }
+.study-comment { display: flex; gap: .6rem; align-items: flex-start; }
+.study-comment .lb-avatar { width: 28px; height: 28px; font-size: .8rem; flex-shrink: 0; }
+.study-comment > div { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.study-comment-head { display: flex; gap: .5rem; align-items: baseline; font-size: .82rem; }
+.study-comment-head .link { font-size: .78rem; }
+.study-comment-form { display: flex; flex-direction: column; gap: .45rem; }
+.study-comment-form textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: .88rem; padding: .5rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; resize: vertical; }
+.study-comment-form .muted { font-size: .78rem; }
 .study-score { padding: 2px 8px; border-radius: 999px; background: #fff3cc; color: #9a6b00; font-size: .78rem; font-weight: 700; white-space: nowrap; }
 .study-score.good { background: var(--teal-soft); color: var(--teal); }
 .study-score.none { background: var(--card); color: var(--muted); font-weight: 600; }

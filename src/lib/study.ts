@@ -193,6 +193,39 @@ export async function shareMyAnswers(code: string): Promise<SharedAnswers | null
   return { uid, name, photo, answers, sharedAt: Date.now() };
 }
 
+export interface StudyComment { id: string; uid: string; name: string; photo?: string; index: number; targetUid: string; text: string; createdAt: number }
+
+/** Say something about one person's answer to one question. */
+export async function postComment(code: string, index: number, targetUid: string, text: string): Promise<void> {
+  const body = text.trim().slice(0, 1000);
+  if (!body) return;
+  const settings = await getSettings();
+  const uid = settings.cloudUser?.uid;
+  if (!uid) throw new Error("Sign in first.");
+  const { firestore } = await communityServices();
+  const { addDoc, collection, serverTimestamp } = await import("firebase/firestore");
+  const { name, photo } = await displayName();
+  await addDoc(collection(firestore, "studySessions", code, "comments"), { uid, name, ...(photo ? { photo } : {}), index, targetUid, text: body, createdAt: serverTimestamp() });
+}
+
+export async function deleteComment(code: string, id: string): Promise<void> {
+  const { firestore } = await communityServices();
+  const { deleteDoc, doc } = await import("firebase/firestore");
+  await deleteDoc(doc(firestore, "studySessions", code, "comments", id));
+}
+
+/** Every comment in a session, live, oldest first. Resolves the unsubscribe function. */
+export async function subscribeComments(code: string, cb: (rows: StudyComment[]) => void, onError: (message: string) => void): Promise<() => void> {
+  const { firestore } = await communityServices();
+  const { collection, limit, onSnapshot, query } = await import("firebase/firestore");
+  return onSnapshot(query(collection(firestore, "studySessions", code, "comments"), limit(500)), (snap) => {
+    cb(snap.docs.map((d) => {
+      const v = d.data() as Record<string, unknown>; const at = v.createdAt as { toMillis?: () => number } | null | undefined;
+      return { id: d.id, uid: String(v.uid ?? ""), name: String(v.name ?? "Student"), photo: typeof v.photo === "string" ? v.photo : undefined, index: typeof v.index === "number" ? v.index : -1, targetUid: String(v.targetUid ?? ""), text: String(v.text ?? ""), createdAt: at?.toMillis?.() ?? Date.now() };
+    }).sort((a, b) => a.createdAt - b.createdAt));
+  }, (e) => onError(e.message));
+}
+
 /** Everyone's shared answers for a code, live. Resolves the unsubscribe function. */
 export async function subscribeSharedAnswers(code: string, cb: (rows: SharedAnswers[]) => void, onError: (message: string) => void): Promise<() => void> {
   const { firestore } = await communityServices();
