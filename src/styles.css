@@ -946,7 +946,8 @@ label { line-height: 1.4; }
 .paper-top { background: var(--card); padding-block: .75rem; }
 .paper-stem { background: var(--surface); }
 .paper-answers, .paper-summary { background: var(--card); }
-.col-head { padding-block: .65rem; }
+/* Every column header is as tall as one holding a small button, so side-by-side headers line up whichever has buttons. */
+.col-head { padding-block: .65rem; min-height: calc(32px + 1.3rem); }
 .paper-side button.current { background: var(--teal); }
 .review-rating button { border-color: var(--border); background: var(--card); }
 
@@ -1334,6 +1335,7 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .mark-guide-notes { margin-top: 1.5rem; font-size: .9rem; }
 .mark-guide-notes summary { cursor: pointer; color: var(--muted); }
 .mark-answers .col-head-total { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mark-answers .col-head .hl-btn { margin-right: .75rem; }
 .mark-set-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .mark-block .marking-prompt { font-weight: 600; }
 .mark-part { margin-bottom: 2rem; }

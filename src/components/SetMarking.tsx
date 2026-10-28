@@ -238,7 +238,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         {set?.markingNotes && <details className="mark-guide-notes"><summary>Set marking notes</summary><p className="pre">{set.markingNotes}</p></details>}
       </div>
       <div className="paper-answers mark-answers">
-        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} /><span className="col-head-total">{total} / {maximum}</span></div>
+        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}<span className="col-head-total">{total} / {maximum}</span></div>
         <fieldset className="mark-set-fields" disabled={saving}>
           {rows.map(({ question, attempt, mark, order }) => {
             const draft = attempt ? drafts[attempt.id] : undefined;
@@ -282,7 +282,6 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         <span>{rows.length} question{rows.length === 1 ? "" : "s"}</span>
       </span>
       <span style={{ flex: 1 }} />
-      {forMarking?.questions.length ? <button title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}
       <Link className="button" to={inSession ? `/session/${inSession.id}` : "/home#history"}>{inSession ? "Session summary" : "Back to history"}</Link>
     </div>}
     <div className={embedded ? "paper mark-paper embedded" : "paper mark-paper"}>

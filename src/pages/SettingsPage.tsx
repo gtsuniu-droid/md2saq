@@ -183,7 +183,7 @@ export default function SettingsPage() {
                   };
                   return (
                     <>
-                      <Row title="Join the leaderboard" help="Show your week to other students. Off keeps you out of the public board; admins can still see your figures.">
+                      <Row title="Join the leaderboard" help="Show your week to other students.">
                         <input type="checkbox" aria-label="Join the leaderboard" checked={form.leaderboard} onChange={(e) => setSocial({ ...form, leaderboard: e.target.checked })} />
                       </Row>
                       <Row title="Nickname" help={`Shown instead of your name. Leave blank to use your first name. Up to ${USERNAME_MAX} characters.`}>
