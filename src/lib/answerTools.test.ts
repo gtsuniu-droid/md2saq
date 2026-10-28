@@ -65,3 +65,15 @@ it("lets a student's connector read their set and leave marks the marking page t
   expect(await (await call("someone")).json()).toEqual({ suggested: null });
   expect((await tool("markMyAnswers", { marks: [{ part: "9", score: 1, feedback: "" }] })).error).toBe(true);
 });
+
+it("tells sets with the same name apart by their id", async () => {
+  const twin = { ...set, key: "t9", at: 200, questions: [{ ...set.questions[0], attemptId: "t9" }] };
+  await call("ana", { method: "POST", body: JSON.stringify(set) });
+  await call("ana", { method: "POST", body: JSON.stringify(twin) });
+  const tool = await connect("ana");
+  expect((await tool("getMyAnswers", {})).body.id).toBe("t9"); // the most recent
+  expect((await tool("getMyAnswers", { set: "t1" })).body).toMatchObject({ id: "t1", otherRecentSets: [{ id: "t9", name: set.name }] });
+  expect((await tool("markMyAnswers", { set: "t1", marks: [{ part: "1(b)", score: 1, feedback: "Yes." }] })).body).toMatchObject({ success: true, id: "t1" });
+  expect((await (await call("ana")).json()).suggested.parts[0]).toMatchObject({ attemptId: "t1", label: "b" });
+});
+

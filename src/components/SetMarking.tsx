@@ -112,8 +112,8 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const copy = () => { if (forMarking) void navigator.clipboard.writeText(setText(forMarking)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
   // Admins only: their assistant reads the set through the connector and sends marks back here.
   const markPrompt = forMarking ? [
-    `Using the SAQ Practice connector: mark my answers to "${forMarking.name}".`,
-    `Read them with getMyAnswers (set: "${forMarking.name}"), mark every part against its model answer and the marking notes, quote the passages of my answers you comment on, then send the marks with markMyAnswers.`,
+    `Using the SAQ Practice connector: mark my answers to "${forMarking.name}" (set id ${forMarking.key}).`,
+    `Read them with getMyAnswers (set: "${forMarking.key}"), mark every part against its model answer and the marking notes, quote the passages of my answers you comment on, then send the marks with markMyAnswers (set: "${forMarking.key}").`,
     "I will check and save them on the marking page.",
   ].join("\n") : "";
   // Parts given a suggested score, per attempt, so their score boxes show it.

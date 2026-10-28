@@ -11,7 +11,7 @@ import { findSet, mySets, suggest } from "./answers";
  */
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const setRef = z.string().optional().describe("Part of the set's name or number; leave out for the set most recently opened for marking.");
+const setRef = z.string().optional().describe("The set's id (the marking page's prompt gives it), or part of its name or number; leave out for the set most recently opened for marking.");
 
 export function registerAnswerTools(server: McpServer, uid: string): void {
   server.registerTool("getMyAnswers", {
@@ -23,13 +23,13 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
     try {
       const sets = await mySets(uid);
       const s = findSet(sets, set);
-      if (!s) return fail(new Error(sets.length ? `No recent set matches "${set}".` : "No sets yet."), { hint: "Sets appear once the student opens a set's marking page on the site.", recent: sets.map((x) => x.name) });
+      if (!s) return fail(new Error(sets.length ? `No recent set matches "${set}".` : "No sets yet."), { hint: "Sets appear once the student opens a set's marking page on the site.", recent: sets.map((x) => ({ id: x.key, name: x.name })) });
       return ok({
-        success: true, set: s.name, submitted: new Date(s.at).toISOString(),
+        success: true, id: s.key, set: s.name, submitted: new Date(s.at).toISOString(),
         parts: s.questions.flatMap((q) => q.parts.map((p) => ({ part: p.id, marks: p.marks }))),
         ...(s.suggested ? { alreadySuggested: `Marks were suggested ${new Date(s.suggested.at).toISOString()}; sending again replaces them.` } : {}),
-        otherRecentSets: sets.filter((x) => x !== s).map((x) => x.name),
-        howToMark: "Mark every part against its model answer and the marking notes: a score out of its marks and one or two lines of feedback. Point at specific passages by quoting them word for word from the answer, with a short comment on each. Then call markMyAnswers.",
+        otherRecentSets: sets.filter((x) => x !== s).map((x) => ({ id: x.key, name: x.name })),
+        howToMark: `Mark every part against its model answer and the marking notes: a score out of its marks and one or two lines of feedback. Point at specific passages by quoting them word for word from the answer, with a short comment on each. Then call markMyAnswers with set "${s.key}".`,
         text: setText(s),
       });
     } catch (e) { return fail(e); }
@@ -63,7 +63,7 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
       const marked = new Set(checked.parts.map((m) => `${m.attemptId}:${m.label}`));
       const missing = s.questions.flatMap((q) => q.parts.filter((p) => !marked.has(`${q.attemptId}:${p.label}`)).map((p) => p.id));
       return ok({
-        success: true, set: s.name, partsMarked: checked.parts.length,
+        success: true, id: s.key, set: s.name, partsMarked: checked.parts.length,
         total: `${checked.parts.reduce((t, p) => t + p.score, 0)} / ${all.reduce((t, p) => t + p.marks, 0)}`,
         ...(missing.length ? { notMarked: missing } : {}), ...(problems.length ? { problems } : {}),
         next: "Tell the student the marks are waiting on the set's marking page, to check and save.",

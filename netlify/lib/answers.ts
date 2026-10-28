@@ -33,10 +33,11 @@ export async function suggest(uid: string, setKey: string, marks: SuggestedMarks
     : null);
 }
 
-/** A set by name or number (any part of it, any case), else the most recent. */
+/** A set by its id, else by name or number (any part of it, any case), else the most recent. */
 export function findSet(sets: StoredSet[], query?: string): StoredSet | undefined {
-  const q = query?.trim().toLowerCase();
-  return q ? sets.find((s) => s.name.toLowerCase().includes(q) || s.key === query) : sets[0];
+  const q = query?.trim();
+  if (!q) return sets[0];
+  return sets.find((s) => s.key === q) ?? sets.find((s) => s.name.toLowerCase().includes(q.toLowerCase()));
 }
 
 /** A posted set, checked for shape and size before it is kept. */
