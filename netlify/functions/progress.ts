@@ -3,7 +3,7 @@ import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { caller, firebaseEnv } from "./mcp-token";
 import { hosted, openNamedStore } from "../lib/store";
-import { fromRecord, sortRows, staleTable, weekStart, weeklyFigures, type AttemptRow, type CacheBody, type Pair, type Rec, type Row } from "../lib/progress";
+import { CACHE_KEY, CACHE_MS, fromRecord, publicBoard, sortRows, staleTable, weekStart, weeklyFigures, type AttemptRow, type CacheBody, type Pair, type Rec, type Row } from "../lib/progress";
 import type { BoardRecord } from "../lib/progress";
 
 /**
@@ -79,11 +79,12 @@ async function attemptsOf(base: string, token: string, uid: string, since: numbe
  * flag, its own counts). The server adds up every account's submitted answers and that
  * figure wins; an account's record stands in only when the server cannot read its answers.
  * Reads are the scarce resource (the free Firestore quota is a daily budget), so the result
- * is cached for every visitor in the bank's blob store for ten minutes.
+ * is cached for every visitor in the bank's blob store for ten minutes. Records posted to
+ * /api/board in the meantime are laid over that stored table as they arrive, so it is re-read
+ * from the store every few seconds rather than trusted from memory.
  */
-const CACHE_KEY = "progress-cache";
-const CACHE_MS = 10 * 60_000;
 let cache: CacheBody | null = null;
+let loadedAt = 0;
 
 export default async (req: Request): Promise<Response> => {
   try { return await handle(req); }
@@ -92,21 +93,22 @@ export default async (req: Request): Promise<Response> => {
 
 async function handle(req: Request): Promise<Response> {
   if (req.method !== "GET") return json({ error: "Method not allowed." }, 405);
-  // ?board=1 is the public leaderboard: anyone, signed in or not; joined accounts only, nicknames only.
-  const publicBoard = new URL(req.url).searchParams.has("board");
-  const who: { role: "owner" | "admin" | "student" } | Response = publicBoard && !req.headers.get("authorization") ? { role: "student" } : await caller(req);
+  // ?board=1 is the public leaderboard: anyone, signed in or not; joined accounts only, nicknames
+  // only. It shows the same to everyone, so the sign-in is not checked (that costs two calls to Google).
+  const isBoard = new URL(req.url).searchParams.has("board");
+  const who: { role: "owner" | "admin" | "student" } | Response = isBoard ? { role: "student" } : await caller(req);
   if (who instanceof Response) return who;
-  if (who.role === "student" && !publicBoard) return json({ error: "Admins only." }, 403);
+  if (who.role === "student" && !isBoard) return json({ error: "Admins only." }, 403);
   const sa = serviceAccount();
   if (!sa) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);
   const respond = (body: CacheBody) => {
+    if (isBoard) return json(publicBoard(body));
     const state = body.stale ? { stale: true, asOf: body.asOf, reason: body.reason } : {};
-    if (publicBoard) return json({ week: body.week, ...state, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) });
     return json({ week: body.week, ...state, accounts: body.accounts, emailsIncluded: who.role === "owner", rows: who.role === "owner" ? body.rowsWithEmail : body.rowsWithEmail.map((r) => ({ ...r, email: undefined })) });
   };
   const store = openNamedStore("bank");
   const now = Date.now();
-  if (!cache || now - cache.at >= 60_000) cache = ((await store.get(CACHE_KEY, { type: "json" })) as CacheBody | null) ?? cache;
+  if (!cache || now - loadedAt >= 5_000) { cache = ((await store.get(CACHE_KEY, { type: "json" })) as CacheBody | null) ?? cache; loadedAt = now; }
   if (cache && now - cache.at < CACHE_MS && cache.week === weekStart(now)) return respond(cache);
   const { projectId } = firebaseEnv();
   const base = `https://firestore.googleapis.com/v1/projects/${projectId ?? sa.project_id}/databases/(default)/documents`;
@@ -142,7 +144,10 @@ async function handle(req: Request): Promise<Response> {
       try {
         const rows = await attemptsOf(base, token, uid, since);
         const f = weeklyFigures(rows, questionCount, now).get(uid) ?? { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
-        figures.set(uid, { pair: f, source: "server" });
+        // A device posts its count as soon as the board is opened, which can be before its answers are synced.
+        const d = fromRecord(nick.get(uid), now);
+        const top = (a: Pair["week"], b: Pair["week"]) => ({ questions: Math.max(a.questions, b.questions), sets: Math.max(a.sets, b.sets) });
+        figures.set(uid, { pair: { week: top(f.week, d.week), last: top(f.last, d.last) }, source: "server" });
       } catch {
         figures.set(uid, { pair: fromRecord(nick.get(uid), now), source: nick.has(uid) ? "device" : "none" });
       }
@@ -156,7 +161,7 @@ async function handle(req: Request): Promise<Response> {
   });
   sortRows(rows);
   const body: CacheBody = { at: now, week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
-  cache = body;
+  cache = body; loadedAt = now;
   await store.setJSON(CACHE_KEY, body).catch(() => undefined);
   return respond(body);
 }

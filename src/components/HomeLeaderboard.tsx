@@ -28,8 +28,8 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
     let live = true;
     void (async () => {
       try {
-        if (user) await publishWeeklyCount(user.uid).catch(() => undefined);
-        const board = await fetchLeaderboard();
+        // Signed in: publish this week's count and get the board back with it, in one request.
+        const board = (user ? await publishWeeklyCount(user.uid).catch(() => null) : null) ?? await fetchLeaderboard();
         if (live) setRows(board.rows);
       } catch (e) { if (live) setError(e instanceof Error ? e.message : "Could not load the leaderboard."); }
     })();

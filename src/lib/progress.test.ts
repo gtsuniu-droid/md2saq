@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { figuresFor, staleTable, weekKey, weekStart, weeklyFigures, type CacheBody, type Rec } from "../../netlify/lib/progress";
+import { figuresFor, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, withRecord, type CacheBody, type Rec } from "../../netlify/lib/progress";
 
 it("counts each account's questions and completed sets this week and last", () => {
   const now = new Date(2026, 9, 28, 12).getTime();
@@ -45,4 +45,26 @@ it("rolls a last-week table into last week's column, and stands on posted record
   const alone = staleTable(null, new Map<string, Rec>([["d", { name: "Dee", week: weekKey(now - 7 * 24 * 3600_000), count: 5, sets: 1, prevCount: 0, prevSets: 0, visible: false, at: now }]]), now, "429");
   expect(alone.asOf).toBeUndefined();
   expect(alone.rowsWithEmail).toEqual([{ uid: "d", name: "Dee", photo: undefined, nickname: "Dee", joined: false, lastSeenAt: now, questions: 0, sets: 0, prevQuestions: 5, prevSets: 1, source: "device" }]);
+});
+
+it("lays a just-posted record over the cached table, keeping the higher count", () => {
+  const now = Date.UTC(2026, 9, 28, 12);
+  const thisWeek = weekKey(now);
+  const table: CacheBody = { at: now - 60_000, week: weekStart(now), accounts: 2, rowsWithEmail: [
+    { uid: "a", name: "Ava", email: "ava@x", nickname: "Ava", joined: true, questions: 10, sets: 2, prevQuestions: 4, prevSets: 1, source: "server" },
+    { uid: "b", name: "Ben", email: "ben@x", joined: false, questions: 3, sets: 0, prevQuestions: 0, prevSets: 0, source: "server" },
+  ] };
+  const rec = (count: number, visible = true): Rec => ({ name: "Benny", week: thisWeek, count, sets: 0, prevCount: 0, prevSets: 0, visible, at: now });
+  const raised = withRecord(table, "b", rec(14), now)!;
+  expect(raised.at).toBe(table.at); // still due a full count on time
+  expect(raised.rowsWithEmail.map((r) => [r.uid, r.questions, r.joined, r.source])).toEqual([["b", 14, true, "device"], ["a", 10, true, "server"]]);
+  expect(raised.rowsWithEmail[0].email).toBe("ben@x");
+  expect(publicBoard(raised).rows.map((r) => [r.name, r.questions])).toEqual([["Benny", 14], ["Ava", 10]]);
+  // A device behind the server (answers from another device not pulled yet) does not lower it.
+  expect(withRecord(table, "b", rec(1), now)!.rowsWithEmail.find((r) => r.uid === "b")).toMatchObject({ questions: 3, source: "server", joined: true });
+  // Leaving the board takes the row off it at once.
+  expect(publicBoard(withRecord(raised, "b", rec(14, false), now)!).rows.map((r) => r.uid)).toEqual(["a"]);
+  // A newcomer is added; last week's table is left for a full count.
+  expect(withRecord(table, "c", { ...rec(2), name: "Cal Smith" }, now)!.accounts).toBe(3);
+  expect(withRecord({ ...table, week: weekStart(now) - 7 * 24 * 3600_000 }, "b", rec(14), now)).toBeNull();
 });

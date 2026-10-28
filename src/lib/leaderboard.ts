@@ -86,11 +86,15 @@ export function weekLabel(start: number): string {
   return `${fmt(start)} to ${fmt(start + 6 * DAY)}`;
 }
 
-/** Publish this week's figures for the signed-in person. Always kept; shown to others only once they opt in. */
-export async function publishWeeklyCount(uid: string): Promise<void> {
-  if (!cloudConfigured()) return;
+/**
+ * Publish this week's figures for the signed-in person. Always kept; shown to others only once
+ * they opt in. Resolves with the board as it stands with these figures in it, when the site
+ * could hand it back, so opening the board takes one request; null means read it yourself.
+ */
+export async function publishWeeklyCount(uid: string): Promise<BoardRead | null> {
+  if (!cloudConfigured()) return null;
   const settings = await getSettings();
-  if (settings.cloudUser?.uid !== uid) return;
+  if (settings.cloudUser?.uid !== uid) return null;
   const [attempts, library] = await Promise.all([db.attempts.filter((a) => belongsToAccount(a, uid) && a.submittedAt !== undefined).toArray(), loadLibrary()]);
   const start = weekStart(Date.now());
   const photo = settings.cloudUser?.photo && /^https:\/\//.test(settings.cloudUser.photo) ? settings.cloudUser.photo.slice(0, 2000) : undefined;
@@ -100,22 +104,31 @@ export async function publishWeeklyCount(uid: string): Promise<void> {
     prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
   };
   // Two copies: Firestore, and the site's own store, which keeps taking records (and can be
-  // read) while Firestore's daily read budget is spent. One of the two must succeed.
-  const [cloud, posted] = await Promise.allSettled([
-    (async () => {
-      const { firestore } = await communityServices();
-      const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
-      await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
-    })(),
-    (async () => {
-      const token = await idToken();
-      if (!token) throw new Error("Sign in first.");
-      const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(row) });
-      if (!res.ok) throw new Error(`The board store answered ${res.status}.`);
-    })(),
-  ]);
-  if (cloud.status === "rejected" && posted.status === "rejected") throw cloud.reason;
+  // read) while Firestore's daily read budget is spent. One of the two must succeed. The
+  // site's copy is the one the board is served from, so only it is waited for.
+  const cloud = (async () => {
+    const { firestore } = await communityServices();
+    const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
+    await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
+  })();
+  cloud.catch(() => undefined); // finishes in the background; only matters below if the post fails
+  try {
+    const token = await idToken();
+    if (!token) throw new Error("Sign in first.");
+    const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(row) });
+    if (!res.ok) throw new Error(`The board store answered ${res.status}.`);
+    return res.status === 200 ? boardFrom(await res.json()) : null;
+  } catch (e) {
+    await cloud.catch(() => { throw e; });
+    return null;
+  }
 }
+
+type BoardBody = { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
+const boardFrom = (body: BoardBody): BoardRead => ({
+  rows: body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() })),
+  ...(body.stale ? { staleSince: body.asOf ?? null } : {}),
+});
 
 /** The board as read. `staleSince` is set when it is the last full count plus what devices reported since (null: no full count yet); the board itself never says so, only the Admin table. */
 export interface BoardRead { rows: LeaderboardRow[]; staleSince?: number | null }
@@ -136,12 +149,9 @@ export function staleNote(staleSince: number | null | undefined): string | null 
 export async function fetchLeaderboard(includeHidden = false): Promise<BoardRead> {
   if (!includeHidden) {
     try {
-      const token = await idToken().catch(() => null);
-      const res = await fetch("/api/progress?board=1", { headers: token ? { authorization: `Bearer ${token}` } : {} });
-      if (res.ok) {
-        const body = (await res.json()) as { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
-        return { rows: body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() })), ...(body.stale ? { staleSince: body.asOf ?? null } : {}) };
-      }
+      // The same for everyone, so no sign-in is sent.
+      const res = await fetch("/api/progress?board=1");
+      if (res.ok) return boardFrom(await res.json());
     } catch { /* fall back to the published rows */ }
   }
   // Fallback: the records students' own devices published. Someone who joined but has not

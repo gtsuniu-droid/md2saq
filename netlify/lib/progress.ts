@@ -42,6 +42,9 @@ export type Pair = { week: { questions: number; sets: number }; last: { question
 const zero: Pair = { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
 export interface Row { uid: string; name: string; email?: string; photo?: string; nickname?: string; joined: boolean; questions: number; sets: number; prevQuestions: number; prevSets: number; lastSeenAt?: number; source: "server" | "device" | "none" }
 export type CacheBody = { at: number; week: number; accounts: number; rowsWithEmail: Row[]; stale?: true; asOf?: number; reason?: string };
+/** The board table every visitor is served, kept in the bank's store; a full count is redone once it is this old. */
+export const CACHE_KEY = "progress-cache";
+export const CACHE_MS = 10 * 60_000;
 export const sortRows = (rows: Row[]) => rows.sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
 
 /** A device's record as this week's and last week's figures, given which week it describes. */
@@ -50,6 +53,42 @@ export function fromRecord(n: Rec | undefined, now: number): Pair {
   if (n.week === weekKey(now)) return { week: { questions: n.count, sets: n.sets }, last: { questions: n.prevCount, sets: n.prevSets } };
   if (n.week === weekKey(now - 7 * 24 * 3600 * 1000)) return { week: { questions: 0, sets: 0 }, last: { questions: n.count, sets: n.sets } };
   return zero;
+}
+
+/**
+ * An account's row with its device's record laid over it: the nickname, photo and joined flag
+ * from the record, and the higher of the two counts (counts only grow within a week, and the
+ * device may know of answers the server has not been sent yet, or the reverse).
+ */
+export function overlay(cur: Row | undefined, uid: string, p: Rec, now: number): Row {
+  const f = fromRecord(p, now);
+  const device = { questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets };
+  if (!cur) return { uid, name: (p.name ?? "").trim().split(/\s+/)[0] || "Student", photo: p.photo, nickname: p.name, joined: p.visible !== false, lastSeenAt: p.at, ...device, source: "device" };
+  const raised = device.questions > cur.questions || device.sets > cur.sets;
+  return {
+    ...cur, nickname: p.name ?? cur.nickname, photo: p.photo ?? cur.photo, joined: p.visible !== false, lastSeenAt: Math.max(cur.lastSeenAt ?? 0, p.at),
+    questions: Math.max(cur.questions, device.questions), sets: Math.max(cur.sets, device.sets),
+    prevQuestions: Math.max(cur.prevQuestions, device.prevQuestions), prevSets: Math.max(cur.prevSets, device.prevSets),
+    source: raised ? "device" : cur.source,
+  };
+}
+
+/**
+ * The cached table with one record just posted laid over it, so a student who opens the board
+ * sees their own count straight away and everyone else sees it on their next read. Null when
+ * the table is from an earlier week: only a full count can start a new one.
+ */
+export function withRecord(table: CacheBody | null, uid: string, p: Rec, now: number): CacheBody | null {
+  if (!table || table.week !== weekStart(now)) return null;
+  const rows = table.rowsWithEmail.filter((r) => r.uid !== uid);
+  rows.push(overlay(table.rowsWithEmail.find((r) => r.uid === uid), uid, p, now));
+  return { ...table, accounts: rows.length, rowsWithEmail: sortRows(rows) };
+}
+
+/** What the public board shows: joined accounts only, under their nicknames, no emails. */
+export function publicBoard(body: CacheBody) {
+  const state = body.stale ? { stale: true, asOf: body.asOf, reason: body.reason } : {};
+  return { week: body.week, ...state, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) };
 }
 
 /**
@@ -64,11 +103,7 @@ export function staleTable(last: CacheBody | null, posted: Map<string, Rec>, now
   for (const [uid, p] of posted) {
     const cur = rows.get(uid);
     if (cur && p.at <= (last?.at ?? 0)) continue;
-    const f = fromRecord(p, now);
-    const figures = { questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, source: "device" as const };
-    rows.set(uid, cur
-      ? { ...cur, ...figures, nickname: p.name ?? cur.nickname, photo: p.photo ?? cur.photo, joined: p.visible !== false, lastSeenAt: Math.max(cur.lastSeenAt ?? 0, p.at) }
-      : { uid, name: (p.name ?? "").trim().split(/\s+/)[0] || "Student", photo: p.photo, nickname: p.name, joined: p.visible !== false, lastSeenAt: p.at, ...figures });
+    rows.set(uid, overlay(cur, uid, p, now));
   }
   const rowsWithEmail = sortRows([...rows.values()]);
   return { at: now, week: weekStart(now), accounts: rowsWithEmail.length, rowsWithEmail, stale: true, asOf: last?.at, reason };
