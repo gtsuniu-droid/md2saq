@@ -98,26 +98,34 @@ export async function publishWeeklyCount(uid: string): Promise<BoardRead | null>
   const [attempts, library] = await Promise.all([db.attempts.filter((a) => belongsToAccount(a, uid) && a.submittedAt !== undefined).toArray(), loadLibrary()]);
   const start = weekStart(Date.now());
   const photo = settings.cloudUser?.photo && /^https:\/\//.test(settings.cloudUser.photo) ? settings.cloudUser.photo.slice(0, 2000) : undefined;
+  // Whether to be on the board is said only by a device that has seen the student choose.
+  const social = settings.social;
   const row = {
-    uid, name: boardName(settings), visible: settings.social?.leaderboard === true, week: weekKey(Date.now()), ...(photo ? { photo } : {}),
+    uid, name: boardName(settings), week: weekKey(Date.now()), ...(photo ? { photo } : {}),
     count: questionsInWeek(attempts, uid, start), sets: setsInWeek(attempts, library.questions, uid, start),
     prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
   };
-  // Two copies: Firestore, and the site's own store, which keeps taking records (and can be
-  // read) while Firestore's daily read budget is spent. One of the two must succeed. The
-  // site's copy is the one the board is served from, so only it is waited for.
+  // Two copies: the site's own store, which the board is served from and which has no daily
+  // read budget, and Firestore, kept for the Admin page and as a fallback. Only the first is
+  // waited for, and Firestore is written only when the figures changed or every few hours.
+  const choice = social ? { visible: social.leaderboard === true } : null;
   const cloud = (async () => {
+    if (!choice) return;
+    const doc_ = { ...row, ...choice };
+    const key = `leaderboard.written.${uid}`; const sig = JSON.stringify(doc_);
+    try { const was = JSON.parse(localStorage.getItem(key) ?? "null") as { sig: string; at: number } | null; if (was?.sig === sig && Date.now() - was.at < 6 * 3600_000) return; } catch { /* write it */ }
     const { firestore } = await communityServices();
     const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
-    await setDoc(doc(firestore, "leaderboard", uid), { ...row, updatedAt: serverTimestamp() });
+    await setDoc(doc(firestore, "leaderboard", uid), { ...doc_, updatedAt: serverTimestamp() });
+    try { localStorage.setItem(key, JSON.stringify({ sig, at: Date.now() })); } catch { /* fine */ }
   })();
   cloud.catch(() => undefined); // finishes in the background; only matters below if the post fails
   try {
     const token = await idToken();
     if (!token) throw new Error("Sign in first.");
-    const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(row) });
+    const res = await fetch("/api/board", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ ...row, ...(choice ? { ...choice, choiceAt: social?.chosenAt ?? 0 } : {}) }) });
     if (!res.ok) throw new Error(`The board store answered ${res.status}.`);
-    return res.status === 200 ? boardFrom(await res.json()) : null;
+    return boardFrom(await res.json());
   } catch (e) {
     await cloud.catch(() => { throw e; });
     return null;

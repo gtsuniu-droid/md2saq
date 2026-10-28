@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { figuresFor, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, withRecord, type CacheBody, type Rec } from "../../netlify/lib/progress";
+import { current, figuresFor, mergeRecord, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, type BoardRecord, type CacheBody, type Posted, type Rec } from "../../netlify/lib/progress";
+import { newerSocial } from "./social";
 
 it("counts each account's questions and completed sets this week and last", () => {
   const now = new Date(2026, 9, 28, 12).getTime();
@@ -47,7 +48,7 @@ it("rolls a last-week table into last week's column, and stands on posted record
   expect(alone.rowsWithEmail).toEqual([{ uid: "d", name: "Dee", photo: undefined, nickname: "Dee", joined: false, lastSeenAt: now, questions: 0, sets: 0, prevQuestions: 5, prevSets: 1, source: "device" }]);
 });
 
-it("lays a just-posted record over the cached table, keeping the higher count", () => {
+it("serves the last count with every device record over it, keeping the higher count", () => {
   const now = Date.UTC(2026, 9, 28, 12);
   const thisWeek = weekKey(now);
   const table: CacheBody = { at: now - 60_000, week: weekStart(now), accounts: 2, rowsWithEmail: [
@@ -55,16 +56,35 @@ it("lays a just-posted record over the cached table, keeping the higher count", 
     { uid: "b", name: "Ben", email: "ben@x", joined: false, questions: 3, sets: 0, prevQuestions: 0, prevSets: 0, source: "server" },
   ] };
   const rec = (count: number, visible = true): Rec => ({ name: "Benny", week: thisWeek, count, sets: 0, prevCount: 0, prevSets: 0, visible, at: now });
-  const raised = withRecord(table, "b", rec(14), now)!;
+  const raised = current(table, new Map([["b", rec(14)]]), now);
   expect(raised.at).toBe(table.at); // still due a full count on time
   expect(raised.rowsWithEmail.map((r) => [r.uid, r.questions, r.joined, r.source])).toEqual([["b", 14, true, "device"], ["a", 10, true, "server"]]);
   expect(raised.rowsWithEmail[0].email).toBe("ben@x");
   expect(publicBoard(raised).rows.map((r) => [r.name, r.questions])).toEqual([["Benny", 14], ["Ava", 10]]);
   // A device behind the server (answers from another device not pulled yet) does not lower it.
-  expect(withRecord(table, "b", rec(1), now)!.rowsWithEmail.find((r) => r.uid === "b")).toMatchObject({ questions: 3, source: "server", joined: true });
-  // Leaving the board takes the row off it at once.
-  expect(publicBoard(withRecord(raised, "b", rec(14, false), now)!).rows.map((r) => r.uid)).toEqual(["a"]);
-  // A newcomer is added; last week's table is left for a full count.
-  expect(withRecord(table, "c", { ...rec(2), name: "Cal Smith" }, now)!.accounts).toBe(3);
-  expect(withRecord({ ...table, week: weekStart(now) - 7 * 24 * 3600_000 }, "b", rec(14), now)).toBeNull();
+  expect(current(table, new Map([["b", rec(1)]]), now).rowsWithEmail.find((r) => r.uid === "b")).toMatchObject({ questions: 3, source: "server", joined: true });
+  // The device records decide who is on the board, and accounts the count never saw are added.
+  expect(publicBoard(current(table, new Map([["b", rec(14, false)], ["c", { ...rec(2), name: "Cal Smith" }]]), now)).rows.map((r) => r.uid)).toEqual(["a", "c"]);
+  // With no full count at all, the records alone make the board.
+  expect(publicBoard(current(null, new Map([["c", rec(2)]]), now)).rows).toHaveLength(1);
+});
+
+it("keeps a student on the board unless they left more recently than they joined", () => {
+  const post = (visible?: boolean, choiceAt?: number): Posted => ({ name: "Gabe", week: "2026-W44", count: 5, sets: 0, prevCount: 0, prevSets: 0, at: 1, ...(visible === undefined ? {} : { visible, choiceAt }) });
+  const joinedLongAgo: BoardRecord = { ...post(), visible: true, at: 0 };
+  // A phone that never saw the choice, or saw it before choices were dated, cannot take them off.
+  expect(mergeRecord(joinedLongAgo, post()).visible).toBe(true);
+  expect(mergeRecord(joinedLongAgo, post(false, 0)).visible).toBe(true);
+  // Leaving from Settings does, and a device still showing the older join cannot undo that.
+  const left = mergeRecord(joinedLongAgo, post(false, 500));
+  expect([left.visible, left.choiceAt]).toEqual([false, 500]);
+  expect(mergeRecord(left, post(true, 0)).visible).toBe(false);
+  expect(mergeRecord(left, post(true, 900)).visible).toBe(true);
+  // Figures always come from the newest post; someone new with no say starts off the board.
+  expect(mergeRecord(left, { ...post(), count: 9 }).count).toBe(9);
+  expect(mergeRecord(undefined, post()).visible).toBe(false);
+  // Devices' own settings merge the same way.
+  expect(newerSocial({ username: "", leaderboard: true }, { username: "", leaderboard: false })?.leaderboard).toBe(true);
+  expect(newerSocial({ username: "", leaderboard: true }, { username: "", leaderboard: false, chosenAt: 5 })?.leaderboard).toBe(false);
+  expect(newerSocial(undefined, { username: "x", leaderboard: true })?.username).toBe("x");
 });

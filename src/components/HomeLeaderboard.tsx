@@ -38,7 +38,9 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
 
   if (!cloudConfigured() || (error && !user)) return null;
   const sorted = rows ? sortRows(rows, "questions") : [];
-  const line = user && joined ? standing(sorted, user.uid, "questions") : null;
+  // The board is the truth: a device that never saw the student join still shows them as on it.
+  const onBoard = joined || sorted.some((r) => r.uid === user?.uid);
+  const line = user && onBoard ? standing(sorted, user.uid, "questions") : null;
   return (
     <section className="lb-strip" aria-label="Leaderboard this week">
       <div className="lb-strip-title"><svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 20h26l2-13-8 6-7-10-7 10-8-6z" fill="#e7ab23" /><rect x="3" y="20" width="26" height="3" rx="1" fill="#c98f12" /></svg><strong>This week</strong></div>
@@ -48,7 +50,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
         </ol>
       )}
       {!user ? <span className="lb-strip-line lb-strip-invite"><span className="muted">Get on the board and keep your progress on every device.</span><SignInToJoin small /></span>
-        : !joined ? <span className="lb-strip-line muted">Not on it yet. <button type="button" className="link lb-join" disabled={joining} onClick={() => { setJoining(true); void joinLeaderboard().finally(() => setJoining(false)); }}>{joining ? "Joining…" : `Join as ${boardName(settings)}`}</button> or <Link to="/settings#social">pick a nickname</Link>.</span>
+        : !onBoard ? <span className="lb-strip-line muted">Not on it yet. <button type="button" className="link lb-join" disabled={joining} onClick={() => { setJoining(true); void joinLeaderboard().finally(() => setJoining(false)); }}>{joining ? "Joining…" : `Join as ${boardName(settings)}`}</button> or <Link to="/settings#social">pick a nickname</Link>.</span>
         : line ? <span className="lb-strip-line muted">{firstSentence(line)}</span>
         : rows ? <span className="lb-strip-line muted">On the board as {boardName(settings)}.</span> : null}
       <Link to="/leaderboard" className="lb-more">Full leaderboard</Link>

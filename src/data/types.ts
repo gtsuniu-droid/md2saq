@@ -247,6 +247,8 @@ export interface SocialSettings {
   username: string;
   /** Opted in to the weekly leaderboard; otherwise the row is kept for admins only. */
   leaderboard: boolean;
+  /** When this was last saved here, so devices that disagree go with the newer choice. Unset on choices made before it was recorded. */
+  chosenAt?: number;
 }
 
 /** Device-only credential record. Never included in settings, sync or backups. */

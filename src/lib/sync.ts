@@ -7,6 +7,7 @@ import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
 import { syncNotes } from "./notes";
 import { belongsToAccount } from "./progressAccount";
 import { publishWeeklyCount } from "./leaderboard";
+import { newerSocial } from "./social";
 
 /**
  * Offline-first sync of a signed-in person's own records: attempts (drafts
@@ -253,6 +254,10 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
         const local = await db.settings.get("settings");
         if (local?.cloudUser?.uid === uid && remoteWins(local._m, remoteSettings._m)) {
           const merged = { ...(local ?? {}), ...settingsForCloud(remoteSettings as Settings), id: "settings" as const };
+          // The leaderboard choice goes by its own date, not the whole document's. When this
+          // device's is the one kept, date the document now so the next push corrects the cloud copy.
+          const social = newerSocial(local?.social, remoteSettings.social);
+          if (social !== remoteSettings.social) Object.assign(merged, { social, _m: Date.now() });
           await db.settings.put(merged as Settings);
           applied++;
         }

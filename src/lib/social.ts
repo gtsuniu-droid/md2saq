@@ -26,9 +26,21 @@ export async function saveSocialSettings(next: SocialSettings): Promise<void> {
   const username = next.username.trim().replace(/\s+/g, " ");
   const problem = validUsername(username);
   if (problem) throw new Error(problem);
-  await patchSettings({ social: { username, leaderboard: next.leaderboard } });
+  await patchSettings({ social: { username, leaderboard: next.leaderboard, chosenAt: Date.now() } });
   const uid = (await getSettings()).cloudUser?.uid;
   if (uid) await publishWeeklyCount(uid).catch(() => undefined);
+}
+
+/**
+ * Of two devices' leaderboard choices, the one to keep: the newer, and with no dates to go by
+ * (choices made before they were dated) the one that joined, so a device that never saw the
+ * student join cannot take them off the board. The site's own store decides the same way.
+ */
+export function newerSocial(a: SocialSettings | undefined, b: SocialSettings | undefined): SocialSettings | undefined {
+  if (!a || !b) return a ?? b;
+  const at = a.chosenAt ?? 0; const bt = b.chosenAt ?? 0;
+  if (at !== bt) return at > bt ? a : b;
+  return b.leaderboard && !a.leaderboard ? b : a;
 }
 
 /** One click from the home strip: join under the current nickname. */

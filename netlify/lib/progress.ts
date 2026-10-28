@@ -34,8 +34,33 @@ export function weeklyFigures(attempts: AttemptRow[], questionCount: Map<string,
   return out;
 }
 
-/** A device's leaderboard record as posted to the site's own store. */
-export interface BoardRecord { name: string; photo?: string; visible: boolean; week: string; count: number; sets: number; prevCount: number; prevSets: number; at: number }
+/**
+ * A device's leaderboard record as posted to the site's own store. `choiceAt` is when the
+ * student last joined or left (0: before that was recorded), which decides between devices
+ * that disagree about it.
+ */
+export interface BoardRecord { name: string; photo?: string; visible: boolean; choiceAt?: number; week: string; count: number; sets: number; prevCount: number; prevSets: number; at: number }
+/** What a device posts: `visible` is left out when the device has no say (it never saw the choice). */
+export type Posted = Omit<BoardRecord, "visible"> & { visible?: boolean };
+
+/**
+ * Every account's latest record in one blob, so the board is read in one request and no
+ * daily read budget applies to it.
+ */
+export type BoardTable = { records: Record<string, BoardRecord> };
+
+/**
+ * The stored record updated with a new post. Figures and nickname come from the post; whether
+ * the account is on the board follows the newer choice, and with no dates to go by (records
+ * from before choices were dated) joining wins. So a phone that never saw the student join
+ * cannot take them off, while leaving from Settings still does.
+ */
+export function mergeRecord(stored: BoardRecord | undefined, post: Posted): BoardRecord {
+  const keep = { visible: stored?.visible ?? false, choiceAt: stored?.choiceAt ?? 0 };
+  const said = post.visible === undefined ? null : { visible: post.visible, choiceAt: post.choiceAt ?? 0 };
+  const choice = !said ? keep : said.choiceAt > keep.choiceAt ? said : said.choiceAt === keep.choiceAt && said.visible ? said : keep;
+  return { ...post, ...choice };
+}
 /** A device's record, whichever store it came from. */
 export type Rec = Omit<BoardRecord, "name" | "visible"> & { name?: string; visible?: boolean };
 export type Pair = { week: { questions: number; sets: number }; last: { questions: number; sets: number } };
@@ -44,7 +69,9 @@ export interface Row { uid: string; name: string; email?: string; photo?: string
 export type CacheBody = { at: number; week: number; accounts: number; rowsWithEmail: Row[]; stale?: true; asOf?: number; reason?: string };
 /** The board table every visitor is served, kept in the bank's store; a full count is redone once it is this old. */
 export const CACHE_KEY = "progress-cache";
-export const CACHE_MS = 10 * 60_000;
+/** The Admin table recounts once it is older than this; the public board only ever asks for a background recount, less often. */
+export const CACHE_MS = 60 * 60_000;
+export const RECOUNT_MS = 4 * 60 * 60_000;
 export const sortRows = (rows: Row[]) => rows.sort((a, b) => b.questions - a.questions || a.name.localeCompare(b.name));
 
 /** A device's record as this week's and last week's figures, given which week it describes. */
@@ -73,18 +100,6 @@ export function overlay(cur: Row | undefined, uid: string, p: Rec, now: number):
   };
 }
 
-/**
- * The cached table with one record just posted laid over it, so a student who opens the board
- * sees their own count straight away and everyone else sees it on their next read. Null when
- * the table is from an earlier week: only a full count can start a new one.
- */
-export function withRecord(table: CacheBody | null, uid: string, p: Rec, now: number): CacheBody | null {
-  if (!table || table.week !== weekStart(now)) return null;
-  const rows = table.rowsWithEmail.filter((r) => r.uid !== uid);
-  rows.push(overlay(table.rowsWithEmail.find((r) => r.uid === uid), uid, p, now));
-  return { ...table, accounts: rows.length, rowsWithEmail: sortRows(rows) };
-}
-
 /** What the public board shows: joined accounts only, under their nicknames, no emails. */
 export function publicBoard(body: CacheBody) {
   const state = body.stale ? { stale: true, asOf: body.asOf, reason: body.reason } : {};
@@ -92,21 +107,27 @@ export function publicBoard(body: CacheBody) {
 }
 
 /**
- * When Firestore cannot be read: the last full table, with every record posted since it was
- * made laid over it (newer figures, a new nickname, joining), and accounts it never saw added
- * from their records. Nothing is cached from this, so the next request tries Firestore again.
+ * The board as it stands: the last full count (rolled into last week's column if it is from
+ * an earlier week), with every account's latest device record laid over it, and accounts the
+ * count never saw added from their records. Device records decide who is on the board.
  */
-export function staleTable(last: CacheBody | null, posted: Map<string, Rec>, now: number, reason: string): CacheBody {
+export function combine(last: CacheBody | null, posted: Map<string, Rec>, now: number): Row[] {
   const sameWeek = last?.week === weekStart(now);
   const rows = new Map<string, Row>();
   for (const r of last?.rowsWithEmail ?? []) rows.set(r.uid, sameWeek ? { ...r } : { ...r, questions: 0, sets: 0, prevQuestions: r.questions, prevSets: r.sets });
-  for (const [uid, p] of posted) {
-    const cur = rows.get(uid);
-    if (cur && p.at <= (last?.at ?? 0)) continue;
-    rows.set(uid, overlay(cur, uid, p, now));
-  }
-  const rowsWithEmail = sortRows([...rows.values()]);
-  return { at: now, week: weekStart(now), accounts: rowsWithEmail.length, rowsWithEmail, stale: true, asOf: last?.at, reason };
+  for (const [uid, p] of posted) rows.set(uid, overlay(rows.get(uid), uid, p, now));
+  return sortRows([...rows.values()]);
+}
+
+/** The table served between full counts. */
+export function current(last: CacheBody | null, posted: Map<string, Rec>, now: number): CacheBody {
+  const rowsWithEmail = combine(last, posted, now);
+  return { at: last?.at ?? 0, week: weekStart(now), accounts: rowsWithEmail.length, rowsWithEmail };
+}
+
+/** When Firestore cannot be read for a full count: the same, marked as such for the Admin table. */
+export function staleTable(last: CacheBody | null, posted: Map<string, Rec>, now: number, reason: string): CacheBody {
+  return { ...current(last, posted, now), at: now, stale: true, asOf: last?.at, reason };
 }
 
 /** The ISO week id, matching what devices write on their rows. */

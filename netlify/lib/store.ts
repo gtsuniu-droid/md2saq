@@ -13,7 +13,7 @@ export interface JsonStore {
    * write only lands if the entry is unchanged since it was read, else it is read and changed
    * again. `change` returning null leaves the entry alone. Resolves to what was written.
    */
-  update<T>(key: string, change: (current: T | null) => T | null): Promise<T | null>;
+  update<T>(key: string, change: (current: T | null) => T | null | Promise<T | null>): Promise<T | null>;
 }
 
 export function hosted(): boolean {
@@ -29,10 +29,11 @@ export function openNamedStore(name: string): JsonStore {
       setJSON: async (key, value) => { await store.setJSON(key, value); },
       delete: (key) => store.delete(key),
       list: async (prefix) => (await store.list({ prefix })).blobs.map((b) => b.key),
-      async update<T>(key: string, change: (current: T | null) => T | null) {
-        for (let tries = 0; tries < 5; tries++) {
+      async update<T>(key: string, change: (current: T | null) => T | null | Promise<T | null>) {
+        for (let tries = 0; tries < 8; tries++) {
+          if (tries) await new Promise((r) => setTimeout(r, Math.random() * 40 * tries));
           const cur = await store.getWithMetadata(key, { type: "json" });
-          const next = change((cur?.data as T | undefined) ?? null);
+          const next = await change((cur?.data as T | undefined) ?? null);
           if (next === null) return null;
           const { modified } = await store.setJSON(key, next, cur?.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
           if (modified) return next;
@@ -49,6 +50,6 @@ export function openNamedStore(name: string): JsonStore {
     async setJSON(key, value) { const d = load(); d[key] = value; save(d); },
     async delete(key) { const d = load(); delete d[key]; save(d); },
     async list(prefix) { return Object.keys(load()).filter((k) => k.startsWith(prefix)); },
-    async update<T>(key: string, change: (current: T | null) => T | null) { const d = load(); const next = change((d[key] as T | undefined) ?? null); if (next !== null) { d[key] = next; save(d); } return next; },
+    async update<T>(key: string, change: (current: T | null) => T | null | Promise<T | null>) { const d = load(); const next = await change((d[key] as T | undefined) ?? null); if (next !== null) { d[key] = next; save(d); } return next; },
   };
 }
