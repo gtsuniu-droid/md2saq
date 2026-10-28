@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../data/db";
 import type { Question } from "../data/types";
 import { applyBankUpdate, exportSet, importSetPack, type SetPack } from "./exportImport";
-import { getPublicLink, loadSharedPack, publicOrigin, sharedPath } from "./publicLinks";
+import { browseSetFor, getPublicLink, loadSharedPack, publicOrigin, sharedPath } from "./publicLinks";
+import { CATALOGUE_KEY } from "./bankCatalogue";
 import { setLinkCode } from "./shortSetLink";
 import { publishedQuestion } from "./questionIdentity";
 
@@ -11,7 +12,7 @@ const question = (id: string, order: number): Question => ({ id, setId: "set", o
 const pack = (): SetPack => ({ format: "saq-practice-set", version: 1, set: { id: "set", name: "Shared case", createdAt: 1 }, questions: [question("q1", 0), question("q2", 1)] });
 beforeEach(async () => {
   vi.unstubAllGlobals();
-  await db.questions.clear(); await db.sets.clear();
+  await db.questions.clear(); await db.sets.clear(); await db.meta.clear();
 });
 
 describe("public sharing", () => {
@@ -65,5 +66,22 @@ describe("public sharing", () => {
     const after = await db.questions.where("setId").equals(imported).sortBy("order");
     expect(after.map(q => q.id)).toEqual([before[1].id, before[0].id]);
     expect((await exportSet(imported)).questions.map(q => q.id)).toEqual(["q2", "q1"]);
+  });
+  it("opens a shared link's set in Browse, fetching the catalogue only when the set is not in it yet", async () => {
+    const entry = (id: string) => ({ id, revision: 1, set: { id: `set-${id}`, name: id }, questions: [] });
+    await db.meta.put({ id: CATALOGUE_KEY, value: JSON.stringify({ version: 1, entries: [entry("a")] }) });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ version: 1, entries: [entry("a"), entry("b")] })));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await browseSetFor({ code: await setLinkCode("a") })).toBe("set-a");
+    expect(fetchMock).not.toHaveBeenCalled();
+    // This device's copy of the set is the one Browse lists.
+    await db.sets.put({ ...pack().set, id: "local-a", bankId: "a" });
+    expect(await browseSetFor({ code: await setLinkCode("a") })).toBe("local-a");
+    expect(await browseSetFor({ bankId: "a" })).toBe("local-a");
+    // Published since this device last looked: the catalogue is refreshed once.
+    expect(await browseSetFor({ code: await setLinkCode("b") })).toBe("set-b");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await browseSetFor({ code: await setLinkCode("gone") })).toBeNull();
+    expect(await browseSetFor({ code: "../x" })).toBeNull();
   });
 });

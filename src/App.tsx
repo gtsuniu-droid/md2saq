@@ -201,7 +201,6 @@ export default function App() {
   // AI connector), so an open tab re-reads the catalogue when it comes back into view and
   // every ten minutes, not only when the app opens.
   useEffect(() => {
-    if (/^\/(shared|s)\//.test(window.location.pathname)) return;
     let last = Date.now();
     const refresh = async (force = false) => {
       if (document.visibilityState !== "visible" || (!force && Date.now() - last < 2 * 60_000)) return;
@@ -219,7 +218,6 @@ export default function App() {
 
   // Drop unsubmitted attempts left behind by abandoned papers.
   useEffect(() => {
-    if (/^\/(shared|s)\//.test(window.location.pathname)) return;
     const current = loadSession()?.id;
     void (async () => {
       const ownerId = (await getSettings()).cloudUser?.uid ?? "";
@@ -232,7 +230,7 @@ export default function App() {
     void (async () => {
       await numberUnnumberedSets();
       const settings = await getSettings();
-      if (settings.autoImportBank === false || /^\/(shared|s)\//.test(window.location.pathname)) return;
+      if (settings.autoImportBank === false) return;
       try {
         await syncFromBank();
         requestSync(0);

@@ -1,6 +1,8 @@
 import type { QuestionSet } from "../data/types";
 import { setLinkCode } from "./shortSetLink";
-import { fetchBankSet } from "./bank";
+import { fetchBankSet, syncFromBank } from "./bank";
+import { db } from "../data/db";
+import { readCatalogue } from "./library";
 import type { SetPack } from "./exportImport";
 
 export function sharedPath(bankId: string, questionId?: string): string {
@@ -38,3 +40,23 @@ export async function loadSharedPack(bankId: string): Promise<SetPack> {
   }
   return pack;
 }
+
+/**
+ * The library set a shared link points at, for opening it in Browse: by its short code
+ * (/s/…) or bank id (/shared/…). Matched against the catalogue on this device, refreshed
+ * once from the bank when the set is not in it yet (a first visit, or a set just published).
+ * Null when the bank no longer has it.
+ */
+export async function browseSetFor(link: { code?: string; bankId?: string }): Promise<string | null> {
+  if (link.code && !/^[A-Za-z0-9_-]{8}$/.test(link.code)) return null;
+  for (const refresh of [false, true]) {
+    if (refresh) await syncFromBank();
+    for (const entry of (await readCatalogue())?.entries ?? []) {
+      if (link.bankId ? entry.id !== link.bankId : await setLinkCode(entry.id) !== link.code) continue;
+      // The same id the library gives the set: this device's copy if it has one, else the bank's.
+      return (await db.sets.where("bankId").equals(entry.id).first())?.id ?? entry.set.id;
+    }
+  }
+  return null;
+}
+
