@@ -9,6 +9,8 @@ export interface MarkingDraft {
   notes: string;
   reviewLater: boolean;
   lookedAtAnswer: boolean;
+  /** Parts whose score has been given in this draft (typed, or filled from suggested marks), as against left at nought. */
+  scored?: string[];
 }
 
 /** Match by part label so editing a question cannot shift a score onto another part. */

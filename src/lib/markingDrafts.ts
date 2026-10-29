@@ -2,6 +2,9 @@ import type { Mark } from "../data/types";
 import type { MarkingDraft } from "./markingSet";
 
 const PREFIX = "saq-marking-draft-v1:";
+/** Sent on the window whenever a draft is written or cleared, for views that follow marking as it happens. */
+export const MARKING_DRAFT_EVENT = "saq-marking-draft";
+const changed = () => { try { window.dispatchEvent(new Event(MARKING_DRAFT_EVENT)); } catch { /* no window */ } };
 interface SavedDraft {
   questionId: string;
   markId: string | null;
@@ -22,7 +25,8 @@ function isDraft(value: unknown): value is MarkingDraft {
     && Array.isArray(draft.errorTags) && draft.errorTags.every((tag) => typeof tag === "string")
     && typeof draft.learningPoint === "string" && typeof draft.notes === "string"
     && typeof draft.reviewLater === "boolean" && typeof draft.lookedAtAnswer === "boolean"
-    && (draft.confidence === undefined || Number.isFinite(draft.confidence));
+    && (draft.confidence === undefined || Number.isFinite(draft.confidence))
+    && (draft.scored === undefined || (Array.isArray(draft.scored) && draft.scored.every((label) => typeof label === "string")));
 }
 
 /** Recover only edits based on the same saved marking; a newer explicit save wins. */
@@ -42,6 +46,7 @@ export function writeMarkingDraft(ownerId: string, attemptId: string, questionId
   try {
     const saved: SavedDraft = { questionId, markId: mark?.id ?? null, markedAt: mark?.markedAt ?? null, draft };
     localStorage.setItem(storageKey(ownerId, attemptId), JSON.stringify(saved));
+    changed();
     return true;
   } catch { return false; }
 }
@@ -51,6 +56,6 @@ export function clearMarkingDraft(ownerId: string, attemptId: string, savedDraft
   try {
     const key = storageKey(ownerId, attemptId);
     const raw = localStorage.getItem(key);
-    if (raw && JSON.stringify((JSON.parse(raw) as SavedDraft).draft) === JSON.stringify(savedDraft)) localStorage.removeItem(key);
+    if (raw && JSON.stringify((JSON.parse(raw) as SavedDraft).draft) === JSON.stringify(savedDraft)) { localStorage.removeItem(key); changed(); }
   } catch { /* Leave the recovery copy in place if storage is unavailable. */ }
 }

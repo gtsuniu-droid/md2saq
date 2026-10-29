@@ -5,6 +5,7 @@ import { PRESENTATION_BY_ID, presentationName } from "../data/presentations";
 import { historyEntries, historyGroups, type HistoryGroup } from "../lib/history";
 import { truncate } from "../lib/questions";
 import { setTitle } from "../lib/sets";
+import { scoreBand } from "../lib/scoreBand";
 import { getProgressSyncState, subscribeProgressSync, syncNow } from "../lib/sync";
 
 interface Props { attempts: Attempt[]; marks: Mark[]; questions: Question[]; sets: QuestionSet[]; settings: Settings }
@@ -14,7 +15,7 @@ function when(ts: number): string {
 }
 const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][(n % 100 - 20) % 10] ?? ["th", "st", "nd", "rd"][n % 100] ?? "th"}`;
 const pct = (g: HistoryGroup) => g.score !== undefined && g.maxScore ? Math.round((100 * g.score) / g.maxScore) : null;
-const band = (p: number) => (p >= 70 ? "good" : p >= 50 ? "mid" : "low");
+const band = scoreBand;
 
 /** One sitting: what it was, when, how it went. The presentation sits above so the eye can scan. */
 function Row({ g, sitting, caption = true }: { g: HistoryGroup; sitting: number; caption?: boolean }) {

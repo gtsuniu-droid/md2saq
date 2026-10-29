@@ -488,7 +488,7 @@ export default function PaperPage() {
       {addingImages && <div className="practice-time-notice" role="status">Adding pictures…</div>}
       {saveError && <div className="practice-time-notice" role="alert">{saveError}</div>}
       <div className="paper">
-        <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
+        <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} sets={data.sets} marks={data.marks} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
         {summaryOpen ? <section className="paper-summary" aria-label="Session summary">
           <h1>Session summary</h1><p className="muted">{data.attempts.length - unsubmitted} of {data.questions.length} questions submitted. {data.marks.length} marked.</p>
           {(setMode ? openedGroups : setGroups).map((group, number) => {

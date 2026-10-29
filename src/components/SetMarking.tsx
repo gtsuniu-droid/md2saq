@@ -132,7 +132,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
           const draft = attempt && current[attempt.id];
           const parts = marks.parts.filter((p) => p.attemptId === attempt?.id);
           if (!draft || !question || !parts.length) continue;
-          next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score } : pm; }) };
+          next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score } : pm; }), scored: [...new Set([...(draft.scored ?? []), ...parts.map((p) => p.label)])] };
           writeMarkingDraft(ownerId, attempt.id, question.id, next[attempt.id], mark);
         }
         // The overall note goes with the first question, unless the student wrote one there already.
@@ -331,7 +331,8 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const toggle = (key: string) => setFolded((f) => ({ ...f, [key]: !f[key] }));
   const foldButton = (key: string, open: boolean) => <button type="button" className="mark-model-toggle" aria-expanded={open} onClick={() => toggle(key)}><ModelIcon />Model answer<span className="mark-model-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span></button>;
   const patch = <K extends keyof MarkingDraft>(key: K, value: MarkingDraft[K]) => onChange({ ...draft, [key]: value });
-  const setPart = (label: string, change: Partial<PartMark>) => patch("parts", draft.parts.map((p) => (p.label === label ? { ...p, ...change } : p)));
+  // A score typed for a part marks it as scored, so a deliberate nought counts as marked.
+  const setPart = (label: string, change: Partial<PartMark>) => onChange({ ...draft, parts: draft.parts.map((p) => (p.label === label ? { ...p, ...change } : p)), ...(change.score !== undefined ? { scored: [...new Set([...(draft.scored ?? []), label])] } : {}) });
   const partsInfo = answerParts(question).map((part) => ({ part, answer: attempt.answers.find((a) => a.label === part.label) }));
   const texts = [...stemTexts, ...partsInfo.map((pi) => pi.part.modelAnswer ?? "")];
   const wholeModel = question.parts.length > 0 && hasModelAnswer(question) && (richAnswerDocument(question) || !question.parts.some(hasModelAnswer));

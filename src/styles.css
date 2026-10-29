@@ -177,6 +177,16 @@ mark.hit { background: var(--hit); }
 .paper-side button.current { background: var(--teal); color: #fff; }
 .paper-side button.done:not(.current) { background: var(--teal-soft); color: var(--teal); }
 .paper-side button .flag { float: right; }
+/* A marked part shows a tick; a heading starts each set and stays in view while you are in it. */
+.paper-side .side-mark { float: right; margin-left: .3rem; font-size: .8rem; font-weight: 700; }
+/* A marked part's row is filled by how it went, in the colours of the home page's scores;
+   stronger than the pale fill of a part that is only submitted. */
+.paper-side button.mark-good:not(.current) { background: color-mix(in srgb, var(--teal) 26%, var(--sidebar)); color: var(--fg); }
+.paper-side button.mark-mid:not(.current) { background: color-mix(in srgb, var(--warn) 24%, var(--sidebar)); color: var(--fg); }
+.paper-side button.mark-low:not(.current) { background: color-mix(in srgb, var(--bad) 22%, var(--sidebar)); color: var(--fg); }
+.paper-side .side-set { position: sticky; top: 0; z-index: 1; padding: .6rem .8rem .35rem; border-top: 2px solid var(--border); border-bottom: 1px solid var(--border); background: var(--sidebar); color: var(--muted); font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paper-side nav > .side-set:first-child { border-top: 0; }
+.paper-side .side-set-done { color: var(--teal); }
 .session-sidebar { flex: 0 0 110px; }
 .question-actions { justify-content: flex-end; margin: 0.5rem 0 1.5rem; }
 .paper-summary { flex: 1; min-width: 0; overflow-y: auto; padding: 1.5rem 2rem; }
@@ -204,6 +214,7 @@ mark.hit { background: var(--hit); }
   .paper-handle { display: none; }
   .session-sidebar { flex-basis: 64px; position: sticky; top: 0; align-self: flex-start; max-height: 100%; }
   .paper-side button { padding: 0.7rem 0.5rem; min-height: 44px; }
+  .paper-side .side-set { padding-inline: .5rem; font-size: .62rem; }
   .paper-stem { flex-basis: auto !important; border-bottom: 1px solid var(--border); overflow: visible; }
   .paper-answers { overflow: visible; }
 }
@@ -750,6 +761,10 @@ a.hit-line { display: block; }
 .community-post { padding: 1rem 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .community-post time { font-size: .75rem; color: var(--muted); }
 .community-post-kind { color: var(--teal); }
+.community-author { display: inline-flex; align-items: center; gap: .45rem; }
+.community-author img, .community-avatar { width: 22px; height: 22px; border-radius: 50%; flex: none; }
+.community-avatar { display: inline-grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-size: .7rem; font-weight: 600; }
+.community-source { font-size: .82rem; margin: .2rem 0 0; }
 .community-post p { margin: .5rem 0; }
 .community-post-actions { justify-content: flex-end; }
 .community-reply { display: flex; justify-content: space-between; align-items: center; font-size: .85rem; background: var(--card); padding: .4rem .6rem; margin-bottom: .5rem; }
@@ -761,10 +776,6 @@ a.hit-line { display: block; }
 .mark-set-heading h1 { margin-bottom: .3rem; }
 .mark-set-heading h2 { margin: 0; font-size: 1.1rem; font-weight: 400; }
 .mark-set-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
-.community-author { display: inline-flex; align-items: center; gap: .45rem; }
-.community-author img, .community-avatar { width: 22px; height: 22px; border-radius: 50%; flex: none; }
-.community-avatar { display: inline-grid; place-items: center; background: var(--brand-soft); color: var(--brand); font-size: .7rem; font-weight: 600; }
-.community-source { font-size: .82rem; margin: .2rem 0 0; }
 .mark-set-stem { background: var(--teal-soft); border-left: 4px solid var(--teal); border-radius: 6px; padding: 1.1rem 1.4rem; margin: 1.5rem 0 1rem; }
 .mark-set-stem h2 { margin: 0 0 .6rem; font-size: 1rem; }
 .mark-set-stem .pre + .pre { margin-top: .8rem; }
