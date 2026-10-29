@@ -1,5 +1,5 @@
 import { openNamedStore, type JsonStore } from "./store";
-import { adopt, mergeRecord, type BoardRecord, type BoardTable, type Posted, type Rec } from "./progress";
+import { adopt, joinByNickname, mergeRecord, type BoardRecord, type BoardTable, type Posted, type Rec } from "./progress";
 
 /**
  * The board's records, all in one blob of the "board" store. Records used to be one blob per
@@ -33,6 +33,21 @@ export async function postRecord(uid: string, post: Posted): Promise<Map<string,
     return { records };
   });
   return asMap(table);
+}
+
+/** Join every account whose record carries a chosen nickname under an old "no" (see `joinByNickname`), given each account's name. */
+export async function joinNicknamed(accountNames: Map<string, string | undefined>): Promise<Map<string, Rec>> {
+  const store = board();
+  const table = await store.update<BoardTable>(TABLE_KEY, async (t) => {
+    const records = { ...(t ?? await legacy(store)).records };
+    let changed = false;
+    for (const [uid, r] of Object.entries(records)) {
+      const joined = joinByNickname(r, accountNames.get(uid));
+      if (joined) { records[uid] = joined; changed = true; }
+    }
+    return changed ? { records } : null;
+  });
+  return table ? asMap(table) : readRecords();
 }
 
 /** Take Firestore's records into the table (see `adopt`), so who joined never depends on Firestore again. */

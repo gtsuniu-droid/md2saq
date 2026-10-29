@@ -58,8 +58,29 @@ export type BoardTable = { records: Record<string, BoardRecord> };
 export function mergeRecord(stored: BoardRecord | undefined, post: Posted): BoardRecord {
   const keep = { visible: stored?.visible ?? false, choiceAt: stored?.choiceAt ?? 0 };
   const said = post.visible === undefined ? null : { visible: post.visible, choiceAt: post.choiceAt ?? 0 };
-  const choice = !said ? keep : said.choiceAt > keep.choiceAt ? said : said.choiceAt === keep.choiceAt && said.visible ? said : keep;
-  return { ...post, ...choice };
+  const theirs = !!said && (said.choiceAt > keep.choiceAt || (said.choiceAt === keep.choiceAt && said.visible));
+  // The nickname goes with the choice: a device that has not seen the student's choice, or
+  // saw an older one, posts their first name, which must not replace the nickname they chose.
+  const name = stored?.name && !theirs ? stored.name : post.name;
+  return { ...post, ...(theirs ? said : keep), name };
+}
+
+/**
+ * Until the Settings page ticked the join box itself when a nickname was typed, students
+ * picked a nickname and saved with the box unticked, meaning to be seen: a nickname saved
+ * before this moment with the box unticked counts as joining. A choice saved since is explicit.
+ */
+export const NICKNAME_JOINED_UNTIL = Date.UTC(2026, 9, 29, 23, 30);
+
+/**
+ * The account's record joined, when its name is a chosen nickname (not the account's first
+ * name) under a "no" from before nicknames meant joining; null when the record stands.
+ */
+export function joinByNickname(r: BoardRecord, accountName: string | undefined): BoardRecord | null {
+  const first = (accountName ?? "").trim().split(/\s+/)[0].toLowerCase();
+  const name = r.name.trim().toLowerCase();
+  if (r.visible || !first || !name || name === first || (r.choiceAt ?? 0) >= NICKNAME_JOINED_UNTIL) return null;
+  return { ...r, visible: true };
 }
 /**
  * A record from Firestore (where records were kept before the site's own store) taken into the

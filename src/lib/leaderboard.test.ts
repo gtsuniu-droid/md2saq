@@ -2,7 +2,9 @@ import "fake-indexeddb/auto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { db } from "../data/db";
 import type { Attempt, Settings } from "../data/types";
-import { fetchLeaderboard, onBoard, publishWeeklyCount } from "./leaderboard";
+import { NICKNAME_JOINED_UNTIL as until } from "../../netlify/lib/progress";
+import { fetchLeaderboard, nicknameMeantJoin, onBoard, publishWeeklyCount } from "./leaderboard";
+import { getSettings } from "../data/db";
 
 vi.mock("./firebase", () => ({ cloudConfigured: () => true, idToken: async () => "token", communityServices: async () => { throw new Error("offline"); }, services: async () => { throw new Error("offline"); } }));
 vi.mock("./library", () => ({ loadLibrary: async () => ({ sets: [], questions: [], pending: new Set() }) }));
@@ -41,4 +43,19 @@ it("posts on moving between pages only when the figures changed, and tells open 
   expect((await fetchLeaderboard()).rows[0].count).toBe(2);
   served = 5;
   expect((await fetchLeaderboard()).rows[0].count).toBe(5);
+});
+
+it("treats a nickname picked with the join box left unticked as joining, while leaving since then stands", async () => {
+  expect(nicknameMeantJoin({ username: "Ball clapper", leaderboard: false })).toBe(true);
+  expect(nicknameMeantJoin({ username: "Ball clapper", leaderboard: false, chosenAt: until - 1 })).toBe(true);
+  expect(nicknameMeantJoin({ username: "Ball clapper", leaderboard: false, chosenAt: until })).toBe(false);
+  expect(nicknameMeantJoin({ username: " ", leaderboard: false })).toBe(false);
+  expect(nicknameMeantJoin({ username: "Ball clapper", leaderboard: true })).toBe(false);
+  // Publishing joins the device's own settings too, dated now, so the choice reaches other devices and can be undone in Settings.
+  await db.settings.update("settings", { social: { username: "Ball clapper", leaderboard: false } });
+  await publishWeeklyCount("u");
+  expect(posts[0]).toMatchObject({ name: "Ball clapper", visible: true });
+  const social = (await getSettings()).social!;
+  expect(social.leaderboard).toBe(true);
+  expect(social.chosenAt).toBeGreaterThan(until);
 });

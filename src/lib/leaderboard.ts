@@ -1,5 +1,6 @@
-import { db, getSettings } from "../data/db";
-import type { Attempt, Question } from "../data/types";
+import { NICKNAME_JOINED_UNTIL } from "../../netlify/lib/progress";
+import { db, getSettings, patchSettings } from "../data/db";
+import type { Attempt, Question, SocialSettings } from "../data/types";
 import { cloudConfigured, communityServices, idToken, services } from "./firebase";
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
@@ -34,6 +35,9 @@ export function boardName(settings: { social?: { username?: string }; cloudUser?
   const first = settings.cloudUser?.name?.trim().split(/\s+/)[0] || settings.cloudUser?.email?.split("@")[0] || "Student";
   return (chosen || first).slice(0, 20);
 }
+
+/** A nickname saved with the join box unticked, from before the box ticked itself: meant as joining (see `NICKNAME_JOINED_UNTIL`). Leaving since then stands. */
+export const nicknameMeantJoin = (s: SocialSettings): boolean => !s.leaderboard && !!s.username.trim() && (s.chosenAt ?? 0) < NICKNAME_JOINED_UNTIL;
 
 const DAY = 24 * 3600 * 1000;
 
@@ -95,8 +99,13 @@ export function weekLabel(start: number): string {
  */
 export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolean } = {}): Promise<BoardRead | null> {
   if (!cloudConfigured()) return null;
-  const settings = await getSettings();
+  let settings = await getSettings();
   if (settings.cloudUser?.uid !== uid) return null;
+  if (settings.social && nicknameMeantJoin(settings.social)) {
+    const social = { ...settings.social, leaderboard: true, chosenAt: Date.now() };
+    await patchSettings({ social });
+    settings = { ...settings, social };
+  }
   const [attempts, library] = await Promise.all([db.attempts.filter((a) => belongsToAccount(a, uid) && a.submittedAt !== undefined).toArray(), loadLibrary()]);
   const start = weekStart(Date.now());
   const photo = settings.cloudUser?.photo && /^https:\/\//.test(settings.cloudUser.photo) ? settings.cloudUser.photo.slice(0, 2000) : undefined;

@@ -186,8 +186,8 @@ export default function SettingsPage() {
                       <Row title="Join the leaderboard" help="Show your week to other students.">
                         <input type="checkbox" aria-label="Join the leaderboard" checked={form.leaderboard} onChange={(e) => setSocial({ ...form, leaderboard: e.target.checked })} />
                       </Row>
-                      <Row title="Nickname" help={`Shown instead of your name. Leave blank to use your first name. Up to ${USERNAME_MAX} characters.`}>
-                        <input aria-label="Nickname" maxLength={USERNAME_MAX} placeholder={settings.cloudUser.name?.split(" ")[0] ?? "Your first name"} value={form.username} onChange={(e) => setSocial({ ...form, username: e.target.value })} />
+                      <Row title="Nickname" help={`Shown instead of your name; picking one puts you on the board. Leave blank to use your first name. Up to ${USERNAME_MAX} characters.`}>
+                        <input aria-label="Nickname" maxLength={USERNAME_MAX} placeholder={settings.cloudUser.name?.split(" ")[0] ?? "Your first name"} value={form.username} onChange={(e) => setSocial({ ...form, username: e.target.value, leaderboard: form.leaderboard || !!e.target.value.trim() })} />
                       </Row>
                       <Row title="Save">
                         <button className="primary small" disabled={socialBusy || !social} onClick={() => void save()}>{socialBusy ? "Saving…" : "Save"}</button>

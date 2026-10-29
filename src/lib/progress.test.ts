@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { adopt, current, figuresFor, mergeRecord, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, type BoardRecord, type CacheBody, type Posted, type Rec } from "../../netlify/lib/progress";
+import { adopt, current, figuresFor, joinByNickname, mergeRecord, NICKNAME_JOINED_UNTIL, publicBoard, staleTable, weekKey, weekStart, weeklyFigures, type BoardRecord, type CacheBody, type Posted, type Rec } from "../../netlify/lib/progress";
 import { newerSocial } from "./social";
 
 it("counts each account's questions and completed sets this week and last", () => {
@@ -83,6 +83,12 @@ it("keeps a student on the board unless they left more recently than they joined
   // Figures always come from the newest post; someone new with no say starts off the board.
   expect(mergeRecord(left, { ...post(), count: 9 }).count).toBe(9);
   expect(mergeRecord(undefined, post()).visible).toBe(false);
+  // The nickname goes with the choice: a device without the student's choice, or with an older one, posts their first name and must not replace the nickname.
+  const nicknamed: BoardRecord = { ...post(true, 500), name: "Ball clapper", visible: true, choiceAt: 500 };
+  expect(mergeRecord(nicknamed, post()).name).toBe("Ball clapper");
+  expect(mergeRecord(nicknamed, post(true, 0)).name).toBe("Ball clapper");
+  expect(mergeRecord(nicknamed, { ...post(true, 900), name: "Bally" }).name).toBe("Bally");
+  expect(mergeRecord(undefined, post()).name).toBe("Gabe");
   // Devices' own settings merge the same way.
   expect(newerSocial({ username: "", leaderboard: true }, { username: "", leaderboard: false })?.leaderboard).toBe(true);
   expect(newerSocial({ username: "", leaderboard: true }, { username: "", leaderboard: false, chosenAt: 5 })?.leaderboard).toBe(false);
@@ -100,4 +106,15 @@ it("takes students who joined in Firestore onto the site's table without losing 
   expect(adopt(stale, fs(true))).toMatchObject({ name: "Bally", count: 9, visible: true });
   // A leave chosen in Settings stands.
   expect(adopt({ ...stale, choiceAt: 500 }, fs(true)).visible).toBe(false);
+});
+
+it("joins an account whose record carries a chosen nickname under an old no, and leaves every other record alone", () => {
+  const rec = (name: string, visible: boolean, choiceAt?: number): BoardRecord => ({ name, week: "2026-W44", count: 3, sets: 0, prevCount: 0, prevSets: 0, at: 1, visible, choiceAt });
+  expect(joinByNickname(rec("Ball clapper", false), "Gabriel Tsun")).toMatchObject({ visible: true, name: "Ball clapper" });
+  expect(joinByNickname(rec("Ball clapper", false, NICKNAME_JOINED_UNTIL - 1), "Gabriel Tsun")?.visible).toBe(true);
+  // The first name is no nickname; an account with no name on file gives nothing to compare; a "no" since nicknames meant joining, or a join already, stands.
+  expect(joinByNickname(rec("gabriel", false), "Gabriel Tsun")).toBeNull();
+  expect(joinByNickname(rec("Ball clapper", false), undefined)).toBeNull();
+  expect(joinByNickname(rec("Ball clapper", false, NICKNAME_JOINED_UNTIL), "Gabriel Tsun")).toBeNull();
+  expect(joinByNickname(rec("Ball clapper", true), "Gabriel Tsun")).toBeNull();
 });
