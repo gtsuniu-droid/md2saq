@@ -20,21 +20,28 @@ async function signingKeys(fresh = false): Promise<Map<string, KeyObject>> {
   return keys.byKid;
 }
 
-/** The uid in a valid ID token for this project, or null when the token is missing, forged, expired or for another project. */
-export async function verifiedUid(req: Request, projectId: string): Promise<string | null> {
+/** Who a valid ID token for this project belongs to, as Google or Facebook signed them in; null when it is missing, forged, expired or for another project. */
+export async function verifiedUser(req: Request, projectId: string): Promise<{ uid: string; name?: string; picture?: string; email?: string } | null> {
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const [h, p, sig] = token?.split(".") ?? [];
   if (!h || !p || !sig) return null;
   try {
     const header = JSON.parse(Buffer.from(h, "base64url").toString()) as { alg?: string; kid?: string };
-    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as { aud?: string; iss?: string; sub?: string; exp?: number; iat?: number };
+    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as { aud?: string; iss?: string; sub?: string; exp?: number; iat?: number; name?: unknown; picture?: unknown; email?: unknown };
     const now = Date.now() / 1000;
     if (header.alg !== "RS256" || !header.kid) return null;
     if (claims.aud !== projectId || claims.iss !== `https://securetoken.google.com/${projectId}`) return null;
     if (!claims.sub || !claims.exp || claims.exp < now || (claims.iat ?? 0) > now + 300) return null;
     // A key id not seen yet: Google may have rotated early, so look once more.
     const key = (await signingKeys()).get(header.kid) ?? (await signingKeys(true)).get(header.kid);
-    if (!key) return null;
-    return createVerify("RSA-SHA256").update(`${h}.${p}`).verify(key, sig, "base64url") ? claims.sub : null;
+    if (!key || !createVerify("RSA-SHA256").update(`${h}.${p}`).verify(key, sig, "base64url")) return null;
+    const text = (v: unknown, max: number) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+    const picture = text(claims.picture, 2000);
+    return { uid: claims.sub, name: text(claims.name, 80), picture: picture && /^https:\/\//.test(picture) ? picture : undefined, email: text(claims.email, 320)?.toLowerCase() };
   } catch { return null; }
+}
+
+/** The uid in a valid ID token for this project, or null (see `verifiedUser`). */
+export async function verifiedUid(req: Request, projectId: string): Promise<string | null> {
+  return (await verifiedUser(req, projectId))?.uid ?? null;
 }

@@ -6,7 +6,7 @@ import type { Question, QuestionSet } from "../data/types";
 import { isAdmin } from "../lib/admin";
 import { setProgressAccount } from "../lib/progressAccount";
 import { cloudConfigured, signInWithGoogle } from "../lib/firebase";
-import { communityBody, communityError, communityTarget, COMMUNITY_BODY_LIMIT, type CommunityChannel, type CommunityKind, type CommunityPage, type CommunityPost, type CommunityTarget } from "../lib/community";
+import { communityBody, communityError, communitySource, communityTarget, COMMUNITY_BODY_LIMIT, COMMUNITY_SOURCE_LIMIT, type CommunityChannel, type CommunityKind, type CommunityPage, type CommunityPost, type CommunityTarget } from "../lib/community";
 import { deleteCommunityPost, fetchCommunity, postCommunity, resolveCommunityPost } from "../lib/communityCloud";
 
 export const communityApi = { resolve: communityTarget, fetch: fetchCommunity, post: postCommunity, remove: deleteCommunityPost, resolvePost: resolveCommunityPost };
@@ -16,7 +16,7 @@ export default function QuestionCommunity({ question, set, disabled, api = commu
   const [open, setOpen] = useState<CommunityChannel | null>(null);
   const settings = useLiveQuery(getSettings, []);
   return <span className="community-buttons">
-    <button className="small link" disabled={disabled} title={disabled ? "Available after submitting the exam" : "Suggest an answer or report a problem"} onClick={() => setOpen("suggestions")}>Suggestions</button>
+    <button className="small link" disabled={disabled} title={disabled ? "Available after submitting the exam" : "Report a problem with this question or its answer, or suggest a better answer"} onClick={() => setOpen("suggestions")}>Report</button>
     <button className="small link" disabled={disabled} title={disabled ? "Available after submitting the exam" : "Discuss this question"} onClick={() => setOpen("discussion")}>Discussion</button>
     {open && settings && <CommunityPanel key={`${question.id}:${settings.cloudUser?.uid ?? "guest"}`} question={question} set={set} initialChannel={open} ownerId={settings.cloudUser?.uid ?? ""} admin={isAdmin(settings)} api={api} onClose={() => setOpen(null)} />}
   </span>;
@@ -32,14 +32,15 @@ function CommunityPanel({ question, set, initialChannel, ownerId, admin, api, on
   const [message, setMessage] = useState("");
   const [drafts, setDrafts] = useState({ suggestions: "", discussion: "" });
   const [kind, setKind] = useState<CommunityKind>("problem");
+  const [source, setSource] = useState("");
   const [replyTo, setReplyTo] = useState<CommunityPost>();
-  const pending = useRef<{ id: string; body: string; kind: CommunityKind } | undefined>(undefined);
+  const pending = useRef<{ id: string; body: string; kind: CommunityKind; source: string } | undefined>(undefined);
   const panel = useRef<HTMLElement>(null);
   const generation = useRef(0);
   const body = drafts[channel];
   const close = () => {
     if (busy) return;
-    if ((drafts.suggestions.trim() || drafts.discussion.trim()) && !confirm("Discard your unsent post?")) return;
+    if ((drafts.suggestions.trim() || drafts.discussion.trim() || source.trim()) && !confirm("Discard your unsent post?")) return;
     onClose();
   };
   useEffect(() => {
@@ -82,11 +83,13 @@ function CommunityPanel({ question, set, initialChannel, ownerId, admin, api, on
       const content = replyTo && channel === "discussion" ? `Reply to ${replyTo.authorName}:\n“${replyTo.body.slice(0, 240)}${replyTo.body.length > 240 ? "…" : ""}”\n\n${text}` : text;
       communityBody(content);
       const postKind = channel === "discussion" ? "comment" : kind;
-      if (!pending.current || pending.current.body !== content || pending.current.kind !== postKind) pending.current = { id: crypto.randomUUID(), body: content, kind: postKind };
+      const postSource = channel === "suggestions" ? communitySource(source) : "";
+      if (!pending.current || pending.current.body !== content || pending.current.kind !== postKind || pending.current.source !== postSource) pending.current = { id: crypto.randomUUID(), body: content, kind: postKind, source: postSource };
       await api.post(target, channel, { ...pending.current, expectedOwner: ownerId });
       pending.current = undefined;
       setDrafts(previous => ({ ...previous, [channel]: "" })); setReplyTo(undefined);
-      setMessage(channel === "discussion" ? "Comment posted." : "Suggestion posted.");
+      if (channel === "suggestions") setSource("");
+      setMessage(channel === "discussion" ? "Comment posted." : kind === "problem" ? "Report sent." : "Suggestion posted.");
       await refresh();
     } catch (e) { setError(communityError(e)); }
     finally { setBusy(false); }
@@ -118,7 +121,7 @@ function CommunityPanel({ question, set, initialChannel, ownerId, admin, api, on
     }}>
       <header className="community-header"><div><strong>Question {question.order + 1}</strong><small>{set?.name}</small></div><button className="small link" onClick={close} disabled={busy} aria-label="Close discussion">×</button></header>
       <div className="community-tabs" role="group" aria-label="Conversation type">
-        <button aria-pressed={channel === "suggestions"} disabled={busy} onClick={() => setChannel("suggestions")}>Suggestions</button>
+        <button aria-pressed={channel === "suggestions"} disabled={busy} onClick={() => setChannel("suggestions")}>Reports</button>
         <button aria-pressed={channel === "discussion"} disabled={busy} onClick={() => setChannel("discussion")}>Discussion</button>
       </div>
       <div className="community-content">
@@ -129,18 +132,20 @@ function CommunityPanel({ question, set, initialChannel, ownerId, admin, api, on
           <form className="community-compose" onSubmit={e => { e.preventDefault(); void send(); }}>
             {channel === "suggestions" && <label>Suggestion type<select aria-label="Suggestion type" value={kind} disabled={busy} onChange={e => setKind(e.target.value as CommunityKind)}><option value="problem">Report a problem</option><option value="answer">Suggest an answer</option></select></label>}
             {replyTo && channel === "discussion" && <div className="community-reply">Replying to {replyTo.authorName}<button type="button" className="small link" disabled={busy} onClick={() => setReplyTo(undefined)} aria-label="Cancel reply">×</button></div>}
-            <label htmlFor="community-message">{channel === "suggestions" ? "Your suggestion" : "Your comment"}</label>
+            <label htmlFor="community-message">{channel === "discussion" ? "Your comment" : kind === "problem" ? "What is wrong" : "Your suggestion"}</label>
             <textarea id="community-message" value={body} maxLength={replyTo && channel === "discussion" ? COMMUNITY_BODY_LIMIT - 400 : COMMUNITY_BODY_LIMIT} disabled={busy} onChange={e => setDrafts(previous => ({ ...previous, [channel]: e.target.value }))} placeholder={channel === "suggestions" ? "What should be corrected or added? Include the subquestion if relevant." : "Share your reasoning or ask a question…"} />
-            <div className="row spread"><small>Visible to other signed-in users</small><button className="primary" disabled={busy || !target || !body.trim()}>{busy ? "Saving…" : channel === "suggestions" ? "Post suggestion" : "Post comment"}</button></div>
+            {channel === "suggestions" && <label>Source (optional)<input type="text" aria-label="Source" value={source} maxLength={COMMUNITY_SOURCE_LIMIT} disabled={busy} onChange={e => setSource(e.target.value)} placeholder="Guideline, textbook page or link" /></label>}
+            <div className="row spread"><small>Visible to other signed-in users</small><button className="primary" disabled={busy || !target || !body.trim()}>{busy ? "Saving…" : channel === "discussion" ? "Post comment" : kind === "problem" ? "Send report" : "Post suggestion"}</button></div>
           </form>
           {message && <p role="status">{message}</p>}
           <div className="row spread community-list-heading"><strong>{channel === "suggestions" ? "Suggestions" : "Discussion"}</strong><button className="small link" disabled={loading || busy} onClick={() => void refresh()}>Refresh</button></div>
           {loading && <p role="status">Loading…</p>}
           {!loading && !error && !page.posts.length && <p className="muted">{channel === "suggestions" ? "No suggestions yet." : "Start the discussion."}</p>}
           {page.posts.map(post => <article className="community-post" key={post.id}>
-            <div className="row spread"><strong>{post.authorName}</strong><time dateTime={new Date(post.createdAt).toISOString()}>{new Date(post.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time></div>
+            <div className="row spread"><span className="community-author">{post.authorPhoto ? <img src={post.authorPhoto} alt="" referrerPolicy="no-referrer" /> : <span className="community-avatar" aria-hidden="true">{post.authorName.charAt(0).toUpperCase()}</span>}<strong>{post.authorName}</strong></span><time dateTime={new Date(post.createdAt).toISOString()}>{new Date(post.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time></div>
             {channel === "suggestions" && <small className="community-post-kind">{post.kind === "answer" ? "Suggested answer" : "Problem reported"}{post.resolved ? ", resolved" : ""}</small>}
             <p className="pre">{post.body}</p>
+            {post.source && <p className="muted community-source">Source: {/^https?:\/\//i.test(post.source) ? <a href={post.source} target="_blank" rel="noreferrer noopener">{post.source.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 80)}</a> : post.source}</p>}
             <div className="row community-post-actions">
               {channel === "discussion" && <button className="small link" disabled={busy} onClick={() => { setReplyTo(post); document.getElementById("community-message")?.focus(); }}>Reply</button>}
               {admin && channel === "suggestions" && <button className="small link" disabled={busy} onClick={() => void resolve(post)}>{post.resolved ? "Reopen" : "Mark resolved"}</button>}

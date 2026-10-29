@@ -16,9 +16,9 @@ import { CACHE_KEY, RECOUNT_MS, fromRecord, sortRows, weekStart, weeklyFigures, 
  * runs rarely: when an admin opens the table and the last count is an hour old, or in the
  * background after a board read once the last count is twelve hours old.
  */
-interface ServiceAccount { client_email: string; private_key: string; project_id: string }
-type FsValue = { stringValue?: string; integerValue?: string; doubleValue?: number; booleanValue?: boolean; mapValue?: { fields?: Record<string, FsValue> }; timestampValue?: string; nullValue?: null };
-type FsDoc = { name: string; fields?: Record<string, FsValue> };
+export interface ServiceAccount { client_email: string; private_key: string; project_id: string }
+export type FsValue = { stringValue?: string; integerValue?: string; doubleValue?: number; booleanValue?: boolean; mapValue?: { fields?: Record<string, FsValue> }; timestampValue?: string; nullValue?: null };
+export type FsDoc = { name: string; fields?: Record<string, FsValue> };
 
 export function serviceAccount(): ServiceAccount | null {
   let raw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -34,7 +34,7 @@ export function serviceAccount(): ServiceAccount | null {
 
 let cachedToken: { value: string; expires: number } | null = null;
 /** An OAuth access token for Firestore, signed with the service account's key. */
-async function accessToken(sa: ServiceAccount): Promise<string> {
+export async function accessToken(sa: ServiceAccount): Promise<string> {
   if (cachedToken && cachedToken.expires > Date.now() + 60_000) return cachedToken.value;
   const now = Math.floor(Date.now() / 1000);
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -47,10 +47,10 @@ async function accessToken(sa: ServiceAccount): Promise<string> {
   return body.access_token;
 }
 
-const num = (v?: FsValue): number | undefined => v?.integerValue !== undefined ? Number(v.integerValue) : v?.doubleValue !== undefined ? v.doubleValue : v?.timestampValue ? Date.parse(v.timestampValue) : undefined;
-const str = (v?: FsValue): string | undefined => v?.stringValue;
+export const num = (v?: FsValue): number | undefined => v?.integerValue !== undefined ? Number(v.integerValue) : v?.doubleValue !== undefined ? v.doubleValue : v?.timestampValue ? Date.parse(v.timestampValue) : undefined;
+export const str = (v?: FsValue): string | undefined => v?.stringValue;
 
-async function listAll(base: string, token: string, path: string): Promise<FsDoc[]> {
+export async function listAll(base: string, token: string, path: string): Promise<FsDoc[]> {
   const out: FsDoc[] = [];
   let pageToken = "";
   do {

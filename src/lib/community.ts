@@ -2,38 +2,8 @@ import type { Question, QuestionSet } from "../data/types";
 import { loadSharedPack } from "./publicLinks";
 import { publishedQuestion } from "./questionIdentity";
 
-export type CommunityChannel = "suggestions" | "discussion";
-export type CommunityKind = "answer" | "problem" | "comment";
-export interface CommunityTarget { bankId: string; questionId: string }
-export interface CommunityPost {
-  id: string;
-  authorId: string;
-  authorName: string;
-  body: string;
-  kind: CommunityKind;
-  resolved: boolean;
-  createdAt: number;
-}
-export interface CommunityPage { posts: CommunityPost[]; cursor?: unknown }
-export const COMMUNITY_BODY_LIMIT = 4000;
-export const COMMUNITY_PAGE_SIZE = 25;
-
-export function communityBody(text: string): string {
-  const body = text.trim();
-  if (!body) throw new Error("Write something before posting.");
-  if (body.length > COMMUNITY_BODY_LIMIT) throw new Error(`Keep your post to ${COMMUNITY_BODY_LIMIT} characters or fewer.`);
-  return body;
-}
-
-export function validateCommunityTarget(target: CommunityTarget): void {
-  if (![target.bankId, target.questionId].every(id => typeof id === "string" && /^[a-zA-Z0-9_-]{1,200}$/.test(id))) {
-    throw new Error("This question does not have a valid shared reference.");
-  }
-}
-
-export function validCommunityKind(channel: CommunityChannel, kind: CommunityKind): boolean {
-  return channel === "discussion" ? kind === "comment" : channel === "suggestions" && (kind === "answer" || kind === "problem");
-}
+export * from "./communityModel";
+import { validateCommunityTarget, type CommunityTarget } from "./communityModel";
 
 /** Resolve legacy local IDs against the published bank before attaching public posts. */
 export async function communityTarget(set: QuestionSet | undefined, question: Question): Promise<CommunityTarget> {
