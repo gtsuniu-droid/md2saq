@@ -13,6 +13,15 @@
   status = 200
   force = true
 
+# Assistants look here for a sign-in server before connecting. There is none (the connection
+# link is the credential), so answer with a plain 404 rather than the app's page, which they
+# would read as a broken sign-in server.
+[[redirects]]
+  from = "/.well-known/*"
+  to = "/no-sign-in.json"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

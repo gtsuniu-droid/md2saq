@@ -48,10 +48,23 @@ export default async (req: Request): Promise<Response> => {
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   try {
-    return await transport.handleRequest(req);
+    return await transport.handleRequest(await acceptingJson(req));
   } finally {
     void transport.close();
   }
 };
+
+/**
+ * The transport refuses (406) a request whose Accept header does not name both JSON and event
+ * streams. Every answer here is plain JSON, so a client that asks only for JSON, or for
+ * anything, is answered rather than turned away.
+ */
+async function acceptingJson(req: Request): Promise<Request> {
+  const accept = req.headers.get("accept") ?? "";
+  if (accept.includes("application/json") && accept.includes("text/event-stream")) return req;
+  const headers = new Headers(req.headers);
+  headers.set("accept", "application/json, text/event-stream");
+  return new Request(req.url, { method: req.method, headers, body: await req.text() });
+}
 
 export const config: Config = { path: "/api/mcp/*" };

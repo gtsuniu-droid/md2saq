@@ -5,7 +5,7 @@ import { cloudConfigured, idToken } from "../lib/firebase";
 import { formatDate } from "../lib/questions";
 import ConfirmDialog from "./ConfirmDialog";
 
-interface Status { connected: boolean; createdAt: number | null; role: "owner" | "admin" | "student"; url?: string }
+interface Status { connected: boolean; links?: number; createdAt: number | null; role: "owner" | "admin" | "student"; url?: string }
 
 async function api(method: "GET" | "POST" | "DELETE"): Promise<Status> {
   const token = await idToken();
@@ -57,16 +57,16 @@ export default function ClaudeConnect() {
           <div className="setting-row">
             <div>
               <strong>{status?.connected ? "Your assistant is connected" : "Connect Claude or ChatGPT"}</strong>
-              <p>{status ? canEdit ? "As an admin, the assistant can read the whole bank and edit questions, answers and stems on your say-so." : "The assistant can read every set and search the bank. Editing is for admins." : "Checking…"}{status?.connected && status.createdAt ? ` Link created ${formatDate(status.createdAt)}.` : ""}</p>
+              <p>{status ? canEdit ? "As an admin, the assistant can read the whole bank and edit questions, answers and stems on your say-so." : "The assistant can read every set and search the bank. Editing is for admins." : "Checking…"}{status?.connected && status.createdAt ? ` ${(status.links ?? 1) > 1 ? `${status.links} links active, the newest made` : "Link made"} ${formatDate(status.createdAt)}.` : ""}</p>
             </div>
             <div className="setting-control">
-              <button className={status?.connected ? "small" : "primary"} disabled={busy || !status} onClick={() => void run("POST")}>{busy ? "Working…" : status?.connected ? "Make a new link" : "Create connection link"}</button>
-              {status?.connected && <button className="small danger" disabled={busy} onClick={() => setRemoving(true)}>Remove link</button>}
+              <button className={status?.connected ? "small" : "primary"} disabled={busy || !status} onClick={() => void run("POST")}>{busy ? "Working…" : status?.connected ? "Make another link" : "Create connection link"}</button>
+              {status?.connected && <button className="small danger" disabled={busy} onClick={() => setRemoving(true)}>{(status.links ?? 1) > 1 ? "Remove all links" : "Remove link"}</button>}
             </div>
           </div>
           {status?.url && (
             <div className="setting-row stacked connect-link">
-              <div><strong>Your connection link</strong><p>Copy it now; it is shown only once. Treat it like a password: anyone with it can act as you here. Making a new link stops the old one.</p></div>
+              <div><strong>Your connection link</strong><p>Copy it now; it is shown only once. Treat it like a password: anyone with it can act as you here. Your other links keep working, so give each assistant its own; up to five stay active.</p></div>
               <div className="row">
                 <input readOnly aria-label="Connection link" className="connect-url" value={status.url} onFocus={(e) => e.target.select()} />
                 <button className="small" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button>
@@ -85,8 +85,8 @@ export default function ClaudeConnect() {
           {error && <p className="settings-message field-error" role="alert">{error}</p>}
         </>
       )}
-      <ConfirmDialog open={removing} title="Remove your connection link?" confirmLabel="Remove link" destructive busy={busy} onCancel={() => setRemoving(false)} onConfirm={() => void run("DELETE")}>
-        <p>Nothing will be able to reach the site through this link any more. You can create a new one at any time.</p>
+      <ConfirmDialog open={removing} title={(status?.links ?? 1) > 1 ? "Remove all your connection links?" : "Remove your connection link?"} confirmLabel={(status?.links ?? 1) > 1 ? "Remove all links" : "Remove link"} destructive busy={busy} onCancel={() => setRemoving(false)} onConfirm={() => void run("DELETE")}>
+        <p>No assistant will be able to reach the site through {(status?.links ?? 1) > 1 ? "any of them" : "it"} any more. You can make a new one at any time.</p>
       </ConfirmDialog>
     </div>
   );

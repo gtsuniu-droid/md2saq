@@ -62,28 +62,42 @@ export async function caller(req: Request): Promise<ConnectionRecord | Response>
   return { uid: user.localId, email, name: user.displayName, role, createdAt: Date.now() };
 }
 
+/**
+ * Each account may have several connection links, one per assistant or device, so making a
+ * link for ChatGPT does not cut off Claude. The oldest goes once there are more than this.
+ */
+export const MAX_LINKS = 5;
+type Link = { hash: string; createdAt: number };
+/** An account's links; accounts from before several were allowed kept one, stored flat. */
+function linksOf(saved: unknown): Link[] {
+  const v = saved as { links?: Link[]; hash?: string; createdAt?: number } | null;
+  return Array.isArray(v?.links) ? v.links : v?.hash ? [{ hash: v.hash, createdAt: v.createdAt ?? 0 }] : [];
+}
+
 export default async (req: Request): Promise<Response> => {
   const store = openNamedStore("mcp-tokens");
   const who = await caller(req);
   if (who instanceof Response) return who;
   const url = new URL(req.url);
   const userKey = `users/${who.uid}`;
-  const existing = (await store.get(userKey, { type: "json" })) as { hash: string; createdAt: number } | null;
+  const links = linksOf(await store.get(userKey, { type: "json" }));
+  const status = (kept: Link[]) => ({ connected: kept.length > 0, links: kept.length, createdAt: kept.length ? Math.max(...kept.map((l) => l.createdAt)) : null, role: who.role });
 
-  if (req.method === "GET") {
-    return json({ connected: !!existing, createdAt: existing?.createdAt ?? null, role: who.role });
-  }
+  if (req.method === "GET") return json(status(links));
   if (req.method === "DELETE") {
-    if (existing) { await store.delete(`tokens/${existing.hash}`); await store.delete(userKey); }
-    return json({ connected: false, role: who.role });
+    await Promise.all(links.map((l) => store.delete(`tokens/${l.hash}`)));
+    await store.delete(userKey);
+    return json(status([]));
   }
   if (req.method === "POST") {
-    if (existing) await store.delete(`tokens/${existing.hash}`);
     const token = randomBytes(24).toString("base64url");
-    const hash = hashToken(token);
-    await store.setJSON(`tokens/${hash}`, who);
-    await store.setJSON(userKey, { hash, createdAt: who.createdAt });
-    return json({ connected: true, createdAt: who.createdAt, role: who.role, url: `${url.origin}/api/mcp/${token}` }, 201);
+    const added = { hash: hashToken(token), createdAt: who.createdAt };
+    const kept = [...links, added].slice(-MAX_LINKS);
+    await Promise.all(links.filter((l) => !kept.includes(l)).map((l) => store.delete(`tokens/${l.hash}`)));
+    // Every live link acts with the account as it is now, so a role given since takes effect on them too.
+    await Promise.all(kept.map((l) => store.setJSON(`tokens/${l.hash}`, who)));
+    await store.setJSON(userKey, { links: kept });
+    return json({ ...status(kept), url: `${url.origin}/api/mcp/${token}` }, 201);
   }
   return new Response("Method not allowed", { status: 405 });
 };
