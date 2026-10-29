@@ -49,6 +49,7 @@ it("lets a student's connector read their set and leave marks the marking page t
   const got = await tool("getMyAnswers", {});
   expect(got.body).toMatchObject({ success: true, set: "Set 12: Chest pain", parts: [{ part: "1(a)", marks: 2 }, { part: "1(b)", marks: 1 }] });
   expect(got.body.text).toContain("My answer:\nSTEMI and pericarditis");
+  expect(got.body.howToMark).toMatch(/^Mark strictly[\s\S]*Pearl:[\s\S]*markMyAnswers with set "t1"\.$/);
 
   const marked = await tool("markMyAnswers", { marks: [{ part: "1(a)", score: 1, feedback: "Half right.", comments: [{ quote: "pericarditis", comment: "Think dissection." }] }], summary: "Good start." });
   expect(marked.body).toMatchObject({ success: true, partsMarked: 1, total: "1 / 3", notMarked: ["1(b)"] });

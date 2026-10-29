@@ -113,7 +113,8 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   // Admins only: their assistant reads the set through the connector and sends marks back here.
   const markPrompt = forMarking ? [
     `Using the SAQ Practice connector: mark my answers to "${forMarking.name}" (set id ${forMarking.key}).`,
-    `Read them with getMyAnswers (set: "${forMarking.key}"), mark every part against its model answer and the marking notes, quote the passages of my answers you comment on, then send the marks with markMyAnswers (set: "${forMarking.key}").`,
+    `Read them with getMyAnswers (set: "${forMarking.key}") and mark every part strictly, as a finals examiner would, following its howToMark: marks only for points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked; no benefit of the doubt.`,
+    `Quote the passages of my answers you comment on, end each part's feedback with one high-yield clinical pearl ("Pearl: ..."), then send the marks with markMyAnswers (set: "${forMarking.key}").`,
     "I will check and save them on the marking page.",
   ].join("\n") : "";
   // Parts given a suggested score, per attempt, so their score boxes show it.

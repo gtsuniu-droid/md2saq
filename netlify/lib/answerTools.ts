@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { fail, ok } from "../../mcp/src/util";
-import { checkSuggested, setText } from "../../src/lib/setForMarking";
+import { checkSuggested, MARKING_RULES, setText } from "../../src/lib/setForMarking";
 import { findSet, mySets, suggest } from "./answers";
 
 /**
@@ -16,7 +16,7 @@ const setRef = z.string().optional().describe("The set's id (the marking page's 
 export function registerAnswerTools(server: McpServer, uid: string): void {
   server.registerTool("getMyAnswers", {
     title: "Get my answers",
-    description: "The connected student's own answers to a set they have submitted, with the case, each question and part with its marks, and the model answers and marking notes. Sets appear here once the student opens their marking page. Use it when asked to mark their answers, then send the marks with markMyAnswers.",
+    description: "The connected student's own answers to a set they have submitted, with the case, each question and part with its marks, and the model answers and marking notes. Sets appear here once the student opens their marking page. Use it when asked to mark their answers, strictly as its howToMark sets out, then send the marks with markMyAnswers.",
     inputSchema: { set: setRef },
     annotations: READ,
   }, async ({ set }) => {
@@ -29,7 +29,7 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
         parts: s.questions.flatMap((q) => q.parts.map((p) => ({ part: p.id, marks: p.marks }))),
         ...(s.suggested ? { alreadySuggested: `Marks were suggested ${new Date(s.suggested.at).toISOString()}; sending again replaces them.` } : {}),
         otherRecentSets: sets.filter((x) => x !== s).map((x) => ({ id: x.key, name: x.name })),
-        howToMark: `Mark every part against its model answer and the marking notes: a score out of its marks and one or two lines of feedback. Point at specific passages by quoting them word for word from the answer, with a short comment on each. Then call markMyAnswers with set "${s.key}".`,
+        howToMark: [...MARKING_RULES, `Point at specific passages by quoting them word for word from the answer, with a short comment on each. Then call markMyAnswers with set "${s.key}".`].join(" "),
         text: setText(s),
       });
     } catch (e) { return fail(e); }
@@ -42,8 +42,8 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
       set: setRef,
       marks: z.array(z.object({
         part: z.string().describe('The part as getMyAnswers names it, e.g. "1(a)", or "2" for a question without parts.'),
-        score: z.number().min(0),
-        feedback: z.string().max(2000).describe("One or two lines: what earned marks and what was missing."),
+        score: z.number().min(0).describe("Marked strictly: only points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked."),
+        feedback: z.string().max(2000).describe('Which points earned marks and which were missed, then one high-yield clinical pearl on its own line starting "Pearl:".'),
         comments: z.array(z.object({
           quote: z.string().min(1).max(500).describe("A passage copied word for word from the student's answer to this part."),
           comment: z.string().min(1).max(1000),

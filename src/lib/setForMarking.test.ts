@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { Attempt, Question, QuestionSet } from "../data/types";
-import { buildSetForMarking, checkSuggested, docText, setText } from "./setForMarking";
+import { buildSetForMarking, checkSuggested, docText, MARKING_RULES, setText } from "./setForMarking";
 
 const stem = "Mr Lee, 64, has had central chest pain for 40 minutes. BP 100/60, HR 110.";
 const q1: Question = { id: "q1", setId: "s", order: 0, stems: [stem], text: "", parts: [
@@ -22,6 +22,9 @@ it("lays a set out for marking, the shared case once, every part with its marks 
   expect(text.indexOf(stem)).toBe(text.lastIndexOf(stem));
   for (const bit of ["# Set 12: Chest pain", "### 1(a) [2 marks]", "My answer:\nSTEMI and pericarditis", "Model answer:\n- [1] STEMI", "## Question 2 [3 marks]", "## Marking notes\nAccept NSTEMI."]) expect(text).toContain(bit);
   expect(text).not.toMatch(/\bAI\b/);
+  // Marked strictly, with a pearl per part, whoever the text is pasted to.
+  for (const rule of MARKING_RULES) expect(text).toContain(rule);
+  expect(MARKING_RULES.join(" ")).toMatch(/strictly[\s\S]*benefit of the doubt[\s\S]*only the first that many[\s\S]*Pearl:/);
 });
 
 it("keeps what a marker sent that fits the set, and says what did not", () => {

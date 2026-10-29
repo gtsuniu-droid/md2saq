@@ -16,6 +16,18 @@ export interface SetForMarking { key: string; name: string; at: number; notes?: 
 export interface SuggestedPart { attemptId: string; label: string; score: number; feedback: string; comments: { quote: string; text: string; start: number; end: number }[] }
 export interface SuggestedMarks { at: number; summary?: string; parts: SuggestedPart[] }
 
+/**
+ * How to mark, wherever marking is asked for (the connector, Mark with AI, Copy set): strictly,
+ * as a finals examiner would, with a high-yield pearl in each part's feedback.
+ */
+export const MARKING_RULES = [
+  "Mark strictly, as a finals examiner would. A mark is earned only by a point the model answer or marking notes credit, stated specifically and correctly; follow the mark shown against each point, e.g. [1 mark].",
+  "No marks for vague, generic or implied points (\"order bloods\", \"manage symptoms\", \"refer\"), for points the model answer does not credit, or for being on the right track. Never give the benefit of the doubt.",
+  "When a question asks for a number of items (e.g. THREE), mark only the first that many; later ones earn nothing, and a wrong item still uses up its place.",
+  "A point contradicted elsewhere in the answer earns nothing. Half marks only where the model answer or notes allow them; never round up, never exceed a part's marks.",
+  "In each part's feedback, say which points earned marks and which were missed, then end with one high-yield clinical pearl for this question (a fact that wins marks or a trap to avoid), on its own line starting \"Pearl:\".",
+];
+
 /** "1(a)", or "2" for a question without parts: how a part is named in the text and by the connector. */
 export const partId = (number: number, label: string): string => label ? `${number}(${label})` : String(number);
 
@@ -56,7 +68,7 @@ export function buildSetForMarking(key: string, name: string, rows: { question?:
 
 /** The set as text to paste anywhere: a marker gets everything they need, in reading order. */
 export function setText(s: SetForMarking): string {
-  const out = [`Please mark my answers to this short-answer question set. For each part, give a score out of its marks and brief feedback, following the model answer${s.notes ? " and marking notes" : ""}.`, "", `# ${s.name}`];
+  const out = [`Please mark my answers to this short-answer question set: a score out of its marks for each part, and feedback, against the model answer${s.notes ? " and marking notes" : ""}.`, "", ...MARKING_RULES.map((r) => `- ${r}`), "", `# ${s.name}`];
   for (const q of s.questions) {
     for (const stem of q.stems) out.push("", stem);
     const marks = q.parts.reduce((sum, p) => sum + p.marks, 0);
