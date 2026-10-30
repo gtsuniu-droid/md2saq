@@ -7,6 +7,8 @@ import { truncate } from "../lib/questions";
 import { setTitle } from "../lib/sets";
 import { scoreBand } from "../lib/scoreBand";
 import { getProgressSyncState, subscribeProgressSync, syncNow } from "../lib/sync";
+import { discardAttempts } from "../lib/discardAttempts";
+import { isBlankAttempt } from "../lib/blankAttempt";
 
 interface Props { attempts: Attempt[]; marks: Mark[]; questions: Question[]; sets: QuestionSet[]; settings: Settings }
 
@@ -18,8 +20,13 @@ const pct = (g: HistoryGroup) => g.score !== undefined && g.maxScore ? Math.roun
 const band = scoreBand;
 
 /** One sitting: what it was, when, how it went. The presentation sits above so the eye can scan. */
-function Row({ g, sitting, caption = true }: { g: HistoryGroup; sitting: number; caption?: boolean }) {
+function Row({ g, sitting, caption = true, ownerId }: { g: HistoryGroup; sitting: number; caption?: boolean; ownerId: string }) {
   const unmarked = g.entries.find((e) => !e.mark)?.attempt ?? g.anchor;
+  const discard = () => {
+    const attempts = g.entries.map((e) => e.attempt);
+    if (!attempts.every(isBlankAttempt) && !confirm("Discard this sitting? Your answers and marks for it go, and the set is unattempted again.")) return;
+    void discardAttempts(attempts.map((a) => a.id), ownerId);
+  };
   const name = g.presentation && g.label.startsWith(`${g.presentation} `) ? g.label.slice(g.presentation.length + 1) : g.label;
   const emoji = g.presentationId ? PRESENTATION_BY_ID.get(g.presentationId)?.emoji : undefined;
   const titled = !!g.set && !!setTitle(g.set);
@@ -46,6 +53,7 @@ function Row({ g, sitting, caption = true }: { g: HistoryGroup; sitting: number;
         <span className="history-links">
           {g.reviewLater && <span className="review-later-label">⚑ Review later</span>}
           {g.marked < g.total ? <Link to={`/mark/${unmarked.id}`}>Mark</Link> : <Link to={`/history/${g.anchor.id}`}>Open</Link>}
+          {g.mode === "practice" && <button type="button" className="link history-discard" onClick={discard} title="Throw this sitting away; the set is unattempted again">Discard</button>}
         </span>
       </div>
     </li>
@@ -108,10 +116,10 @@ export default function AttemptHistory({ attempts, marks, questions, sets, setti
       : view === "presentation" ? sections.map((s) => (
         <details key={s.name} className="history-section" open>
           <summary><span className="history-section-name">{s.emoji && <span aria-hidden="true">{s.emoji}</span>}{s.name}</span><span className="muted">{s.setsDone} {s.setsDone === 1 ? "set" : "sets"} done, {s.rows.length} {s.rows.length === 1 ? "sitting" : "sittings"}{s.best !== null ? `, best ${s.best}%` : ""}</span></summary>
-          <ol className="history-list">{s.rows.map((g) => <Row key={g.key} g={g} sitting={sittingOf.get(g.key) ?? 1} caption={false} />)}</ol>
+          <ol className="history-list">{s.rows.map((g) => <Row ownerId={ownerId} key={g.key} g={g} sitting={sittingOf.get(g.key) ?? 1} caption={false} />)}</ol>
         </details>
       ))
-      : <ol className="history-list">{filtered.slice(0, limit).map((g) => <Row key={g.key} g={g} sitting={sittingOf.get(g.key) ?? 1} />)}</ol>}
+      : <ol className="history-list">{filtered.slice(0, limit).map((g) => <Row ownerId={ownerId} key={g.key} g={g} sitting={sittingOf.get(g.key) ?? 1} />)}</ol>}
     {filtered.length > 0 && view === "recent" && <div className="row spread history-more"><span className="muted">Showing {Math.min(limit, filtered.length)} of {filtered.length} sittings</span>{limit < filtered.length && <button className="small" onClick={() => setLimit((n) => n + 10)}>Show more</button>}</div>}
   </section>;
 }

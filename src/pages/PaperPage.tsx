@@ -1,6 +1,9 @@
 import { loadLibrary, readCatalogue } from "../lib/library";
 import { prefetchSet, syncFromBank } from "../lib/bank";
 import { useSetContent } from "../lib/useSetContent";
+import LibraryUpdateNotice from "../components/LibraryUpdateNotice";
+import { isBlankAttempt } from "../lib/blankAttempt";
+import { discardAttempts } from "../lib/discardAttempts";
 import { hasAnswerContent } from "../lib/answerContent";
 import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
@@ -42,6 +45,8 @@ export default function PaperPage() {
   const gate = useAccountGate();
   const [gateOpen, setGateOpen] = useState(false);
   const [submittingSet, setSubmittingSet] = useState(false);
+  // The set about to be submitted has nothing written in it: skip it, or submit it anyway.
+  const [blankSet, setBlankSet] = useState<string | null>(null);
   const [saveError, setSaveError] = useState("");
   const imageJobs = useRef(new Set<string>());
   const [addingImages, setAddingImages] = useState(false);
@@ -96,6 +101,9 @@ export default function PaperPage() {
     (async () => {
       // Questions deleted since the paper was started drop out of it.
       await recoverAnswerDrafts(session.id);
+      // A fresh catalogue first, so a set changed since the paper was opened (in Admin or
+      // through the connector) is the one that loads; a slow network does not hold the paper.
+      await Promise.race([syncFromBank().catch(() => undefined), new Promise((r) => setTimeout(r, 2500))]);
       if (!await readCatalogue()) await syncFromBank().catch(() => undefined);
       const library = await loadLibrary();
       const byId = new Map(library.questions.map(q => [q.id, q]));
@@ -192,7 +200,7 @@ export default function PaperPage() {
     return {
       questions: questions.filter((q): q is Question => !!q),
       attempts: attempts.filter((a): a is Attempt => !!a && belongsToAccount(a, ownerRef.current)),
-      sets, marks, pending: library.pending,
+      sets, marks, pending: library.pending, behind: library.behind,
     };
   }, [session?.id, ready, session?.attemptIds.join(",")]);
 
@@ -416,6 +424,7 @@ export default function PaperPage() {
 
   if (!session || !data || !question || !attempt) return <p role="status">Loading session…</p>;
   if (!content.ready || data.pending.has(question.setId)) return <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}<button onClick={() => nav("/home")}>Save & exit</button></div>;
+  const behindRevision = data.behind.get(question.setId);
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
   const setMode = session.studyUnit === "sets";
   const setGroups = sessionSetGroups(session, data.questions);
@@ -426,12 +435,18 @@ export default function PaperPage() {
   const lastInSet = currentSet.indices[currentSet.indices.length - 1];
   const setSubmitted = currentSet.indices.every((i) => data.attempts[i].submittedAt !== undefined);
   const firstToMark = currentSet.indices.find((i) => !marked.has(data.attempts[i].id)) ?? currentSet.indices[0];
-  const submitSet = async () => {
+  const setKey = currentSet.indices.map((i) => data.attempts[i].id).join(",");
+  const submitSet = async (anyway = false) => {
     if (submittingRef.current || setSubmitted || imageJobs.current.size) return;
     submittingRef.current = true;
     setSubmittingSet(true); setSaveError("");
     try {
       for (const i of currentSet.indices) await flushAttempt(data.attempts[i].id);
+      if (!anyway) {
+        const fresh = await db.attempts.bulkGet(currentSet.indices.map((i) => data.attempts[i].id));
+        if (fresh.every((a) => a && isBlankAttempt(a))) { setBlankSet(setKey); return; }
+      }
+      setBlankSet(null);
       const submittedAt = Date.now();
       await db.transaction("rw", db.attempts, async () => {
         for (const i of currentSet.indices) {
@@ -441,6 +456,19 @@ export default function PaperPage() {
       requestSync(0);
     } catch { setSaveError("Could not submit this set. Your draft answers are still here; please try again."); }
     finally { submittingRef.current = false; setSubmittingSet(false); }
+  };
+  // Skip the set: its attempts go, it stays unattempted, and the paper moves on to what follows.
+  const skipSet = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true; setSubmittingSet(true);
+    try {
+      flushAll();
+      const first = currentSet.indices[0];
+      const more = setIndex + 1 < setGroups.length;
+      await discardAttempts(currentSet.indices.map((i) => data.attempts[i].id), ownerRef.current);
+      setBlankSet(null);
+      if (more) goTo(first); else if (first > 0) { goTo(first - 1); setSummaryOpen(true); }
+    } finally { submittingRef.current = false; setSubmittingSet(false); }
   };
   const nextQuestion = (i: number) => {
     if (imageJobs.current.size) return;
@@ -483,6 +511,7 @@ export default function PaperPage() {
           : <button className="primary" onClick={submitAll} disabled={reading || expired || addingImages}>Submit paper ({unsubmitted} left)</button>}
 
       </div>
+      {behindRevision !== undefined && <LibraryUpdateNotice setId={question.setId} revision={behindRevision} />}
       {reading && <div className="practice-time-notice" role="status">Reading time. Answers unlock automatically when writing begins.</div>}
       {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">Suggested time reached. Keep writing and submit when you're ready.</div>}
       {addingImages && <div className="practice-time-notice" role="status">Adding pictures…</div>}
@@ -579,6 +608,10 @@ export default function PaperPage() {
                     <button onClick={() => { flushAll(); nav(`/mark/${data.attempts[firstToMark].id}`); }}>
                       {currentSet.indices.every((i) => marked.has(data.attempts[i].id)) ? "Review marking" : "Mark set"}
                     </button>
+                  </> : blankSet === setKey ? <>
+                    <span className="muted" role="status">Nothing written for this set.</span>
+                    <button className="primary" onClick={() => void skipSet()} disabled={submittingSet || addingImages} title="Leave this set unattempted, so it comes round again">Skip set</button>
+                    <button onClick={() => void submitSet(true)} disabled={submittingSet || addingImages}>Submit as is</button>
                   </> : <button className="primary" onClick={() => void submitSet()} disabled={submittingSet || addingImages}>
                     {submittingSet ? "Submitting…" : "Submit set"}
                   </button>)}

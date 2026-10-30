@@ -1888,3 +1888,12 @@ button.study-answer > .row { display: flex; width: 100%; }
 .mark-verdict.plain { padding: 0; border: 0; background: transparent; margin: .7rem 0 .5rem; }
 .comment-add-row { position: absolute; right: .6rem; bottom: .5rem; display: inline-flex; gap: .3rem; }
 .comment-add-row .comment-add { position: static; }
+
+/* A set this device has edited while the library moved on: one line, take the update or keep what is here. */
+.library-update { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; margin: 0; padding: .5rem 1.25rem; background: var(--teal-soft); color: var(--fg); font-size: .88rem; border-bottom: 1px solid color-mix(in srgb, var(--teal) 25%, var(--border)); }
+.library-update button.small { min-height: 28px; }
+
+/* Throwing a sitting away: a quiet link, never a button that competes with saving. */
+.mark-discard, .history-discard { color: var(--muted); font-size: .85rem; }
+.mark-discard:hover:not(:disabled), .history-discard:hover:not(:disabled) { color: var(--bad); }
+.history-discard { min-height: 0; padding: 0; border: 0; background: transparent; font: inherit; font-size: .85rem; cursor: pointer; }

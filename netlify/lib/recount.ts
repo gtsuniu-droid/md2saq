@@ -17,7 +17,7 @@ import { CACHE_KEY, RECOUNT_MS, fromRecord, sortRows, weekStart, weeklyFigures, 
  * background after a board read once the last count is twelve hours old.
  */
 export interface ServiceAccount { client_email: string; private_key: string; project_id: string }
-export type FsValue = { stringValue?: string; integerValue?: string; doubleValue?: number; booleanValue?: boolean; mapValue?: { fields?: Record<string, FsValue> }; timestampValue?: string; nullValue?: null };
+export type FsValue = { stringValue?: string; integerValue?: string; doubleValue?: number; booleanValue?: boolean; mapValue?: { fields?: Record<string, FsValue> }; arrayValue?: { values?: FsValue[] }; timestampValue?: string; nullValue?: null };
 export type FsDoc = { name: string; fields?: Record<string, FsValue> };
 
 export function serviceAccount(): ServiceAccount | null {
@@ -71,6 +71,9 @@ async function attemptsOf(base: string, token: string, uid: string, since: numbe
   return rows.flatMap(({ document }) => {
     const f = document?.fields; const submittedAt = num(f?.submittedAt);
     if (!f || submittedAt === undefined) return [];
+    // Nothing written in any part: a set clicked through, which counts for nothing.
+    const answers = f.answers?.arrayValue?.values ?? [];
+    if (answers.length && answers.every((v) => !(str(v.mapValue?.fields?.text) ?? "").trim())) return [];
     const qref = f.qref?.mapValue?.fields;
     return [{ uid, submittedAt, questionId: str(f.questionId) ?? "", bankId: str(qref?.bankId), order: num(qref?.order) }];
   });

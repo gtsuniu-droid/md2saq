@@ -31,6 +31,12 @@ import { isGeneralComment } from "../lib/answerComments";
 import { tickList, tickedScore } from "../lib/markingTicks";
 import { wordDiff } from "../lib/wordDiff";
 import RevisedAnswer from "./RevisedAnswer";
+import LibraryUpdateNotice from "./LibraryUpdateNotice";
+import { ensureSetContent } from "../lib/bank";
+import { readCatalogue } from "../lib/library";
+import { hasUnpublishedEdits } from "../lib/bankEditState";
+import { discardAttempts } from "../lib/discardAttempts";
+import { isBlankAttempt } from "../lib/blankAttempt";
 
 interface Props {
   attemptId: string;
@@ -81,6 +87,17 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const lastData = useRef(liveData);
   if (liveData) lastData.current = liveData;
   const data = liveData ?? (editing ? lastData.current : liveData);
+  // The bank's current revision of this set: a newer one downloads, unless this device holds
+  // unpublished edits to the set, in which case the page offers it.
+  const bankRevision = useLiveQuery(async () => {
+    const set = data?.set; if (!set) return undefined;
+    return (await readCatalogue())?.entries.find((e) => e.id === set.bankId || e.set.id === set.id)?.revision;
+  }, [data?.set?.id, data?.set?.bankId]);
+  const behind = !!data?.set && bankRevision !== undefined && (data.set.bankUpdatedAt ?? 0) < bankRevision;
+  useEffect(() => {
+    if (!data?.set || !behind || hasUnpublishedEdits(data.set)) return;
+    void ensureSetContent(data.set.id).catch(() => undefined);
+  }, [data?.set?.id, behind]);
 
   useEffect(() => {
     if (!data) return;
@@ -204,6 +221,20 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     finally { savingRef.current = false; setSaving(false); }
   };
 
+  // Throw this sitting away: the set is unattempted again. A set with nothing written goes without asking.
+  const discard = async () => {
+    if (savingRef.current) return;
+    const attempts = readyRows.map((r) => r.attempt!);
+    if (!attempts.every(isBlankAttempt) && !confirm("Discard this sitting? Your answers and marks for it go, and the set is unattempted again.")) return;
+    savingRef.current = true; setSaving(true);
+    try {
+      for (const a of attempts) clearMarkingDraft(data.ownerId, a.id, drafts[a.id]);
+      await discardAttempts(attempts.map((a) => a.id), data.ownerId);
+      if (embedded && onAdvance) onAdvance(); else nav(inSession ? `/session/${inSession.id}` : "/home#history", { replace: true });
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Could not discard this sitting."); }
+    finally { savingRef.current = false; setSaving(false); }
+  };
+
   const deleted = () => {
     const replacement = rows.find((r) => r.attempt && r.question?.id !== editing?.id)?.attempt;
     setEditing(null);
@@ -279,6 +310,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         <div className="mark-set-save" aria-label="Save marks">
           <div><strong>Set total {total} / {maximum}</strong><span className="muted">{message || draftWarning || "Your scores are kept on this device until you save."}</span></div>
           <span style={{ flex: 1 }} />
+          {anchor.mode === "practice" && readyRows.length > 0 && <button className="small link mark-discard" disabled={saving} onClick={() => void discard()} title="Throw this sitting away; the set is unattempted again">Discard set</button>}
           <button disabled={saving || !ready} onClick={() => void save(false)}>{saving ? "Saving…" : "Save marks"}</button>
           <button className="primary" disabled={saving || !ready} onClick={() => void save(true)}>{embedded ? (data.nextAttempt ? "Save and next set" : "Save and finish") : data.nextAttempt ? "Save and next set" : "Save and finish"}</button>
         </div>
@@ -296,6 +328,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
       <span style={{ flex: 1 }} />
       <Link className="button" to={inSession ? `/session/${inSession.id}` : "/home#history"}>{inSession ? "Session summary" : "Back to history"}</Link>
     </div>}
+    {!embedded && behind && set && bankRevision !== undefined && hasUnpublishedEdits(set) && <LibraryUpdateNotice setId={set.id} revision={bankRevision} />}
     <div className={embedded ? "paper mark-paper embedded" : "paper mark-paper"}>
       {sidebar}
       {body}
@@ -357,6 +390,8 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   // "Your answer" or the marker's full-marks rewrite of it, per part.
   const [view, setView] = useState<Record<string, "answer" | "full" | "revise">>({});
   const [clean, setClean] = useState<Record<string, boolean>>({});
+  // The model answer reads as written unless the student switches a part to its tick list.
+  const [asTicks, setAsTicks] = useState<Record<string, boolean>>({});
   const discardRevision = async (label: string) => {
     await db.attempts.update(attempt.id, { answers: attempt.answers.map((a) => a.label === label ? { ...a, revision: undefined } : a) });
     requestSync(); setView((v) => ({ ...v, [label]: "answer" }));
@@ -365,8 +400,19 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const comments = attempt.answerComments ?? [];
   const verdictsFor = (label: string) => comments.filter((c) => c.by === "marker" && c.partLabel === label && isGeneralComment(c));
   const marginComments = comments.filter((c) => !(c.by === "marker" && isGeneralComment(c)));
-  // Once a part has a score the model answer has done its job and folds away; before that it is open for marking against.
-  const isFolded = (key: string, label: string) => folded[key] ?? (hasMark || !!suggested?.has(label) || !!draft.scored?.includes(label));
+  // A part that arrives marked has its model answer folded; one being marked now stays open
+  // while the score is typed or ticked (the first look decides, not every keystroke).
+  const defaultFold = useRef<Record<string, boolean>>({});
+  const isFolded = (key: string, label: string) => {
+    if (folded[key] !== undefined) return folded[key];
+    if (defaultFold.current[key] === undefined) defaultFold.current[key] = hasMark || !!suggested?.has(label) || !!draft.scored?.includes(label);
+    return defaultFold.current[key];
+  };
+  // Suggested marks that arrive later fold the parts they cover, unless the student has opened them.
+  useEffect(() => {
+    if (!suggested?.size) return;
+    setFolded((f) => { const next = { ...f }; for (const label of suggested) if (next[label] === undefined && defaultFold.current[label] === false) next[label] = true; return next; });
+  }, [suggested]);
   const tick = (label: string, list: NonNullable<ReturnType<typeof tickList>>, pm: PartMark, index: number) => {
     const pointsHit = pm.pointsHit.includes(index) ? pm.pointsHit.filter((i) => i !== index) : [...pm.pointsHit, index];
     setEntered((set) => new Set(set).add(`score:${label}`));
@@ -416,7 +462,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
                 {question.parts.length > 0 && pi.part.marks !== undefined && <span className="marks">({pi.part.marks} mark{pi.part.marks === 1 ? "" : "s"})</span>}
               </div>
             ) : null}
-            <div className={"mark-verdict" + (verdicts.length || (list && !isFolded(label, label)) ? "" : " plain")}>
+            <div className={"mark-verdict" + (verdicts.length || (list && asTicks[label] && !isFolded(label, label)) ? "" : " plain")}>
               <div className="mark-score">
                 <label>Score</label>
                 {scoreField(`score:${label}`, pm.score, (n) => setPart(label, { score: n }), pm.maxScore || undefined, `Score${label ? ` for part ${label}` : ""}`, !hasMark && !suggested?.has(label))}
@@ -424,7 +470,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
                 {scoreField(`max:${label}`, pm.maxScore, (n) => setPart(label, { maxScore: n }), undefined, `Maximum score${label ? ` for part ${label}` : ""}`)}
               </div>
               {verdicts.length ? <div className="mark-verdict-text">{verdicts.map((v) => <p key={v.id} className="pre">{v.text}</p>)}<span className="muted mark-verdict-by">Marker</span></div>
-                : list && !isFolded(label, label) ? <p className="muted mark-verdict-hint">Tick the points you made in the model answer below and the score follows, or type it.</p> : null}
+                : list && asTicks[label] && !isFolded(label, label) ? <p className="muted mark-verdict-hint">Tick the points you made below and the score follows, or type it.</p> : null}
             </div>
             {pi.answer && (pm.rewrite || revised || showing !== "answer") && <div className="mark-views" role="group" aria-label="Answer view">
               <button type="button" className="small" aria-pressed={showing === "answer"} onClick={() => setView((v) => ({ ...v, [label]: "answer" }))}>Your answer</button>
@@ -449,12 +495,12 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
             <div className={"mark-panel" + (isFolded(label, label) ? " folded" : "")}>
               <div className="mark-panel-head">
                 {foldButton(label, !isFolded(label, label))}
-                {list && !isFolded(label, label) && <span className="muted mark-panel-note">tick what you got</span>}
                 <span style={{ flex: 1 }} />
+                {list && !isFolded(label, label) && <button type="button" className="small link mark-model-edit" aria-pressed={!!asTicks[label]} title="Tick the points you made and the score adds up; or read the model answer as written" onClick={() => setAsTicks((t) => ({ ...t, [label]: !t[label] }))}>{asTicks[label] ? "As written" : "Tick list"}</button>}
                 {admin && <button type="button" className="small link mark-model-edit" onClick={() => onEdit(question)}>Edit</button>}
               </div>
               {!isFolded(label, label) && <div className="mark-model-body">
-                {list ? <>
+                {list && asTicks[label] ? <>
                   <ul className="tick-list">{list.rows.map((r) => <li key={r.index}><label className={"tick-row" + (pm.pointsHit.includes(r.index) ? " on" : "")}><input type="checkbox" checked={pm.pointsHit.includes(r.index)} onChange={() => tick(label, list, pm, r.index)} /><span>{r.text}</span><span className="tick-marks">{r.marks}</span></label></li>)}</ul>
                   {list.guidance.length > 0 && <details className="tick-guidance"><summary>Marking guidance</summary>{list.guidance.map((g, i) => <p key={i} className="pre">{g}</p>)}</details>}
                 </> : hasModelAnswer(pi.part) ? <ModelAnswerContent answer={pi.part} /> : <p className="muted">{wholeModel ? "See the model answer above." : "No model answer for this part."}</p>}

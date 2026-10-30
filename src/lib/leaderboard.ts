@@ -4,6 +4,7 @@ import type { Attempt, Question, SocialSettings } from "../data/types";
 import { cloudConfigured, communityServices, idToken, services } from "./firebase";
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
+import { isBlankAttempt } from "./blankAttempt";
 
 /**
  * A weekly leaderboard, Monday to Sunday in the student's local time, counted by questions
@@ -61,8 +62,9 @@ export function weekKey(ts: number): string {
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
+// A set clicked through with nothing written is not work done: blank attempts never count.
 const inWeek = (attempts: Attempt[], ownerId: string, start: number) =>
-  attempts.filter((a) => belongsToAccount(a, ownerId) && a.submittedAt !== undefined && a.submittedAt >= start && a.submittedAt < start + 7 * DAY);
+  attempts.filter((a) => belongsToAccount(a, ownerId) && a.submittedAt !== undefined && a.submittedAt >= start && a.submittedAt < start + 7 * DAY && !isBlankAttempt(a));
 
 /** Questions submitted by this account in the week starting at `start`. */
 export function questionsInWeek(attempts: Attempt[], ownerId: string, start: number): number {

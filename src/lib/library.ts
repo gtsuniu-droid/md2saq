@@ -9,11 +9,18 @@ export async function readCatalogue(): Promise<BankCatalogue | undefined> {
 }
 
 /** Catalogue rows stay separate from editable/cached content. Never publish a summary. */
-export async function loadLibrary(): Promise<{ sets: QuestionSet[]; questions: Question[]; pending: Set<string> }> {
+/**
+ * The library as this device sees it. `pending` sets are known from the catalogue but not yet
+ * downloaded. `behind` sets have unpublished edits here while the bank has moved on since
+ * (someone published a newer version, perhaps through the connector): the local copy is shown,
+ * and the page can offer the update, keyed here by the bank's revision.
+ */
+export async function loadLibrary(): Promise<{ sets: QuestionSet[]; questions: Question[]; pending: Set<string>; behind: Map<string, number> }> {
   const [catalogue, cachedSets, cachedQuestions] = await Promise.all([readCatalogue(), db.sets.toArray(), db.questions.toArray()]);
   const sets: QuestionSet[] = [];
   const questions: Question[] = [];
   const pending = new Set<string>();
+  const behind = new Map<string, number>();
   const seen = new Set<string>();
   const byBank = new Map(cachedSets.filter(s => s.bankId).map(s => [s.bankId!, s]));
   const byId = new Map(cachedSets.map(s => [s.id, s]));
@@ -29,6 +36,7 @@ export async function loadLibrary(): Promise<{ sets: QuestionSet[]; questions: Q
     if (local && (hasUnpublishedEdits(local) || (local.bankUpdatedAt ?? 0) >= entry.revision)) {
       sets.push({ ...local, bankId: entry.id, number: entry.set.number ?? local.number });
       questions.push(...members);
+      if ((local.bankUpdatedAt ?? 0) < entry.revision) behind.set(setId, entry.revision);
     } else {
       sets.push({ ...entry.set, id: setId });
       const ids = new Map([...(await legacyQuestionIds(entry, members)), ...members.map(q => [q.bankQuestionId ?? q.id, q.id] as const)]);
@@ -40,7 +48,7 @@ export async function loadLibrary(): Promise<{ sets: QuestionSet[]; questions: Q
   for (const s of cachedSets) if (!seen.has(s.id) && (!catalogue || !s.bankId || s.dirty)) {
     sets.push(s); questions.push(...bySet.get(s.id) ?? []);
   }
-  return { sets, questions, pending };
+  return { sets, questions, pending, behind };
 }
 
 export interface LibraryBreakdown {

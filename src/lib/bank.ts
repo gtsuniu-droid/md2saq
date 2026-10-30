@@ -123,6 +123,12 @@ async function refreshCatalogue(): Promise<number> {
   return changed;
 }
 
+/** Give up this device's unpublished edits to a set and take the bank's current version. */
+export async function takeBankUpdate(setId: string): Promise<string> {
+  await db.sets.update(setId, { dirty: false });
+  return ensureSetContent(setId);
+}
+
 const loadingSets = new Map<string, Promise<string>>();
 /** Materialise one complete set before reading/editing/marking it. */
 export function ensureSetContent(setId: string): Promise<string> {

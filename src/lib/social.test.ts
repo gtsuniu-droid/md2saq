@@ -26,6 +26,10 @@ it("counts a week from Monday, by questions and by whole sets, for the account o
   const questions = [{ id: "q1", setId: "A" }, { id: "q2", setId: "A" }, { id: "q3", setId: "B" }, { id: "q4", setId: "B" }, { id: "q5", setId: "B" }];
   const attempts = [a("1", "q1", start + 1000), a("2", "q2", start + 3 * 86_400_000), a("3", "q3", undefined), a("4", "q4", start - 1), a("5", "q5", start + 7 * 86_400_000), a("6", "q3", start + 5000, "other"), a("7", "q3", start + 6000)];
   expect(questionsInWeek(attempts, "me", start)).toBe(3);
+  // A set clicked through with nothing written counts for nothing.
+  const blank = { ...a("8", "q4", start + 2000), answers: [{ label: "", text: " ", doc: null }] };
+  expect(questionsInWeek([...attempts, blank], "me", start)).toBe(3);
+  expect(setsInWeek([...attempts, blank], questions, "me", start)).toBe(1);
   expect(setsInWeek(attempts, questions, "me", start)).toBe(1);
   expect(questionsInWeek(attempts, "me", start - 7 * 86_400_000)).toBe(1);
 });

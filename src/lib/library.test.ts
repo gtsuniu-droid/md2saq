@@ -30,3 +30,16 @@ it("hides removed copies from the library without deleting them", async () => {
   expect((await db.sets.get("gone-edited"))?.dirty).toBe(false);
   expect(await libraryBreakdown()).toMatchObject({ removed: 0 });
 });
+
+it("names the sets this device has edited while the bank moved on, keeping the local copy in view", async () => {
+  await db.meta.put({ id: CATALOGUE_KEY, value: JSON.stringify({ version: 1, entries: [entry("bank-a", "a"), { ...entry("bank-b", "b"), revision: 9 }] }) });
+  const library = await loadLibrary();
+  expect([...library.behind]).toEqual([["b", 9]]);
+  expect(library.sets.find((s) => s.id === "b")?.dirty).toBe(true); // still the edited copy
+  expect(library.pending.has("b")).toBe(false);
+  // A clean copy that is behind is simply pending the download, not "behind".
+  await db.sets.update("b", { dirty: false });
+  const again = await loadLibrary();
+  expect(again.behind.size).toBe(0);
+  expect(again.pending.has("b")).toBe(true);
+});
