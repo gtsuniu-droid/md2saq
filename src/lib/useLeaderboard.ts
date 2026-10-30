@@ -7,7 +7,7 @@ import { fetchLeaderboard, onBoard, publishWeeklyCount, type LeaderboardRow } fr
  * board comes back with it. After that it stays fresh: every `everyMs` while the tab is in
  * view, at once on coming back to the tab, and whenever another page posts a newer count.
  */
-export function useLeaderboard(uid: string | undefined, deps: unknown[], everyMs = 60_000): { rows: LeaderboardRow[] | null; error: string } {
+export function useLeaderboard(uid: string | undefined, deps: unknown[], everyMs = 30_000): { rows: LeaderboardRow[] | null; error: string } {
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [error, setError] = useState("");
 

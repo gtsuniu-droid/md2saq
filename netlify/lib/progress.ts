@@ -40,8 +40,12 @@ export function weeklyFigures(attempts: AttemptRow[], questionCount: Map<string,
  * that disagree about it.
  */
 export interface BoardRecord { name: string; photo?: string; visible: boolean; choiceAt?: number; week: string; count: number; sets: number; prevCount: number; prevSets: number; /** Everything ever, as the device counted it. */ total?: number; totalSets?: number; at: number }
-/** What a device posts: `visible` is left out when the device has no say (it never saw the choice). */
-export type Posted = Omit<BoardRecord, "visible"> & { visible?: boolean };
+/**
+ * What a device posts: `visible` is left out when the device has no say (it never saw the
+ * choice). `complete` says the device had synced the account's answers shortly before counting,
+ * so its figures are the account's; without it, a device may know less than another did.
+ */
+export type Posted = Omit<BoardRecord, "visible"> & { visible?: boolean; complete?: boolean };
 
 /**
  * Every account's latest record in one blob, so the board is read in one request and no
@@ -62,7 +66,15 @@ export function mergeRecord(stored: BoardRecord | undefined, post: Posted): Boar
   // The nickname goes with the choice: a device that has not seen the student's choice, or
   // saw an older one, posts their first name, which must not replace the nickname they chose.
   const name = stored?.name && !theirs ? stored.name : post.name;
-  return { ...post, ...(theirs ? said : keep), name };
+  const { complete: _complete, ...record } = post; void _complete;
+  // A device that has not synced may be behind the one that answered: within the week it can
+  // only raise the figures. A synced device's figures stand, lower included (a discarded set).
+  const higher = stored && !post.complete && stored.week === post.week ? {
+    count: Math.max(stored.count, post.count), sets: Math.max(stored.sets, post.sets),
+    prevCount: Math.max(stored.prevCount, post.prevCount), prevSets: Math.max(stored.prevSets, post.prevSets),
+    total: Math.max(stored.total ?? 0, post.total ?? 0), totalSets: Math.max(stored.totalSets ?? 0, post.totalSets ?? 0),
+  } : {};
+  return { ...record, ...higher, ...(theirs ? said : keep), name };
 }
 
 /**

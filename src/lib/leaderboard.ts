@@ -5,6 +5,7 @@ import { cloudConfigured, communityServices, idToken, services } from "./firebas
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
 import { isBlankAttempt } from "./blankAttempt";
+import { getProgressSyncState, syncNow } from "./sync";
 
 /**
  * A weekly leaderboard, Monday to Sunday in the student's local time, counted by questions
@@ -46,6 +47,8 @@ export function boardName(settings: { social?: { username?: string }; cloudUser?
 export const nicknameMeantJoin = (s: SocialSettings): boolean => !s.leaderboard && !!s.username.trim() && (s.chosenAt ?? 0) < NICKNAME_JOINED_UNTIL;
 
 const DAY = 24 * 3600 * 1000;
+/** A sync this recent means the device's answers are the account's. */
+const FRESH_MS = 2 * 60_000;
 
 /** Midnight at the start of the Monday of the week containing `ts`, local time. */
 export function weekStart(ts: number): number {
@@ -119,6 +122,13 @@ export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolea
   if (!cloudConfigured()) return null;
   let settings = await getSettings();
   if (settings.cloudUser?.uid !== uid) return null;
+  // Count from the account's answers, not just this device's: pull first unless a sync just
+  // ran or is running now (sync itself publishes after pushing), waiting a few seconds at most
+  // so a stalled sync cannot hold the board. A device whose pull is fresh speaks for the
+  // account; one whose is not can only raise the week's figures.
+  const synced = (state = getProgressSyncState()) => state.uid === uid && state.status === "synced" && Date.now() - (state.at ?? 0) < FRESH_MS;
+  if (!synced() && getProgressSyncState().status !== "syncing") await Promise.race([syncNow(settings.cloudUser).catch(() => null), new Promise((r) => setTimeout(r, 4000))]);
+  const complete = synced();
   if (settings.social && nicknameMeantJoin(settings.social)) {
     const social = { ...settings.social, leaderboard: true, chosenAt: Date.now() };
     await patchSettings({ social });
@@ -150,7 +160,7 @@ export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolea
     try { localStorage.setItem(key, JSON.stringify({ sig, at: Date.now() })); } catch { /* fine */ }
   })();
   cloud.catch(() => undefined); // finishes in the background; only matters below if the post fails
-  const body = JSON.stringify({ ...row, ...(choice ? { ...choice, choiceAt: social?.chosenAt ?? 0 } : {}) });
+  const body = JSON.stringify({ ...row, ...(complete ? { complete } : {}), ...(choice ? { ...choice, choiceAt: social?.chosenAt ?? 0 } : {}) });
   if (opts.ifChanged && lastPost?.uid === uid && lastPost.body === body && Date.now() - lastPost.at < 15 * 60_000) return null;
   lastPost = { uid, body, at: Date.now() };
   try {

@@ -118,3 +118,17 @@ it("joins an account whose record carries a chosen nickname under an old no, and
   expect(joinByNickname(rec("Ball clapper", false, NICKNAME_JOINED_UNTIL), "Gabriel Tsun")).toBeNull();
   expect(joinByNickname(rec("Ball clapper", true), "Gabriel Tsun")).toBeNull();
 });
+
+it("lets a device that has not synced raise the week's figures but not lower them, while a synced device's figures stand", () => {
+  const rec = (count: number, extra: Partial<BoardRecord> = {}): BoardRecord => ({ name: "Gabe", week: "2026-W44", count, sets: 1, prevCount: 2, prevSets: 0, total: 50, totalSets: 9, at: 1, visible: true, ...extra });
+  const stored = rec(12);
+  // Behind: a phone that has not pulled the laptop's answers yet.
+  expect(mergeRecord(stored, { ...rec(7), total: 40 }).count).toBe(12);
+  expect(mergeRecord(stored, { ...rec(7), total: 40 }).total).toBe(50);
+  expect(mergeRecord(stored, rec(15)).count).toBe(15);
+  // Synced: what it says goes, even downwards (a set was discarded).
+  expect(mergeRecord(stored, { ...rec(7), complete: true }).count).toBe(7);
+  expect("complete" in mergeRecord(stored, { ...rec(7), complete: true })).toBe(false);
+  // A new week starts from the post whatever the device knows.
+  expect(mergeRecord(stored, rec(3, { week: "2026-W45" })).count).toBe(3);
+});

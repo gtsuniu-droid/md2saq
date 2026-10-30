@@ -8,6 +8,8 @@ import { getSettings } from "../data/db";
 
 vi.mock("./firebase", () => ({ cloudConfigured: () => true, idToken: async () => "token", communityServices: async () => { throw new Error("offline"); }, services: async () => { throw new Error("offline"); } }));
 vi.mock("./library", () => ({ loadLibrary: async () => ({ sets: [], questions: [], pending: new Set() }) }));
+const sync = { state: { status: "idle" } as { uid?: string; status: string; at?: number } };
+vi.mock("./sync", () => ({ getProgressSyncState: () => sync.state, syncNow: async () => { sync.state = { uid: "u", status: "synced", at: Date.now() }; return null; }, requestSync: () => undefined }));
 
 const posts: Record<string, unknown>[] = [];
 let served = 0;
@@ -31,6 +33,8 @@ it("posts on moving between pages only when the figures changed, and tells open 
   expect((await publishWeeklyCount("u"))?.rows[0].count).toBe(1);
   // This device never saw a join or leave: it has no say in whether the student is on the board.
   expect(posts[0]).not.toHaveProperty("visible");
+  // It pulled the account's answers before counting, so its figures are the account's.
+  expect(posts[0]).toMatchObject({ complete: true });
   expect(await publishWeeklyCount("u", { ifChanged: true })).toBeNull();
   expect(posts).toHaveLength(1);
   await db.attempts.add(answer("b"));

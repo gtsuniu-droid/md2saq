@@ -19,9 +19,9 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   const joined = settings.social?.leaderboard === true;
   const [joining, setJoining] = useState(false);
   // Re-publish and re-read as soon as a question is submitted, so the count moves at once;
-  // otherwise the strip refreshes every two minutes while the home page is in view.
+  // otherwise the strip refreshes every minute while the home page is in view.
   const submitted = useSubmittedCount(user?.uid);
-  const { rows, error } = useLeaderboard(user?.uid, [joined, settings.social?.username, submitted], 2 * 60_000);
+  const { rows, error } = useLeaderboard(user?.uid, [joined, settings.social?.username, submitted], 60_000);
   // This device's own figure for the week: shown whenever the board cannot be read, so it is never stale for you.
   const mine = useLiveQuery(async () => user ? questionsInWeek(await db.attempts.filter((a) => belongsToAccount(a, user.uid) && a.submittedAt !== undefined).toArray(), user.uid, weekStart(Date.now())) : 0, [user?.uid, submitted]) ?? 0;
 

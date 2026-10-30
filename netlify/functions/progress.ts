@@ -36,7 +36,7 @@ async function handle(req: Request, context?: Context): Promise<Response> {
     // running this at all: open boards refresh themselves, and that keeps it cheap.
     return new Response(JSON.stringify(publicBoard(current(last, posted, now))), { headers: {
       "content-type": "application/json", "cache-control": "public, max-age=0, must-revalidate",
-      "netlify-cdn-cache-control": "public, durable, s-maxage=30, stale-while-revalidate=30", "netlify-vary": "query=board",
+      "netlify-cdn-cache-control": "public, durable, s-maxage=10, stale-while-revalidate=20", "netlify-vary": "query=board",
     } });
   }
   if (!serviceAccount()) return json({ error: "Server-side progress is not configured: add FIREBASE_SERVICE_ACCOUNT to the site's environment." }, 503);
