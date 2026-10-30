@@ -483,14 +483,14 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               {pm.rewrite && <button type="button" className="small" aria-pressed={showing === "full"} onClick={() => setView((v) => ({ ...v, [label]: "full" }))}>Full marks</button>}
               <button type="button" className="small" aria-pressed={showing === "revise"} title="Rewrite your answer having read the model answer; what you submitted is kept as it was" onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>{revised ? (blank ? "Written" : "Revised") : blank ? "Write an answer" : "Revise"}</button>
               {showing === "full" && <span className="muted">Struck text earned nothing; teal text earns the mark.</span>}
-              {showing === "revise" && <span className="mark-views-tools"><button type="button" className="small link" onClick={() => setClean((c) => ({ ...c, [label]: !c[label] }))}>{clean[label] ? "Show changes" : "Hide changes"}</button>{revised && <button type="button" className="small link" onClick={() => void discardRevision(label)}>Discard</button>}</span>}
+              {(showing === "revise" || (showing === "answer" && revised)) && <span className="mark-views-tools"><button type="button" className="small link" onClick={() => setClean((c) => ({ ...c, [label]: !c[label] }))}>{clean[label] ? "Show changes" : "Hide changes"}</button>{revised && showing === "revise" && <button type="button" className="small link" onClick={() => void discardRevision(label)}>Discard</button>}</span>}
             </div>}
             {showing === "revise" ? <RevisedAnswer key={`${attempt.id}:${label}:revise`} attemptId={attempt.id} answer={answer} clean={!!clean[label]} />
             : showing === "full" && pm.rewrite ? <div className="full-marks">
               <p className="pre">{wordDiff(pi.answer?.text ?? "", pm.rewrite).map((part, i) => part.kind === "del" ? <del key={i}>{part.text}</del> : part.kind === "ins" ? <ins key={i}>{part.text}</ins> : <span key={i}>{part.text}</span>)}</p>
               <p className="muted full-marks-note">Your own words, with the smallest changes that would earn each mark.</p>
             </div>
-            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={answer.doc} text={answer.text} comments={marginComments} margin revision={answer.revision?.text}
+            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={answer.doc} text={answer.text} comments={marginComments} margin revision={answer.revision?.text} showChanges={!clean[label]}
                 actions={!pm.rewrite && !revised ? <button type="button" className="small comment-add" title={blank ? "Write an answer now; the submitted blank is kept as it was" : "Rewrite your answer having read the model answer; what you submitted is kept as it was"} onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>{blank ? "Write an answer" : "Revise"}</button> : undefined} />}
             {previous && (
               <details className="mark-previous">

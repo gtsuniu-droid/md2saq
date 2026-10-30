@@ -26,7 +26,7 @@ export default function RevisedAnswer({ attemptId, answer, clean }: Props) {
     content: ((answer.revision?.doc ?? answer.doc) as object | null) ?? (answer.text ? { type: "doc", content: answer.text.split(/\r?\n/).map((line) => ({ type: "paragraph", content: line ? [{ type: "text", text: line }] : [] })) } : undefined),
     editorProps: { attributes: { role: "textbox", "aria-label": "Your revised answer", "aria-multiline": "true" } },
     onUpdate: ({ editor }) => {
-      const doc = editor.getJSON(); const text = editor.getText();
+      const doc = editor.getJSON(); const text = editor.getText({ blockSeparator: "\n" });
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => {
         void db.transaction("rw", db.attempts, async () => {

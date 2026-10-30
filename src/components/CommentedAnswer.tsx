@@ -20,12 +20,14 @@ interface Props {
   actions?: ReactNode;
   /** The answer as revised after reading the model answer: shown in place of the original with the changes marked, comments still on the words they were on. */
   revision?: string;
+  /** With a revision: mark what changed (default), or read the revised text clean. */
+  showChanges?: boolean;
 }
 
 const CARD_GAP = 8;
 
 /** Comments belong to the submitted answer, independently of whether it has been marked. */
-export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions, revision }: Props) {
+export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions, revision, showChanges = true }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
   const when = (ts: number) => { if (!ts) return ""; const d = new Date(ts); const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); return d.toDateString() === new Date().toDateString() ? `${time} Today` : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`; };
@@ -105,7 +107,9 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       offset += value.length;
       node.replaceWith(fragment);
     }
-    return { html: container.innerHTML, plain };
+    // Paragraph texts, so the revision (one line break between paragraphs) can be compared with the original on equal terms.
+    const paragraphs = [...container.querySelectorAll("p")].map((p) => p.textContent ?? "");
+    return { html: container.innerHTML, plain, paragraphs: paragraphs.join("") === plain ? paragraphs : [plain] };
   }, [doc, text, comments, partLabel, active]);
   useEffect(() => {
     const el = input.current;
@@ -134,7 +138,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       for (const id of ids) if (next[id] === undefined || top < next[id]) next[id] = top;
     });
     setTops((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
-  }, [margin, rendered.html, mine.length, resized, revision]);
+  }, [margin, rendered.html, mine.length, resized, revision, showChanges]);
   useEffect(() => {
     if (!margin) return;
     let frame = 0;
@@ -252,16 +256,21 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   // The revision read in place of the original: kept and removed words carry the comments made on them.
   const revised = useMemo(() => {
     if (revision === undefined) return null;
-    const original = text || doc ? rendered.plain : "";
-    const valid = comments.filter((c) => c.partLabel === partLabel && validCommentAnchor(original, c));
+    const unbroken = text || doc ? rendered.plain : "";
+    const blocks = text || doc ? rendered.paragraphs : [];
+    const original = blocks.join("\n");
+    // Comment positions count in the unbroken text; in the original with its line breaks each earlier paragraph adds one.
+    const withBreaks = (offset: number) => { let seen = 0; for (let i = 0; i < blocks.length; i++) { if (offset <= seen + blocks[i].length) return offset + i; seen += blocks[i].length; } return offset + Math.max(0, blocks.length - 1); };
+    const valid = comments.filter((c) => c.partLabel === partLabel && validCommentAnchor(unbroken, c)).map((c) => isGeneralComment(c) ? c : { ...c, start: withBreaks(c.start), end: withBreaks(c.end) });
     const segments = (value: string, offset: number) => commentSegments(value, valid, offset).map((seg, i) => seg.ids.length
       ? <mark key={i} className={"answer-comment-highlight" + (seg.ids.some((id) => id === active) ? " active" : "")} data-comment-ids={JSON.stringify(seg.ids)} role="button" tabIndex={0} aria-label={`Comment on: ${seg.text}`}>{seg.text}</mark>
       : <span key={i}>{seg.text}</span>);
+    if (!showChanges) return <p className="pre answer-diff">{revision}</p>;
     return <p className="pre answer-diff">{diffWithOrigin(original, revision).map((part, i) =>
       part.kind === "ins" ? <ins key={i} className="tc-ins">{part.text}</ins>
       : part.kind === "del" ? <del key={i} className="tc-del">{part.at === undefined ? part.text : segments(part.text, part.at)}</del>
       : <span key={i}>{part.at === undefined ? part.text : segments(part.text, part.at)}</span>)}</p>;
-  }, [revision, rendered.plain, text, doc, comments, partLabel, active]);
+  }, [revision, showChanges, rendered.plain, rendered.paragraphs, text, doc, comments, partLabel, active]);
   const onAnswerKey = (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } };
   const answer = revised
     ? <div ref={root} className="answer-html" onClick={(e) => openHighlight(e.target)} onKeyDown={onAnswerKey}>{revised}</div>
