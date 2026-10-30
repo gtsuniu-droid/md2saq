@@ -3,7 +3,7 @@
  * full marks in place: what they wrote that earned nothing struck through, what would have
  * earned the mark added. Pure; the longest common subsequence over words.
  */
-export type DiffPart = { kind: "same" | "del" | "ins"; text: string };
+export type DiffPart = { kind: "same" | "del" | "ins"; text: string; /** For kept text, how it read in the original (it may differ in case). */ orig?: string };
 
 /** Words with the whitespace that follows each, so the text rebuilds exactly from the parts. */
 const tokens = (s: string): string[] => s.match(/^\s+|\S+\s*/g) ?? [];
@@ -15,14 +15,15 @@ export function wordDiff(before: string, after: string): DiffPart[] {
   const table: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) table[i][j] = word(a[i]) === word(b[j]) ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
   const out: DiffPart[] = [];
-  const push = (kind: DiffPart["kind"], text: string) => {
+  const push = (kind: DiffPart["kind"], text: string, orig = text) => {
     if (!text) return;
     const last = out[out.length - 1];
-    if (last && last.kind === kind) last.text += text; else out.push({ kind, text });
+    if (last && last.kind === kind) { last.text += text; if (kind === "same") last.orig = (last.orig ?? last.text.slice(0, -text.length)) + orig; }
+    else out.push(kind === "same" ? { kind, text, orig } : { kind, text });
   };
   let i = 0; let j = 0;
   while (i < n || j < m) {
-    if (i < n && j < m && word(a[i]) === word(b[j])) { push("same", b[j]); i++; j++; }
+    if (i < n && j < m && word(a[i]) === word(b[j])) { push("same", b[j], a[i]); i++; j++; }
     else if (i < n && (j >= m || table[i + 1][j] >= table[i][j + 1])) { push("del", a[i]); i++; }
     else { push("ins", b[j]); j++; }
   }
@@ -35,7 +36,7 @@ export function wordDiff(before: string, after: string): DiffPart[] {
   out.forEach((p, i) => {
     const between = p.kind === "same" && p.text.trim().length < 4 && i > 0 && i < out.length - 1 && out[i - 1].kind !== "same" && out[i + 1].kind !== "same";
     if (p.kind === "same" && !between) { flush(); clustered.push(p); return; }
-    if (p.kind === "same") { dels += p.text; inss += p.text; return; }
+    if (p.kind === "same") { dels += p.orig ?? p.text; inss += p.text; return; }
     if (p.kind === "del") dels += p.text; else inss += p.text;
   });
   flush();
@@ -47,7 +48,12 @@ export function wordDiff(before: string, after: string): DiffPart[] {
     const trimmed = p.text.replace(/\s+$/, "");
     const tail = p.text.slice(trimmed.length);
     return [...(trimmed ? [{ kind: p.kind, text: trimmed }] : []), ...(tail ? [{ kind: "same" as const, text: tail }] : [])];
-  }).reduce<DiffPart[]>((acc, p) => { const last = acc[acc.length - 1]; if (last && last.kind === p.kind) last.text += p.text; else acc.push({ ...p }); return acc; }, []);
+  }).reduce<DiffPart[]>((acc, p) => {
+    const last = acc[acc.length - 1];
+    if (last && last.kind === p.kind) { if (last.kind === "same" && (last.orig !== undefined || p.orig !== undefined)) last.orig = (last.orig ?? last.text) + (p.orig ?? p.text); last.text += p.text; }
+    else acc.push({ ...p });
+    return acc;
+  }, []);
 }
 
 /** The parts with, for text that was in the original (kept or removed), its offset there. */
@@ -55,11 +61,13 @@ export function diffWithOrigin(before: string, after: string): (DiffPart & { at?
   let at = 0;
   return wordDiff(before, after).flatMap((p) => {
     if (p.kind === "ins") return [p];
-    if (before.startsWith(p.text, at)) { const part = { ...p, at }; at += p.text.length; return [part]; }
+    // Kept text is matched as it read in the original ("Aspirin" revised to "aspirin" is still the same word there).
+    const orig = p.orig ?? p.text;
+    if (before.startsWith(orig, at)) { const part = { ...p, at }; at += orig.length; return [part]; }
     // Whitespace left over from an insertion runs into the kept text that follows: it is not in the original.
     const lead = p.text.length - p.text.trimStart().length;
-    const rest = p.text.slice(lead);
-    if (lead && rest && before.startsWith(rest, at)) { const part = { ...p, text: rest, at }; at += rest.length; return [{ kind: p.kind, text: p.text.slice(0, lead) }, part]; }
+    const rest = orig.slice(orig.length - orig.trimStart().length);
+    if (lead && rest && before.startsWith(rest, at)) { const part = { ...p, text: p.text.slice(lead), orig: rest, at }; at += rest.length; return [{ kind: p.kind, text: p.text.slice(0, lead) }, part]; }
     return [p];
   });
 }

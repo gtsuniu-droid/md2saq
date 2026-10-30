@@ -71,6 +71,34 @@ The paper in progress follows the account too: its answers are saved as they are
 and the paper itself (which questions, where you were, the exam clock) goes up with them.
 Sign in on another device and Home offers to continue it there.
 
+### Where account data lives
+
+Sign-in is Firebase's; the records are the site's own, in Netlify Blobs, served by
+`netlify/functions/account.ts` (`/api/account`), which checks the Firebase ID token on every
+call. Firestore is no longer written to for progress: it is read once per account to fold old
+records in, and otherwise stands as an archive. Layout, in the `accounts` store:
+
+| Key | Holds |
+| --- | --- |
+| `{uid}/index` | One small JSON per account: every record's id, table, change stamp `_m`, arrival time `a`, a tombstone flag for deletions, and for attempts a summary (submitted at, question, bank set and position, blank or not) so the leaderboard counts from the index alone. Also settings, the paper in progress, and the Firestore import's progress. |
+| `{uid}/attempts/{id}`, `{uid}/marks/{id}` | One blob per record, stored whole: answers, pictures, comments and replies, revisions, highlights, marks with notes. |
+
+How a sync goes: a device pushes the records changed since its last push (the first time,
+everything it holds) in calls of about 3.5 MB; the function writes the blobs, then updates
+the index once with an etag retry, keeping the newer of each record by `_m`. A pull asks
+`changes?since=<cursor>`; the index answers by arrival time and hands back the next cursor
+(five seconds before now, so a version landing while the reply is made is seen next time),
+and the device fetches the records named, at most 400 per call and about 3.5 MB per reply.
+Deletions are tombstones; a record edited after its deletion comes back. A record over 5 MB
+stays on its device and is counted, never retried forever. The old Firestore records are
+imported a page at a time behind pulls, with the position saved between pages, and left
+alone for ten minutes after a refusal.
+
+Other named stores: `bank` (the question bank, catalogue, leaderboard table and board
+records), `board` (per-device board posts), `answers` (sets kept for marking through the
+connector), `study` (study codes), `community`, `mcp-tokens` (hashes only) and
+`presentation-notes`. Locally, each is a JSON file under `.netlify/dev-<name>.json`.
+
 ## AMBOSS
 
 Settings has an AMBOSS login. It does what the official AMBOSS Anki add-on does, using

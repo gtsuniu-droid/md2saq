@@ -14,3 +14,10 @@ it("crowns a leader with a line only once the lead is worth it, saving the count
   expect([...big].some((l) => l?.includes("42 questions"))).toBe(true);
   expect(big.size).toBe(LEADER_LINES.length);
 });
+
+it("ranked by sets, the leader gets a line for a lead of two sets, whatever their question count", () => {
+  expect(leaderLine("Eiden", 4, 0, true)).toBe("Eiden is cooking 🍳");
+  expect(leaderLine("Eiden", 40, 0, false)).toBeNull();
+  // The lines that quote the count still wait for a big count.
+  expect(leaderLine("Eiden", 4, 0.3, true)).not.toContain("questions");
+});

@@ -121,6 +121,8 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   }, [draft?.id]);
   useEffect(() => { setSelection(null); setDraft(null); setActive(null); setShowList(false); setStatus(""); setReply(""); }, [attemptId, partLabel]);
   useEffect(() => { setReply(""); }, [active]);
+  // The editor takes the answer's place: a passage selected before has no button to keep.
+  useEffect(() => { if (editor) { setSelection(null); setSelectionAt(null); } }, [!!editor]);
 
   // Margin layout: each card sits level with its highlight, pushed down only to avoid the one above.
   const ordered = useMemo(() => [...mine].sort((a, b) => a.start - b.start), [mine]);
@@ -148,20 +150,28 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     window.addEventListener("resize", onResize);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", onResize); };
   }, [margin]);
-  // The open card sits level with its line; the cards above make room upwards, the ones
-  // below downwards. With none open, each sits level with its line unless the one above is in the way.
+  // Each card sits level with its line unless the one above is in the way. The open card is
+  // given its line if the cards above can move up far enough to let it; they never overlap,
+  // and nothing moves further than it has to.
   useLayoutEffect(() => {
     if (!margin) return;
     const height = (id: string) => cardRefs.current.get(id)?.offsetHeight ?? 0;
     const next: Record<string, number> = {};
+    // With nothing open: each card level with its line unless the one above is in the way.
+    const closed: Record<string, number> = {};
+    let flow = 0;
+    for (const item of cardOrder) { closed[item.id] = Math.max(item.anchorTop, flow); flow = closed[item.id] + height(item.id) + CARD_GAP; }
     const openId = draft?.id ?? active;
     const at = cardOrder.findIndex((item) => item.id === openId);
     let start = 0;
     if (at >= 0) {
-      next[cardOrder[at].id] = cardOrder[at].anchorTop;
-      let above = cardOrder[at].anchorTop;
-      // Cards above that run out of room stack at the top, each peeking out above the next, the nearer the open card the more in front.
-      for (let k = at - 1; k >= 0; k--) { const top = Math.max(k * 10, Math.min(cardOrder[k].anchorTop, above - height(cardOrder[k].id) - CARD_GAP)); next[cardOrder[k].id] = top; above = top; }
+      // The least room the cards above need, stacked tight from the top.
+      const needed = cardOrder.slice(0, at).reduce((n, item) => n + height(item.id) + CARD_GAP, 0);
+      const openTop = Math.max(cardOrder[at].anchorTop, needed);
+      next[cardOrder[at].id] = openTop;
+      // The cards above stay put unless the open card needs their room; then they move up, only as far as needed.
+      let above = openTop;
+      for (let k = at - 1; k >= 0; k--) { const id = cardOrder[k].id; next[id] = Math.max(0, Math.min(closed[id], above - height(id) - CARD_GAP)); above = next[id]; }
       start = at + 1;
     }
     let cursor = start ? next[cardOrder[start - 1].id] + height(cardOrder[start - 1].id) + CARD_GAP : 0;
@@ -182,7 +192,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     cardOrder.forEach((item, k) => {
       const el = cardRefs.current.get(item.id); const top = laid[item.id];
       if (!el || top === undefined) return;
-      const zIndex = at < 0 ? 1 : k === at ? cardOrder.length + 2 : k < at ? k + 1 : at + 1 - (k - at) + cardOrder.length;
+      const zIndex = k === at ? 2 : 1;
       if (!placed.current.has(item.id) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { gsap.set(el, { top, zIndex }); placed.current.add(item.id); }
       else gsap.to(el, { top, zIndex, duration: 0.28, ease: "power2.out", overwrite: "auto" });
     });
@@ -265,11 +275,25 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     const segments = (value: string, offset: number) => commentSegments(value, valid, offset).map((seg, i) => seg.ids.length
       ? <mark key={i} className={"answer-comment-highlight" + (seg.ids.some((id) => id === active) ? " active" : "")} data-comment-ids={JSON.stringify(seg.ids)} role="button" tabIndex={0} aria-label={`Comment on: ${seg.text}`}>{seg.text}</mark>
       : <span key={i}>{seg.text}</span>);
-    if (!showChanges) return <p className="pre answer-diff">{revision}</p>;
-    return <p className="pre answer-diff">{diffWithOrigin(original, revision).map((part, i) =>
-      part.kind === "ins" ? <ins key={i} className="tc-ins">{part.text}</ins>
-      : part.kind === "del" ? <del key={i} className="tc-del">{part.at === undefined ? part.text : segments(part.text, part.at)}</del>
-      : <span key={i}>{part.at === undefined ? part.text : segments(part.text, part.at)}</span>)}</p>;
+    // Paragraphs, as the original reads: a line break in the text closes one. Kept and removed
+    // words keep their comments; a removed stretch that spans paragraphs is struck in each.
+    const paragraphs: ReactNode[][] = [[]];
+    const add = (node: ReactNode) => paragraphs[paragraphs.length - 1].push(node);
+    const parts = showChanges ? diffWithOrigin(original, revision) : [{ kind: "same" as const, text: revision }];
+    parts.forEach((part, i) => {
+      const lines = part.text.split("\n");
+      lines.forEach((line, j) => {
+        if (j) paragraphs.push([]);
+        if (!line) return;
+        // Where this piece sits in the original, when it came from there.
+        const at = part.at === undefined || !showChanges ? undefined : part.at + lines.slice(0, j).reduce((n, l) => n + l.length + 1, 0);
+        const inner = at === undefined ? line : segments(line, at);
+        add(part.kind === "ins" ? <ins key={`${i}:${j}`} className="tc-ins">{line}</ins>
+          : part.kind === "del" ? <del key={`${i}:${j}`} className="tc-del">{inner}</del>
+          : <span key={`${i}:${j}`}>{inner}</span>);
+      });
+    });
+    return <div className="answer-diff">{paragraphs.map((nodes, i) => <p key={i} className="pre">{nodes}</p>)}</div>;
   }, [revision, showChanges, rendered.plain, rendered.paragraphs, text, doc, comments, partLabel, active]);
   const onAnswerKey = (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } };
   const answer = editor

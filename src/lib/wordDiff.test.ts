@@ -33,3 +33,15 @@ it("tells where kept and removed text sat in the original", () => {
   expect(parts.filter((p) => p.at !== undefined).map((p) => p.text).join("")).toBe("Aspirin and PCI");
   expect(parts.filter((p) => p.kind === "ins").every((p) => p.at === undefined)).toBe(true);
 });
+
+it("a change of case keeps the kept words' place in the original, so comments on later words stay put", () => {
+  const before = "Aspirin and PCI within 120 minutes";
+  const parts = diffWithOrigin(before, "aspirin and PCI within 120 minutes");
+  expect(parts).toEqual([{ kind: "same", text: "aspirin and PCI within 120 minutes", orig: before, at: 0 }]);
+  // Kept text after a case change and an insertion still knows where it was.
+  const later = diffWithOrigin(before, "aspirin 300 mg and PCI within 120 minutes");
+  const pci = later.find((p) => p.kind === "same" && p.text.includes("PCI"))!;
+  expect(before.slice(pci.at!, pci.at! + (pci.orig ?? pci.text).length)).toBe("and PCI within 120 minutes");
+  // Struck text between two changes reads as the original wrote it.
+  expect(wordDiff("Give iv now", "Stop IV later").filter((p) => p.kind === "del").map((p) => p.text).join("")).toBe("Give iv now");
+});

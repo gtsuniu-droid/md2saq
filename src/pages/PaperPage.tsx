@@ -9,15 +9,16 @@ import QuestionCommunity from "../components/QuestionCommunity";
 import ShareLinks from "../components/ShareLinks";
 import AmbossSearch from "../components/AmbossSearch";
 import { useLiveQuery } from "dexie-react-hooks";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import { db, newId } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
-import { answerParts, formatClock, partLabel, stemsOf } from "../lib/questions";
-import { loadSession, pauseSession, resumeSession, saveSession } from "../lib/session";
+import { answerParts, partLabel, stemsOf } from "../lib/questions";
+import { loadSession, pauseSession, resumeSession, saveSession, subscribeSession } from "../lib/session";
 import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/answerDrafts";
-import { canWriteAnswers, perSetClocks, readingRemainingSec, overtimeSec, remainingSec, setOvertimeSec, setRemainingSec, shouldAutoSubmit, withSetClock } from "../lib/sessionClock";
+import { canWriteAnswers, perSetClocks, readingRemainingSec, usesSetClock, withManualSetClock, withoutSetClock, withSetClock } from "../lib/sessionClock";
+import PaperClock, { useClockPhase } from "../components/PaperClock";
 import { suggestedSessionMinutes } from "../lib/sessionBuilder";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
@@ -28,7 +29,7 @@ import { useAccountGate } from "../lib/accountGate";
 import { isAdmin } from "../lib/admin";
 import { selectionOffsets, toggleRange, type Range } from "../lib/highlights";
 import { getSettings } from "../data/db";
-import { questionRef, recordDeletes, requestSync } from "../lib/sync";
+import { getProgressSyncState, questionRef, recordDeletes, requestSync, subscribeProgressSync, syncNow } from "../lib/sync";
 import { belongsToAccount } from "../lib/progressAccount";
 import SessionSidebar from "../components/SessionSidebar";
 import { openedSetCount, paperQuestionGroup, sessionAtQuestion, sessionSetGroups } from "../lib/sessionNavigation";
@@ -40,7 +41,6 @@ export default function PaperPage() {
   const ownerRef = useRef(session?.ownerId ?? "");
   const sessionRef = useRef<Session | null>(session);
   sessionRef.current = session;
-  const [now, setNow] = useState(Date.now());
   const [ready, setReady] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const gate = useAccountGate();
@@ -181,29 +181,35 @@ export default function PaperPage() {
 
   const prefs = useLiveQuery(async () => {
     const settings = await getSettings();
-    return { ambossOnPaper: settings.ambossOnPaper, admin: isAdmin(settings), minutesPerMark: settings.minutesPerMark };
+    return { ambossOnPaper: settings.ambossOnPaper, admin: isAdmin(settings), minutesPerMark: settings.minutesPerMark, signedIn: !!settings.cloudUser };
   }, []);
+  // Answers save on the device at once; this says when they are not reaching the account too.
+  const syncState = useSyncExternalStore(subscribeProgressSync, getProgressSyncState, getProgressSyncState);
+  const unsynced = !!prefs?.signedIn && syncState.status === "error";
   const ambossOnPaper = session?.examFormat ? false : prefs?.ambossOnPaper ?? false;
   const admin = !session?.examFormat && (prefs?.admin ?? false);
   const [editing, setEditing] = useState<Question | null>(null);
   const [editingMode, setEditingMode] = useState<"stem" | "question">("question");
 
-  const data = useLiveQuery(async () => {
+  // The library (sets, questions, catalogue) and the student's progress (attempts, marks) are
+  // read apart: every answer saved re-reads only the attempts, not the whole question bank.
+  const library = useLiveQuery(async () => {
     if (!session || !ready) return undefined;
     const library = await loadLibrary();
     const byId = new Map(library.questions.map(q => [q.id, q]));
     const questions = session.questionIds.map(id => byId.get(id));
-    const attempts = await db.attempts.bulkGet(session.attemptIds);
     // Never pair an answer with another question while a replacement/deletion is arriving.
-    if (questions.some((q) => !q) || attempts.length !== questions.length || attempts.some((a) => !a || !belongsToAccount(a, ownerRef.current))) return undefined;
-    const sets = library.sets;
+    if (questions.some((q) => !q)) return undefined;
+    return { questions: questions.filter((q): q is Question => !!q), sets: library.sets, pending: library.pending, behind: library.behind };
+  }, [session?.id, ready, session?.questionIds.join(",")]);
+  const progress = useLiveQuery(async () => {
+    if (!session || !ready) return undefined;
+    const attempts = await db.attempts.bulkGet(session.attemptIds);
+    if (attempts.length !== session.attemptIds.length || attempts.some((a) => !a || !belongsToAccount(a, ownerRef.current))) return undefined;
     const marks = await db.marks.where("attemptId").anyOf(session.attemptIds.filter(Boolean)).filter((m) => belongsToAccount(m, ownerRef.current)).toArray();
-    return {
-      questions: questions.filter((q): q is Question => !!q),
-      attempts: attempts.filter((a): a is Attempt => !!a && belongsToAccount(a, ownerRef.current)),
-      sets, marks, pending: library.pending, behind: library.behind,
-    };
+    return { attempts: attempts.filter((a): a is Attempt => !!a), marks };
   }, [session?.id, ready, session?.attemptIds.join(",")]);
+  const data = useMemo(() => library && progress && library.questions.length === progress.attempts.length ? { ...library, ...progress } : undefined, [library, progress]);
 
   // Seed local answer cache from the database once.
   useEffect(() => {
@@ -230,20 +236,31 @@ export default function PaperPage() {
   const groupsNow = session && data ? sessionSetGroups(session, data.questions) : [];
   const groupNow = groupsNow.find((g) => g.indices.includes(index));
   const clockKey = groupNow && data ? data.questions[groupNow.indices[0]]?.id : undefined;
+  const hasSetClock = !!clockKey && !!session?.setClocks?.[clockKey];
   useEffect(() => {
-    if (!perSet || !session || !data || !groupNow || !clockKey || session.setClocks?.[clockKey] || prefs === undefined) return;
+    if (!perSet || !session || !data || !groupNow || !clockKey || hasSetClock || prefs === undefined) return;
     const minutes = (g: typeof groupNow) => suggestedSessionMinutes(g.indices.map((i) => data.questions[i]), data.sets, prefs.minutesPerMark, "sets");
     const whole = groupsNow.reduce((sum, g) => sum + minutes(g), 0);
     const next = withSetClock(session, clockKey, session.totalSec! * (whole ? minutes(groupNow) / whole : 1 / groupsNow.length), Date.now());
     saveSession(next); setSession(next);
-  }, [perSet, clockKey, prefs === undefined, session?.id]);
-  const remaining = !session ? null : perSet ? (clockKey ? setRemainingSec(session, clockKey, now) : null) : remainingSec(session, now);
-  const readingLeft = session ? readingRemainingSec(session, now) : 0;
-  const reading = readingLeft > 0;
-  const displayedRemaining = reading ? readingLeft : remaining;
-  const expired = remaining !== null && remaining <= 0;
-  const overtime = session ? (perSet && clockKey ? setOvertimeSec(session, clockKey, now) : overtimeSec(session, now)) : 0;
-  const examExpired = !!session && shouldAutoSubmit(session, now);
+  }, [perSet, clockKey, hasSetClock, prefs === undefined, session?.id]);
+  // The student's own timer for the set they are on: "finish this in ten minutes".
+  const setTimer = (minutes: number) => {
+    const current = sessionRef.current;
+    if (!current || !clockKey) return;
+    const next = withManualSetClock(current, clockKey, minutes * 60, Date.now());
+    saveSession(next); setSession(next);
+  };
+  const clearTimer = () => {
+    const current = sessionRef.current;
+    if (!current || !clockKey) return;
+    const next = withoutSetClock(current, clockKey);
+    saveSession(next); setSession(next);
+  };
+  const usingSetClock = !!session && usesSetClock(session, clockKey);
+  const manualClock = usingSetClock && !!session?.setClocks?.[clockKey!]?.manual;
+  // Which phase the paper is in; the clock face itself ticks in its own component.
+  const { reading, expired, examExpired } = useClockPhase(session, clockKey);
 
   const flushAttempt = useCallback(async (attemptId: string) => {
     const answers = answersRef.current.get(attemptId);
@@ -267,6 +284,16 @@ export default function PaperPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The stored paper changes under this page too: a set discarded from the marking view or
+  // skipped takes its questions out of it, and a paper with nothing left ends.
+  useEffect(() => subscribeSession(() => {
+    const stored = loadSession(ownerRef.current);
+    if (JSON.stringify(stored) === JSON.stringify(sessionRef.current)) return;
+    sessionRef.current = stored;
+    setSession(stored);
+    if (!stored) nav("/home", { replace: true });
+  }), [nav]);
+
   // Coming back to the paper restarts the exam clock; leaving it (another page,
   // marking, closing the tab) saves everything and stops the clock.
   useEffect(() => {
@@ -284,10 +311,9 @@ export default function PaperPage() {
   }, [flushAll]);
 
 
-  // Clock: ticks the display and the active attempt's elapsed time.
+  // Counts the active attempt's writing time, a second at a time.
   useEffect(() => {
     const t = setInterval(() => {
-      setNow(Date.now());
       if (attempt && !attempt.submittedAt && sessionRef.current && canWriteAnswers(sessionRef.current, Date.now())) {
         elapsedRef.current.set(attempt.id, (elapsedRef.current.get(attempt.id) ?? 0) + 1);
       }
@@ -298,25 +324,32 @@ export default function PaperPage() {
   // Periodic flush of elapsed time.
   useEffect(() => {
     const t = setInterval(() => {
-      if (attempt) void flushAttempt(attempt.id);
+      if (attempt && !attempt.submittedAt) void flushAttempt(attempt.id);
     }, 5000);
     return () => clearInterval(t);
   }, [attempt, flushAttempt]);
 
+  // Handing the exam paper in: every answer is submitted, and marking opens here on the same
+  // page, set by set, as it does in practice.
   const submitAll = useCallback(async () => {
-    if (!session || !data || readingRemainingSec(session, Date.now()) > 0 || submittingRef.current || imageJobs.current.size) return;
+    if (!session || !data || session.submittedAt || readingRemainingSec(session, Date.now()) > 0 || submittingRef.current || imageJobs.current.size) return;
     submittingRef.current = true;
-    for (const a of data.attempts) {
-      await flushAttempt(a.id);
-      if (!a.submittedAt) await db.attempts.update(a.id, { submittedAt: Date.now() });
-    }
-    requestSync(0);
-    nav(`/session/${session.id}`, { replace: true });
-  }, [session, data, flushAttempt, nav]);
+    try {
+      for (const a of data.attempts) {
+        await flushAttempt(a.id);
+        if (!a.submittedAt) await db.attempts.update(a.id, { submittedAt: Date.now() });
+      }
+      requestSync(0);
+      const next = sessionAtQuestion({ ...session, submittedAt: Date.now() }, data.questions, 0);
+      sessionRef.current = next;
+      saveSession(next); setSession(next);
+      setSummaryOpen(false);
+    } finally { submittingRef.current = false; }
+  }, [session, data, flushAttempt]);
 
   // Closing the tab mid-exam is possible but gets a warning; the exam resumes on return.
   useEffect(() => {
-    if (session?.mode !== "exam") return;
+    if (session?.mode !== "exam" || session.submittedAt) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
@@ -324,7 +357,7 @@ export default function PaperPage() {
 
   // Only exams submit at the deadline. Practice remains editable after time runs out.
   useEffect(() => {
-    if (examExpired && data && !submittingRef.current) void submitAll();
+    if (examExpired && data && !session?.submittedAt && !submittingRef.current) void submitAll();
   }, [examExpired, data, submitAll, addingImages]);
 
   const onAnswerChange = (attemptId: string, label: string, doc: unknown, text: string) => {
@@ -357,11 +390,13 @@ export default function PaperPage() {
 
   /** Make question i current (without scrolling), e.g. when one of its answer boxes gets focus. */
   const setCurrent = (i: number, label = "") => {
+    // From the latest session: a set discarded a moment ago has already left it.
+    const session = sessionRef.current;
     if (!session) return;
     setActivePart(label);
     if (session.index === i && session.activePart === label) return;
     if (attempt) void flushAttempt(attempt.id);
-    const next = sessionAtQuestion(session, data?.questions ?? [], i, label);
+    const next = sessionAtQuestion(session, data?.questions.filter((q) => session.questionIds.includes(q.id)) ?? [], i, label);
     saveSession(next);
     setSession(next);
     requestSync();
@@ -512,24 +547,22 @@ export default function PaperPage() {
           {setMode && setGroups.length > 1 && <span>Set {setIndex + 1} of {setGroups.length}</span>}
           <span>{setMode ? `Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
         </span>
-        {displayedRemaining !== null && (expired && session.mode === "practice"
-          ? <span className="timer over" aria-label={perSet ? "Over this set's time" : "Practice overtime"}><small>{perSet ? "Set over" : "Over time"}</small>{formatClock(overtime)}</span>
-          : <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : perSet ? "Time left for this set" : "Writing time remaining"}>{(reading || session.examFormat || perSet) && <small>{reading ? "Reading" : perSet ? "This set" : "Writing"}</small>}{formatClock(displayedRemaining)}</span>
-        )}
+        {!session.submittedAt && <PaperClock session={session} clockKey={clockKey} onSetTimer={setTimer} onClearTimer={clearTimer} />}
         <span style={{ flex: 1 }} />
         {session.mode === "practice" && !session.examFormat && <AmbossSearch />}
         {!session.examFormat && <ShareLinks key={question.id} set={data.sets.find(s => s.id === question.setId)} />}
-        {session.mode !== "exam" && <button disabled={addingImages} onClick={() => nav("/home")}>{session.examFormat ? "Exit" : "Save & exit"}</button>}
+        {(session.mode !== "exam" || session.submittedAt) && <button disabled={addingImages} onClick={() => nav("/home")}>{session.examFormat || session.submittedAt ? "Exit" : "Save & exit"}</button>}
         <button disabled={addingImages} onClick={() => { flushAll(); setSummaryOpen((open) => !open); }} aria-pressed={summaryOpen}>Summary</button>
         {session.mode === "practice"
           ? <button onClick={() => nextQuestion(index)} disabled={submittingSet || addingImages}>{index + 1 >= data.questions.length ? "Session summary" : data.questions[index + 1].setId !== data.questions[index].setId ? "Next set" : "Next"}</button>
-          : <button className="primary" onClick={submitAll} disabled={reading || expired || addingImages}>Submit paper ({unsubmitted} left)</button>}
+          : unsubmitted > 0 ? <button className="primary" onClick={submitAll} disabled={reading || expired || addingImages}>Submit paper ({unsubmitted} left)</button> : null}
 
       </div>
-      {behindRevision !== undefined && <LibraryUpdateNotice setId={question.setId} revision={behindRevision} />}
+      {behindRevision !== undefined && <LibraryUpdateNotice key={question.setId} setId={question.setId} revision={behindRevision} />}
       {reading && <div className="practice-time-notice" role="status">Reading time. Answers unlock automatically when writing begins.</div>}
-      {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">{perSet ? "This set's suggested time is up. Keep writing and submit when you're ready." : "Suggested time reached. Keep writing and submit when you're ready."}</div>}
+      {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">{manualClock ? "Your time for this set is up. Keep writing and submit when you're ready." : usingSetClock ? "This set's suggested time is up. Keep writing and submit when you're ready." : "Suggested time reached. Keep writing and submit when you're ready."}</div>}
       {addingImages && <div className="practice-time-notice" role="status">Adding pictures…</div>}
+      {unsynced && <div className="practice-time-notice sync-notice" role="status">Saved on this device, not yet in your account. <button className="small link" onClick={() => void syncNow().catch(() => undefined)}>Try again</button>{syncState.message ? <span className="muted"> {syncState.message}</span> : null}</div>}
       {saveError && <div className="practice-time-notice" role="alert">{saveError}</div>}
       <div className="paper">
         <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} sets={data.sets} marks={data.marks} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
@@ -543,7 +576,7 @@ export default function PaperPage() {
           })}
           {setMode && openedGroups.length < setGroups.length && <p className="muted">{setGroups.length - openedGroups.length} sets still to open.</p>}
           <div className="row"><button onClick={() => setSummaryOpen(false)}>Back to question</button>{setMode && openedGroups.length < setGroups.length && <button className="primary" onClick={() => goTo(setGroups[openedGroups.length].indices[0])}>Open next set</button>}{unsubmitted === 0 && <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish session</button>}</div>
-        </section> : session.mode === "practice" && setSubmitted ? <SetMarking key={currentSet.setId} attemptId={data.attempts[firstToMark].id} embedded
+        </section> : (session.mode === "practice" || unsubmitted === 0) && setSubmitted ? <SetMarking key={currentSet.setId} attemptId={data.attempts[firstToMark].id} embedded
           partId={(questionId, label) => `part-${data.questions.findIndex((q) => q.id === questionId)}-${label || "q"}`}
           onAdvance={() => { if (setIndex + 1 < setGroups.length) goTo(setGroups[setIndex + 1].indices[0]); else { flushAll(); setSummaryOpen(true); } }} /> : <div className="paper-split" ref={splitRef}>
         <div className="paper-stem" style={{ flexBasis: `${stemPct}%` }} ref={stemRef}>

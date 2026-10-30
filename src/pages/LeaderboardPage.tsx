@@ -25,7 +25,7 @@ export default function LeaderboardPage() {
   const sorted = rows ? sortRows(rows, unit, period) : [];
   // A line for the week's leader, picked once per visit.
   const pick = useMemo(() => Math.random(), []);
-  const crow = period === "week" && sorted[0] ? leaderLine(sorted[0].name, sorted[0].count, pick) : null;
+  const crow = period === "week" && sorted[0] ? leaderLine(sorted[0].name, sorted[0].count, pick, unit === "sets" ? sorted[0].sets >= 2 : undefined) : null;
   useBoardEntrance(root, [rows !== null, unit, period, crow]);
 
   if (!settings) return null;

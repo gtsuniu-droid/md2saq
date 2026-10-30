@@ -98,3 +98,36 @@ it("runs a clock per set for timed practice in whole sets, which pauses and resu
     const resumed = resumedSession(paused, base.startedAt + 1_000_000);
     expect(setRemainingSec(resumed, "q1", base.startedAt + 1_000_000)).toBe(240);
 });
+
+it("a set opened while the paper is paused for marking starts its clock the moment the paper resumes", () => {
+  const sets: Session = { ...base, studyUnit: "sets" };
+  // The first set was submitted and the paper paused while it is marked; marking took ten minutes.
+  const paused = pausedSession(withSetClock(sets, "q1", 300, base.startedAt), base.startedAt + 100_000);
+  const opened = withSetClock(paused, "q2", 300, base.startedAt + 700_000);
+  expect(setRemainingSec(opened, "q2", base.startedAt + 700_000)).toBe(300);
+  const resumed = resumedSession(opened, base.startedAt + 700_000);
+  expect(setRemainingSec(resumed, "q2", base.startedAt + 700_000)).toBe(300);
+  // It runs from then, not after the ten minutes of marking have passed again.
+  expect(setRemainingSec(resumed, "q2", base.startedAt + 760_000)).toBe(240);
+  // The earlier set's clock keeps its remaining time across the pause and runs on from the resume.
+  expect(setRemainingSec(resumed, "q1", base.startedAt + 700_000)).toBe(200);
+  expect(setRemainingSec(resumed, "q1", base.startedAt + 760_000)).toBe(140);
+});
+
+it("a timer the student sets replaces the set's clock, shows on untimed papers too, and can be cleared", async () => {
+  const { withManualSetClock, withoutSetClock, usesSetClock } = await import("./sessionClock");
+  const untimed: Session = { ...base, studyUnit: "sets", totalSec: undefined };
+  expect(usesSetClock(untimed, "q1")).toBe(false);
+  const timed = withManualSetClock(untimed, "q1", 600, base.startedAt);
+  expect(usesSetClock(timed, "q1")).toBe(true);
+  expect(timed.setClocks?.q1.manual).toBe(true);
+  expect(setRemainingSec(timed, "q1", base.startedAt + 60_000)).toBe(540);
+  // Setting it again restarts from now with the new length, even over an automatic clock.
+  const again = withManualSetClock(withSetClock(untimed, "q1", 300, base.startedAt), "q1", 120, base.startedAt + 30_000);
+  expect(setRemainingSec(again, "q1", base.startedAt + 30_000)).toBe(120);
+  // Set while paused, it waits for the paper to resume.
+  const whilePaused = withManualSetClock(pausedSession(untimed, base.startedAt), "q1", 120, base.startedAt + 50_000);
+  expect(setRemainingSec(resumedSession(whilePaused, base.startedAt + 50_000), "q1", base.startedAt + 50_000)).toBe(120);
+  expect(usesSetClock(withoutSetClock(timed, "q1"), "q1")).toBe(false);
+  expect(usesSetClock(timed, undefined)).toBe(false);
+});

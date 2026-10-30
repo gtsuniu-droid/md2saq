@@ -1,6 +1,6 @@
 import ContentGate from "./components/ContentGate";
 import { setProgressAccount } from "./lib/progressAccount";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { isAdmin } from "./lib/admin";
 import { db, getSettings } from "./data/db";
@@ -8,26 +8,9 @@ import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
 import { useSession } from "./lib/useSession";
 import { syncFromBank } from "./lib/bank";
 import { numberUnnumberedSets } from "./lib/sets";
-import SharedPage from "./pages/SharedPage";
 import HomePage from "./pages/HomePage";
-import CreatePage from "./pages/CreatePage";
-import BrowsePage from "./pages/BrowsePage";
-import NotesPage from "./pages/NotesPage";
-import NotesPanel from "./components/NotesPanel";
-import QuestionPage from "./pages/QuestionPage";
-import SetPage from "./pages/SetPage";
-import SetEditPage from "./pages/SetEditPage";
-import PaperPage from "./pages/PaperPage";
-import MarkPage from "./pages/MarkPage";
-import SetAttemptPage from "./pages/SetAttemptPage";
-import ReviewPage from "./pages/ReviewPage";
-import SessionReviewPage from "./pages/SessionReviewPage";
-import SettingsPage from "./pages/SettingsPage";
-import AdminPage from "./pages/AdminPage";
-import LeaderboardPage from "./pages/LeaderboardPage";
-import StudyPage from "./pages/StudyPage";
 import NoticesBell from "./components/NoticesBell";
-import LandingPage, { BrandMark } from "./pages/LandingPage";
+import { BrandMark } from "./components/BrandMark";
 import AmbossPanel from "./components/AmbossPanel";
 import AmbossHover from "./components/AmbossHover";
 import ImageViewer from "./components/ImageViewer";
@@ -43,6 +26,26 @@ import { useSubmittedCount } from "./lib/useSubmittedCount";
 import { setAdminRole } from "./lib/adminRole";
 import { hasEntered, markEntered } from "./lib/entered";
 import { patchSettings } from "./data/db";
+
+// Pages load when first visited, so the app opens quickly and the editor, marking and admin code arrive only where needed.
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const SharedPage = lazy(() => import("./pages/SharedPage"));
+const CreatePage = lazy(() => import("./pages/CreatePage"));
+const BrowsePage = lazy(() => import("./pages/BrowsePage"));
+const NotesPage = lazy(() => import("./pages/NotesPage"));
+const QuestionPage = lazy(() => import("./pages/QuestionPage"));
+const SetPage = lazy(() => import("./pages/SetPage"));
+const SetEditPage = lazy(() => import("./pages/SetEditPage"));
+const PaperPage = lazy(() => import("./pages/PaperPage"));
+const MarkPage = lazy(() => import("./pages/MarkPage"));
+const SetAttemptPage = lazy(() => import("./pages/SetAttemptPage"));
+const ReviewPage = lazy(() => import("./pages/ReviewPage"));
+const SessionReviewPage = lazy(() => import("./pages/SessionReviewPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const LeaderboardPage = lazy(() => import("./pages/LeaderboardPage"));
+const StudyPage = lazy(() => import("./pages/StudyPage"));
+const NotesPanel = lazy(() => import("./components/NotesPanel"));
 
 function AccountButton() {
   const settings = useLiveQuery(getSettings, []);
@@ -173,6 +176,8 @@ export default function App() {
       await setProgressAccount(u);
       user = u;
       if (u) {
+        // Ask the browser to keep this site's data through storage pressure and Safari's clean-ups.
+        try { void navigator.storage?.persist?.(); } catch { /* not offered here */ }
         void syncNow(u).catch(() => undefined);
         // Record the sign-in and read any admin role granted from the People list. The role
         // stays in memory; touching settings makes the screens that depend on it re-render.
@@ -244,11 +249,11 @@ export default function App() {
   }, []);
 
   // An exam cannot be left: no bar, no other page, until the paper is submitted and reviewed.
-  const examLocked = session?.mode === "exam" && !pathname.startsWith("/session/");
+  const examLocked = session?.mode === "exam" && !session.submittedAt && !pathname.startsWith("/session/");
   if (examLocked && pathname !== "/paper") return <Navigate to="/paper" replace />;
 
   // The front page is for newcomers; anyone signed in or who has practised before goes straight in.
-  if (pathname === "/" || pathname === "/welcome") return <LandingPage autoEnter={pathname === "/"} />;
+  if (pathname === "/" || pathname === "/welcome") return <Suspense fallback={null}><LandingPage autoEnter={pathname === "/"} /></Suspense>;
   // A newcomer who arrives at any app page sees the welcome page first. Shared links still open directly.
   const sharedLink = /^\/(s|shared)\//.test(pathname);
   if (!hasEntered() && !sharedLink && !session) {
@@ -278,6 +283,7 @@ export default function App() {
       {account?.cloudUser && account.cloudUser.verified === false && !full && <VerifyBar user={account.cloudUser} />}
       <div className="study-workspace">
       <main className={shell}>
+        <Suspense fallback={<p role="status" className="muted page-loading">Loading…</p>}>
         <Routes key={`${account?.cloudUser?.uid ?? ""}:${sessionOwner()}`}>
           <Route path="/home" element={<HomePage />} />
           <Route path="/new" element={<Navigate to="/home#new-session" replace />} />
@@ -303,8 +309,9 @@ export default function App() {
           <Route path="/settings" element={hash === "#admin" || hash === "#master" ? <Navigate to="/admin" replace /> : <SettingsPage />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
+        </Suspense>
       </main>
-      {notesOpen && studying && !(session?.examFormat && pathname.startsWith("/paper")) && <NotesPanel onClose={() => setNotesOpen(false)} />}
+      {notesOpen && studying && !(session?.examFormat && pathname.startsWith("/paper")) && <Suspense fallback={null}><NotesPanel onClose={() => setNotesOpen(false)} /></Suspense>}
       </div>
       <AmbossPanel />
       <AmbossHover />

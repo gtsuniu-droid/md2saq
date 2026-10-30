@@ -1,3 +1,4 @@
+import { BrandMark } from "../components/BrandMark";
 import { useEffect, useRef, useState } from "react";
 import { hasEntered, markEntered } from "../lib/entered";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -10,9 +11,7 @@ import { loadLibrary } from "../lib/library";
 import { loadSession } from "../lib/session";
 import "../landing.css";
 
-export function BrandMark() {
-  return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 2.5 20h19L12 3zm0 5.2 5.3 9.3H6.7L12 8.2z" /></svg></span>;
-}
+export { BrandMark };
 
 const LOGOS = [
   { src: "/landing/unimelb.png", alt: "The University of Melbourne" },

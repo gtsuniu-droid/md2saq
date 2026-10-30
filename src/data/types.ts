@@ -346,9 +346,11 @@ export interface Session {
   /** Pauses ordinary papers; fixed-format exams ignore this field. */
   pausedAt?: number;
   /** Timed practice in whole sets: each set's own clock, keyed by its first question, started when the set is opened. */
-  setClocks?: Record<string, { startedAt: number; totalSec: number }>;
+  setClocks?: Record<string, { startedAt: number; totalSec: number; manual?: boolean }>;
   /** The six-digit study code this paper was started from, when friends sit the same questions. */
   studyCode?: string;
+  /** When an exam paper was handed in: the clock stops, the lock lifts, and marking follows on the same page. */
+  submittedAt?: number;
 }
 
 /** Device-local record of one Add/Import action, retained for undo and recovery. */

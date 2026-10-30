@@ -49,10 +49,30 @@ export function setOvertimeSec(s: Session, key: string, now: number): number {
   return Math.max(0, Math.floor(((s.pausedAt ?? now) - clock.startedAt) / 1000) - clock.totalSec);
 }
 
-/** The session with a clock started for a set, given its share of the paper's time; an open clock stays. */
+/**
+ * The session with a clock started for a set, given its share of the paper's time; an open
+ * clock stays. A set opened while the paper is paused (it is, while the last set is being
+ * marked) gets a clock frozen at the pause, which resuming moves to the moment of resuming.
+ */
 export function withSetClock(s: Session, key: string, totalSec: number, now: number): Session {
   if (s.setClocks?.[key]) return s;
-  return { ...s, setClocks: { ...s.setClocks, [key]: { startedAt: now, totalSec: Math.max(60, Math.round(totalSec)) } } };
+  return { ...s, setClocks: { ...s.setClocks, [key]: { startedAt: s.pausedAt ?? now, totalSec: Math.max(60, Math.round(totalSec)) } } };
+}
+
+/** A clock the student set for this set ("finish this in ten minutes"), replacing whatever ran. */
+export function withManualSetClock(s: Session, key: string, totalSec: number, now: number): Session {
+  return { ...s, setClocks: { ...s.setClocks, [key]: { startedAt: s.pausedAt ?? now, totalSec: Math.max(60, Math.round(totalSec)), manual: true } } };
+}
+
+export function withoutSetClock(s: Session, key: string): Session {
+  if (!s.setClocks?.[key]) return s;
+  const { [key]: _gone, ...rest } = s.setClocks; void _gone;
+  return { ...s, setClocks: rest };
+}
+
+/** Whether the set's own clock is the one to show: the paper runs per set, or the student set one. */
+export function usesSetClock(s: Session, key: string | undefined): boolean {
+  return !!key && (perSetClocks(s) || !!s.setClocks?.[key]);
 }
 
 /** Seconds left on the exam clock, frozen while paused; null when untimed. */

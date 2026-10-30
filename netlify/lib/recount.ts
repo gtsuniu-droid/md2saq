@@ -4,17 +4,20 @@ import { readFileSync } from "node:fs";
 import { firebaseEnv } from "../functions/mcp-token";
 import { importRecords, joinNicknamed, readRecords } from "./board";
 import { hosted, openNamedStore } from "./store";
+import { attemptRows } from "./accountStore";
 import { CACHE_KEY, RECOUNT_MS, fromRecord, sortRows, weekStart, weeklyFigures, type AttemptRow, type CacheBody, type Pair, type Rec, type Row } from "./progress";
 
 /**
- * The full count: every account's weekly figures added up from its submitted attempts with a
- * Firebase service account, so the Admin table is complete whether or not a student has
- * opened the site. Needs FIREBASE_SERVICE_ACCOUNT (the key's JSON) on Netlify, or in
- * .env.local when developing.
+ * The full count: every account's weekly figures added up from its submitted attempts, so the
+ * Admin table is complete whether or not a student has opened the site. Attempts are read from
+ * each account's index in the site's store (one blob per account); Firestore, read with a
+ * Firebase service account, only still holds the members list, the old board records, and the
+ * attempts of accounts whose records have not been folded into the store yet. Needs
+ * FIREBASE_SERVICE_ACCOUNT (the key's JSON) on Netlify, or in .env.local when developing.
  *
- * It costs a Firestore read per answer, and the free plan's reads are a daily budget, so it
- * runs rarely: when an admin opens the table and the last count is an hour old, or in the
- * background after a board read once the last count is twelve hours old.
+ * Firestore reads are a daily budget on the free plan, so it runs rarely: when an admin opens
+ * the table and the last count is an hour old, or in the background after a board read once
+ * the last count is twelve hours old.
  */
 export interface ServiceAccount { client_email: string; private_key: string; project_id: string }
 export type FsValue = { stringValue?: string; integerValue?: string; doubleValue?: number; booleanValue?: boolean; mapValue?: { fields?: Record<string, FsValue> }; arrayValue?: { values?: FsValue[] }; timestampValue?: string; nullValue?: null };
@@ -50,6 +53,14 @@ export async function accessToken(sa: ServiceAccount): Promise<string> {
 export const num = (v?: FsValue): number | undefined => v?.integerValue !== undefined ? Number(v.integerValue) : v?.doubleValue !== undefined ? v.doubleValue : v?.timestampValue ? Date.parse(v.timestampValue) : undefined;
 export const str = (v?: FsValue): string | undefined => v?.stringValue;
 
+/** One page of a collection's documents, and the token for the next page if there is one. */
+export async function listPage(base: string, token: string, path: string, pageToken = "", pageSize = 500): Promise<{ docs: FsDoc[]; nextPageToken: string }> {
+  const res = await fetch(`${base}/${path}?pageSize=${pageSize}${pageToken ? `&pageToken=${pageToken}` : ""}`, { headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Firestore read failed (${res.status}) for ${path}.`);
+  const body = (await res.json()) as { documents?: FsDoc[]; nextPageToken?: string };
+  return { docs: body.documents ?? [], nextPageToken: body.nextPageToken ?? "" };
+}
+
 export async function listAll(base: string, token: string, path: string): Promise<FsDoc[]> {
   const out: FsDoc[] = [];
   let pageToken = "";
@@ -63,8 +74,27 @@ export async function listAll(base: string, token: string, path: string): Promis
   return out;
 }
 
-/** Submitted attempts of one account since `since`, as the figures need them. */
+/** A picture-only answer still counts as an answer, as it does on the device. */
+export function hasImage(v?: FsValue): boolean {
+  if (!v) return false;
+  if (v.mapValue?.fields) { const f = v.mapValue.fields; return f.type?.stringValue === "image" || Object.values(f).some(hasImage); }
+  return !!v.arrayValue?.values?.some(hasImage);
+}
+
+/**
+ * Submitted attempts of one account since `since`, as the figures need them: from the account's
+ * index in the site's store, plus whatever Firestore still holds for an account whose old
+ * records have not been folded in yet (see accountImport.ts).
+ */
 async function attemptsOf(base: string, token: string, uid: string, since: number): Promise<AttemptRow[]> {
+  const kept = await attemptRows(uid, since).catch(() => null);
+  if (kept?.imported) return kept.rows.map((r) => r.row);
+  const seen = new Set((kept?.rows ?? []).map((r) => r.id));
+  const old = (await firestoreAttemptsOf(base, token, uid, since)).filter((r) => !seen.has(r.id));
+  return [...(kept?.rows ?? []).map((r) => r.row), ...old.map((r) => r.row)];
+}
+
+async function firestoreAttemptsOf(base: string, token: string, uid: string, since: number): Promise<{ id: string; row: AttemptRow }[]> {
   const res = await fetch(`${base}/users/${uid}:runQuery`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "attempts" }], where: { fieldFilter: { field: { fieldPath: "submittedAt" }, op: "GREATER_THAN_OR_EQUAL", value: { integerValue: String(since) } } }, limit: 5000 } }) });
   if (!res.ok) throw new Error(`Could not read attempts (${res.status}).`);
   const rows = (await res.json()) as { document?: FsDoc }[];
@@ -73,9 +103,9 @@ async function attemptsOf(base: string, token: string, uid: string, since: numbe
     if (!f || submittedAt === undefined) return [];
     // Nothing written in any part: a set clicked through, which counts for nothing.
     const answers = f.answers?.arrayValue?.values ?? [];
-    if (answers.length && answers.every((v) => !(str(v.mapValue?.fields?.text) ?? "").trim())) return [];
+    if (answers.length && answers.every((v) => !(str(v.mapValue?.fields?.text) ?? "").trim() && !hasImage(v.mapValue?.fields?.doc))) return [];
     const qref = f.qref?.mapValue?.fields;
-    return [{ uid, submittedAt, questionId: str(f.questionId) ?? "", bankId: str(qref?.bankId), order: num(qref?.order) }];
+    return [{ id: document!.name.split("/").pop()!, row: { uid, submittedAt, questionId: str(f.questionId) ?? "", bankId: str(qref?.bankId), order: num(qref?.order) } }];
   });
 }
 

@@ -1,17 +1,45 @@
 import "fake-indexeddb/auto";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { db } from "../data/db";
+import { db, withRemoteWrites } from "../data/db";
 import type { Attempt, Mark, Question, Session } from "../data/types";
 import { historyEntries } from "./history";
 import { setProgressAccount } from "./progressAccount";
 import { loadSession, saveSession, sessionOwner } from "./session";
 import { getProgressSyncState, questionRef, syncNow } from "./sync";
-import { fetchSince, writeMany } from "./firebase";
 import { importAll, exportAll } from "./exportImport";
 
-vi.mock("./firebase", () => ({ cloudConfigured: () => true, currentUser: vi.fn(), writeMany: vi.fn(), fetchSince: vi.fn(), deleteMany: vi.fn() }));
+vi.mock("./firebase", () => ({ cloudConfigured: () => true, currentUser: vi.fn(), idToken: async () => "token" }));
 vi.mock("./notes", () => ({ syncNotes: vi.fn().mockResolvedValue(undefined) }));
-const cloud = new Map<string, Map<string, Record<string, unknown>>>();
+// The account store, in memory, reached the way the app reaches it: over fetch to /api/account.
+const blobs = new Map<string, unknown>();
+vi.mock("../../netlify/lib/store", () => ({
+  hosted: () => false,
+  openNamedStore: () => ({
+    get: async (k: string) => blobs.get(k) ?? null,
+    setJSON: async (k: string, v: unknown) => { blobs.set(k, structuredClone(v)); },
+    delete: async (k: string) => { blobs.delete(k); },
+    list: async (prefix: string) => [...blobs.keys()].filter((k) => k.startsWith(prefix)),
+    update: async <T,>(k: string, change: (c: T | null) => T | null | Promise<T | null>) => { const next = await change((blobs.get(k) as T) ?? null); if (next !== null) blobs.set(k, structuredClone(next)); return next; },
+  }),
+}));
+const { changes, fetchRecords, push: pushToStore } = await import("../../netlify/lib/accountStore");
+const pushes: string[] = [];
+let failNext: string | null = null;
+/** Who is calling: the tests sync one account at a time, so the current user is whoever last signed in; concurrent calls name themselves. */
+let caller = "";
+const fakeFetch = async (url: string, init?: RequestInit): Promise<Response> => {
+  const u = new URL(url, "http://x");
+  const action = u.pathname.split("/").pop();
+  const uid = (init?.headers as Record<string, string>)?.["x-test-uid"] ?? caller;
+  if (failNext) { const m = failNext; failNext = null; throw new Error(m); }
+  const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { "content-type": "application/json" } });
+  if (action === "changes") return json(await changes(uid, Number(u.searchParams.get("since") ?? 0)));
+  if (action === "fetch") return json(await fetchRecords(uid, (JSON.parse(String(init?.body)) as { keys: { table: "attempts" | "marks"; id: string }[] }).keys));
+  if (action === "push") { pushes.push(uid); return json(await pushToStore(uid, JSON.parse(String(init?.body)))); }
+  return new Response("{}", { status: 404 });
+};
+const cloudKeys = (uid: string, table: string) => [...blobs.keys()].filter((k) => k.startsWith(`${uid}/${table}/`)).map((k) => k.split("/").pop()!);
+const cloudIndex = (uid: string) => blobs.get(`${uid}/index`) as { session?: { session?: { id: string } } } | undefined;
 function storage() {
   const values = new Map<string, string>();
   return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key), clear: () => values.clear() };
@@ -25,14 +53,8 @@ beforeEach(async () => {
   vi.stubGlobal("localStorage", storage()); vi.stubGlobal("sessionStorage", storage());
   vi.spyOn(Date, "now").mockImplementation(() => ++now);
   await Promise.all(db.tables.map((table) => table.clear()));
-  cloud.clear(); vi.mocked(writeMany).mockReset(); vi.mocked(fetchSince).mockReset();
-  vi.mocked(writeMany).mockImplementation(async (uid, collection, docs) => {
-    const key = `${uid}/${collection}`;
-    const bucket = cloud.get(key) ?? new Map<string, Record<string, unknown>>();
-    for (const doc of docs) bucket.set(String(doc.id), structuredClone(doc));
-    cloud.set(key, bucket);
-  });
-  vi.mocked(fetchSince).mockImplementation(async (uid, collection, since) => [...(cloud.get(`${uid}/${collection}`)?.values() ?? [])].filter((doc) => Number(doc._m) > since).map((doc) => structuredClone(doc)));
+  blobs.clear(); pushes.length = 0; failNext = null; caller = "";
+  vi.stubGlobal("fetch", fakeFetch);
   await db.sets.put({ id: "set", name: "Case", number: 1, bankId: "bank", createdAt: 1 });
   await db.questions.put(q);
 });
@@ -42,15 +64,15 @@ describe("account-owned progress and cloud history", () => {
   it("keeps answers, marks, cursors and unfinished sessions separate when switching accounts", async () => {
     await setProgressAccount({ uid: "alice" });
     await db.attempts.put(attempt("a", "alice")); await db.marks.put(mark("a", "alice"));
-    saveSession(session("a")); await syncNow({ uid: "alice" });
+    saveSession(session("a")); caller = "alice"; await syncNow({ uid: "alice" });
     await setProgressAccount({ uid: "bob" });
     expect(loadSession()).toBeNull();
     await db.attempts.put(attempt("b", "bob")); await db.marks.put(mark("b", "bob"));
-    saveSession(session("b")); await syncNow({ uid: "bob" });
-    expect([...cloud.get("alice/attempts")!.keys()]).toEqual(["a"]);
-    expect([...cloud.get("bob/attempts")!.keys()]).toEqual(["b"]);
-    expect([...cloud.get("bob/marks")!.keys()]).toEqual(["mark-b"]);
-    expect(cloud.get("bob/settings")!.get("session")?.session).toMatchObject({ id: "paper-b" });
+    saveSession(session("b")); caller = "bob"; await syncNow({ uid: "bob" });
+    expect(cloudKeys("alice", "attempts")).toEqual(["a"]);
+    expect(cloudKeys("bob", "attempts")).toEqual(["b"]);
+    expect(cloudKeys("bob", "marks")).toEqual(["mark-b"]);
+    expect(cloudIndex("bob")?.session?.session).toMatchObject({ id: "paper-b" });
     expect(await db.meta.get("sync.pulledAt:alice")).toBeDefined();
     expect(await db.meta.get("sync.pulledAt:bob")).toBeDefined();
     await setProgressAccount(null); expect(loadSession()).toBeNull();
@@ -83,7 +105,7 @@ describe("account-owned progress and cloud history", () => {
   it("restores history, marks and the paper on another device with different question ids", async () => {
     await setProgressAccount({ uid: "alice" });
     await db.attempts.put({ ...attempt("a", "alice"), qref: await questionRef(q) }); await db.marks.put(mark("a", "alice"));
-    saveSession({ ...session("a"), studyUnit: "sets", openedSetCount: 2 }); await syncNow({ uid: "alice" });
+    saveSession({ ...session("a"), studyUnit: "sets", openedSetCount: 2 }); caller = "alice"; await syncNow({ uid: "alice" });
     await Promise.all([db.attempts.clear(), db.marks.clear(), db.meta.clear(), db.settings.clear(), db.questions.clear()]);
     localStorage.clear();
     await db.questions.put({ ...q, id: "q-on-new-device" });
@@ -97,7 +119,8 @@ describe("account-owned progress and cloud history", () => {
   it("retains history before its bank arrives and resolves it on the next sync", async () => {
     await setProgressAccount({ uid: "alice" });
     await db.questions.clear();
-    cloud.set("alice/attempts", new Map([["remote", { ...attempt("remote", "alice"), _m: 100 }]]));
+    caller = "alice";
+    await pushToStore("alice", { attempts: [{ ...attempt("remote", "alice"), _m: 100 } as unknown as Record<string, unknown> & { id: string }], marks: [], deletes: [] });
     expect((await syncNow({ uid: "alice" }))?.unresolved).toBe(1);
     expect((await db.attempts.get("remote"))?.submittedAt).toBe(20);
     expect(await db.meta.get("sync.pulledAt:alice")).toBeUndefined();
@@ -105,16 +128,32 @@ describe("account-owned progress and cloud history", () => {
     expect((await syncNow({ uid: "alice" }))?.unresolved).toBe(0);
     expect((await db.attempts.get("remote"))?.questionId).toBe("downloaded");
   });
+  it("uploads everything a device holds the first time it meets the account store, then only what changed", async () => {
+    await setProgressAccount({ uid: "alice" });
+    // Pushed to Firestore long ago: the push cursor is past these records' stamps.
+    await withRemoteWrites(async () => { await db.attempts.put({ ...attempt("old", "alice"), _m: 500 }); await db.marks.put({ ...mark("old", "alice"), _m: 600 }); });
+    await db.meta.put({ id: "sync.pushedAt:alice", value: 9_000 });
+    caller = "alice"; await syncNow({ uid: "alice" });
+    expect(cloudKeys("alice", "attempts")).toEqual(["old"]);
+    expect(cloudKeys("alice", "marks")).toEqual(["mark-old"]);
+    // Seeded: the next sync sends only what changed since.
+    await db.attempts.put(attempt("new", "alice"));
+    const before = pushes.length;
+    await syncNow({ uid: "alice" });
+    expect(pushes.length).toBe(before + 1);
+    expect(cloudKeys("alice", "attempts").sort()).toEqual(["new", "old"]);
+    expect((blobs.get("alice/attempts/old") as { _m: number })._m).toBe(500);
+  });
   it("keeps offline attempts and retries failed cloud writes without advancing the cursor", async () => {
     await setProgressAccount({ uid: "alice" });
     await db.attempts.put(attempt("a", "alice"));
-    vi.mocked(writeMany).mockRejectedValueOnce(new Error("Offline"));
+    caller = "alice"; failNext = "Offline";
     await expect(syncNow({ uid: "alice" })).rejects.toThrow("Offline");
     expect(getProgressSyncState().status).toBe("error");
     expect(await db.meta.get("sync.pushedAt:alice")).toBeUndefined();
     expect(await db.attempts.get("a")).toBeDefined();
     await syncNow({ uid: "alice" });
-    expect(cloud.get("alice/attempts")?.has("a")).toBe(true);
+    expect(cloudKeys("alice", "attempts")).toEqual(["a"]);
     expect(getProgressSyncState().status).toBe("synced");
   });
   it("preserves a guest paper when the signed-in account already has one", async () => {
@@ -144,11 +183,16 @@ describe("account-owned progress and cloud history", () => {
     expect(bobBackup.attempts[0].id).not.toBe("a");
     expect(bobBackup.marks[0].attemptId).toBe(bobBackup.attempts[0].id);
   });
-  it("syncs concurrent account requests into their own cloud records", async () => {
+  it("syncs concurrent account requests into their own records, one push per account", async () => {
     await db.attempts.bulkPut([attempt("a", "alice"), attempt("b", "bob")]);
+    // Syncs run one account at a time, so the caller can follow the queue: whoever's turn it is signs the calls.
+    const { idToken } = await import("./firebase");
+    void idToken;
+    const turns = ["alice", "bob"];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => fakeFetch(url, { ...init, headers: { ...(init?.headers as Record<string, string>), "x-test-uid": (() => { const u = new URL(url, "http://x"); if (u.pathname.endsWith("changes") && turns.length > 1 && pushes.filter((p) => p === turns[0]).length) turns.shift(); return turns[0]; })() } }));
     await Promise.all([syncNow({ uid: "alice" }), syncNow({ uid: "bob" }), syncNow({ uid: "alice" })]);
-    expect([...cloud.get("alice/attempts")!.keys()]).toEqual(["a"]);
-    expect([...cloud.get("bob/attempts")!.keys()]).toEqual(["b"]);
-    expect(vi.mocked(writeMany).mock.calls.filter(([uid, collection]) => uid === "alice" && collection === "attempts")).toHaveLength(1);
+    expect(cloudKeys("alice", "attempts")).toEqual(["a"]);
+    expect(cloudKeys("bob", "attempts")).toEqual(["b"]);
+    expect(pushes.filter((u) => u === "alice")).toHaveLength(1);
   });
 });

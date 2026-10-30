@@ -132,3 +132,24 @@ it("lets a device that has not synced raise the week's figures but not lower the
   // A new week starts from the post whatever the device knows.
   expect(mergeRecord(stored, rec(3, { week: "2026-W45" })).count).toBe(3);
 });
+
+it("a device synced since the last full count speaks for the account, a lowered figure included; an unsynced one only raises", async () => {
+  const { overlay, mergeRecord: merge } = await import("../../netlify/lib/progress");
+  const now = Date.UTC(2026, 9, 28, 12);
+  const week = weekKey(now);
+  const counted = { uid: "u", name: "Eiden", joined: true, questions: 5, sets: 1, prevQuestions: 0, prevSets: 0, source: "server" as const };
+  const base: Posted = { name: "Eiden", week, count: 0, sets: 0, prevCount: 0, prevSets: 0, at: now + 60_000 };
+  // The device discarded the set after the count ran, and had synced first: the board drops to 0.
+  const complete = merge(undefined, { ...base, complete: true });
+  expect(complete.completeAt).toBe(base.at);
+  expect(overlay(counted, "u", complete, now, now)).toMatchObject({ questions: 0, sets: 0, source: "device" });
+  // Without a sync behind it, the lower figure is only a device that knows less: the count stands.
+  const partial = merge(undefined, base);
+  expect(partial.completeAt).toBeUndefined();
+  expect(overlay(counted, "u", partial, now, now)).toMatchObject({ questions: 5, sets: 1 });
+  // A complete post from before the count was made is superseded by the count.
+  expect(overlay(counted, "u", { ...complete, completeAt: now - 60_000 }, now, now)).toMatchObject({ questions: 5 });
+  // Figures raised later by an unsynced device keep the record trusted (they only ever went up).
+  const raised = merge(complete, { ...base, count: 2, at: now + 120_000 });
+  expect(raised).toMatchObject({ count: 2, completeAt: base.at });
+});

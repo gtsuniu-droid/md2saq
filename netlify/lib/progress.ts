@@ -39,7 +39,7 @@ export function weeklyFigures(attempts: AttemptRow[], questionCount: Map<string,
  * student last joined or left (0: before that was recorded), which decides between devices
  * that disagree about it.
  */
-export interface BoardRecord { name: string; photo?: string; visible: boolean; choiceAt?: number; week: string; count: number; sets: number; prevCount: number; prevSets: number; /** Everything ever, as the device counted it. */ total?: number; totalSets?: number; at: number }
+export interface BoardRecord { name: string; photo?: string; visible: boolean; choiceAt?: number; week: string; count: number; sets: number; prevCount: number; prevSets: number; /** Everything ever, as the device counted it. */ total?: number; totalSets?: number; at: number; /** When a freshly synced device last posted, so its figures (lower included) stand over an older full count. */ completeAt?: number }
 /**
  * What a device posts: `visible` is left out when the device has no say (it never saw the
  * choice). `complete` says the device had synced the account's answers shortly before counting,
@@ -74,7 +74,8 @@ export function mergeRecord(stored: BoardRecord | undefined, post: Posted): Boar
     prevCount: Math.max(stored.prevCount, post.prevCount), prevSets: Math.max(stored.prevSets, post.prevSets),
     total: Math.max(stored.total ?? 0, post.total ?? 0), totalSets: Math.max(stored.totalSets ?? 0, post.totalSets ?? 0),
   } : {};
-  return { ...record, ...higher, ...(theirs ? said : keep), name };
+  const completeAt = post.complete ? post.at : stored?.completeAt;
+  return { ...record, ...higher, ...(theirs ? said : keep), name, ...(completeAt ? { completeAt } : {}) };
 }
 
 /**
@@ -132,18 +133,21 @@ export function fromRecord(n: Rec | undefined, now: number): Pair {
  * from the record, and the higher of the two counts (counts only grow within a week, and the
  * device may know of answers the server has not been sent yet, or the reverse).
  */
-export function overlay(cur: Row | undefined, uid: string, p: Rec, now: number): Row {
+export function overlay(cur: Row | undefined, uid: string, p: Rec, now: number, countedAt = 0): Row {
   const f = fromRecord(p, now);
   const device = { questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets };
   if (!cur) return { uid, name: (p.name ?? "").trim().split(/\s+/)[0] || "Student", photo: p.photo, nickname: p.name, joined: p.visible !== false, lastSeenAt: p.at, ...device, total: p.total ?? 0, totalSets: p.totalSets ?? 0, source: "device" };
   const raised = device.questions > cur.questions || device.sets > cur.sets;
+  // A record from a device synced since the last full count speaks for the account this week, a
+  // set discarded since included; otherwise the higher figure stands.
+  const trusted = (p.completeAt ?? 0) > countedAt && p.week === weekKey(now);
   return {
     ...cur, nickname: p.name ?? cur.nickname, photo: p.photo ?? cur.photo, joined: p.visible !== false, lastSeenAt: Math.max(cur.lastSeenAt ?? 0, p.at),
-    questions: Math.max(cur.questions, device.questions), sets: Math.max(cur.sets, device.sets),
+    questions: trusted ? device.questions : Math.max(cur.questions, device.questions), sets: trusted ? device.sets : Math.max(cur.sets, device.sets),
     prevQuestions: Math.max(cur.prevQuestions, device.prevQuestions), prevSets: Math.max(cur.prevSets, device.prevSets),
     // All-time figures only grow; the device's own count is the fuller one.
     total: Math.max(cur.total ?? 0, p.total ?? 0), totalSets: Math.max(cur.totalSets ?? 0, p.totalSets ?? 0),
-    source: raised ? "device" : cur.source,
+    source: raised || (trusted && (device.questions !== cur.questions || device.sets !== cur.sets)) ? "device" : cur.source,
   };
 }
 
@@ -162,7 +166,7 @@ export function combine(last: CacheBody | null, posted: Map<string, Rec>, now: n
   const sameWeek = last?.week === weekStart(now);
   const rows = new Map<string, Row>();
   for (const r of last?.rowsWithEmail ?? []) rows.set(r.uid, sameWeek ? { ...r } : { ...r, questions: 0, sets: 0, prevQuestions: r.questions, prevSets: r.sets });
-  for (const [uid, p] of posted) rows.set(uid, overlay(rows.get(uid), uid, p, now));
+  for (const [uid, p] of posted) rows.set(uid, overlay(rows.get(uid), uid, p, now, last?.at ?? 0));
   return sortRows([...rows.values()]);
 }
 

@@ -68,7 +68,7 @@ export default function SessionReviewPage() {
               <td>{formatDuration(group.rows.reduce((sum, r) => sum + r.a.elapsedSec, 0))}</td>
               <td><div className="row">
                 {maximum > 0 && <span>{score}/{maximum}</span>}
-                {toMark && !examLocked && <Link to={`/mark/${toMark.a.id}`}>{submitted.every((r) => r.m) ? "Review set" : "Mark set"}</Link>}
+                {toMark && !examLocked && (session?.id === id ? <button className="small link" onClick={() => resume(toMark.a.questionId)}>{submitted.every((r) => r.m) ? "Review set" : "Mark set"}</button> : <Link to={`/mark/${toMark.a.id}`}>{submitted.every((r) => r.m) ? "Review set" : "Mark set"}</Link>)}
                 {unfinished && session?.id === id && <button className="small" onClick={() => resume(unfinished.a.questionId)}>Continue set</button>}
               </div></td>
             </tr>;
@@ -76,7 +76,7 @@ export default function SessionReviewPage() {
         </tbody>
       </table>
       <div className="row" style={{ marginTop: "1rem" }}>
-        {unmarked.length > 0 && !examLocked && <button className="primary" onClick={() => nav(`/mark/${unmarked[0].a.id}`)}>Mark next set</button>}
+        {unmarked.length > 0 && !examLocked && <button className="primary" onClick={() => session?.id === id ? resume(unmarked[0].a.questionId) : nav(`/mark/${unmarked[0].a.id}`)}>Mark next set</button>}
         {unfinished.length > 0 && session?.id === id && <button className="primary" onClick={() => resume(unfinished[0].a.questionId)}>Continue session</button>}
         {study && !unfinished.length && <Link className="button" to={`/study/${study.code}`}>Compare answers with friends</Link>}
         <button className={unmarked.length === 0 ? "primary" : ""} onClick={finish}>{unfinished.length ? "Save & exit" : "Done"}</button>

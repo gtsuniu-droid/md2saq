@@ -34,3 +34,14 @@ it("ends a session that has nothing left, and does nothing for no ids", async ()
   await discardAttempts([], "me");
   expect(vi.mocked(recordDeletes)).toHaveBeenCalledTimes(2);
 });
+
+it("keeps the paper on the same question when an earlier set goes, and leaves the opened count alone for a set never opened", async () => {
+  // On b1 (index 2); set A (a1, a2) is discarded from history: b1 is now first.
+  await discardAttempts(["a1", "a2"], "me");
+  expect(session.current).toMatchObject({ attemptIds: ["b1"], index: 0, openedSetCount: 1 });
+  // On a1 (index 0) with only the first set opened; a later, unopened set is discarded.
+  await db.attempts.bulkAdd([attempt("a1"), attempt("a2")]);
+  session.current = { id: "s", attemptIds: ["a1", "a2", "b1"], questionIds: ["q-a1", "q-a2", "q-b1"], index: 0, openedSetCount: 1 };
+  await discardAttempts(["b1"], "me");
+  expect(session.current).toMatchObject({ attemptIds: ["a1", "a2"], index: 0, openedSetCount: 1 });
+});

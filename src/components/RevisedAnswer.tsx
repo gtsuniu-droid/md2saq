@@ -27,6 +27,7 @@ interface Props {
 export default function RevisedAnswer({ attemptId, answer, clean, comments = [], active = null, onLayout }: Props) {
   const [saved, setSaved] = useState(false);
   const timer = useRef(0);
+  const pending = useRef<(() => Promise<void>) | null>(null);
   const editor = useEditor({
     extensions: [...EDITOR_EXTENSIONS, TrackChanges.configure({ original: answer.doc, originalText: answer.text }), CommentHighlights.configure({ original: answer.doc, originalText: answer.text })],
     content: ((answer.revision?.doc ?? answer.doc) as object | null) ?? (answer.text ? { type: "doc", content: answer.text.split(/\r?\n/).map((line) => ({ type: "paragraph", content: line ? [{ type: "text", text: line }] : [] })) } : undefined),
@@ -35,22 +36,27 @@ export default function RevisedAnswer({ attemptId, answer, clean, comments = [],
       onLayout?.();
       const doc = editor.getJSON(); const text = editor.getText({ blockSeparator: "\n" });
       window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => {
-        void db.transaction("rw", db.attempts, async () => {
+      const save = async () => {
+        pending.current = null;
+        await db.transaction("rw", db.attempts, async () => {
           const attempt = await db.attempts.get(attemptId);
           if (!attempt) return;
           const has = attempt.answers.some((a) => a.label === answer.label);
           const answers = has ? attempt.answers.map((a) => a.label === answer.label ? { ...a, revision: { doc, text, at: Date.now() } } : a) : [...attempt.answers, { label: answer.label, text: "", doc: null, revision: { doc, text, at: Date.now() } }];
           await db.attempts.update(attemptId, { answers });
-        }).then(() => { requestSync(); setSaved(true); window.setTimeout(() => setSaved(false), 1500); });
-      }, 700);
+        });
+        requestSync();
+      };
+      pending.current = save;
+      timer.current = window.setTimeout(() => { void save().then(() => { setSaved(true); window.setTimeout(() => setSaved(false), 1500); }); }, 700);
     },
   });
   useEffect(() => { if (editor) editor.view.dispatch(editor.state.tr.setMeta(trackChangesKey, { shown: !clean })); }, [editor, clean]);
   const anchored = comments.filter((c) => c.partLabel === answer.label && !c.replyTo && !(c.start === 0 && c.end === 0 && !c.quote));
   const anchoredKey = anchored.map((c) => `${c.id}:${c.start}:${c.end}`).join("|");
   useEffect(() => { if (editor) { editor.view.dispatch(editor.state.tr.setMeta(commentHighlightsKey, { comments: anchored.map((c) => ({ id: c.id, start: c.start, end: c.end, quote: c.quote })), active })); onLayout?.(); } }, [editor, anchoredKey, active]);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // Leaving mid-pause (another view, the next set) still saves the last words typed.
+  useEffect(() => () => { window.clearTimeout(timer.current); void pending.current?.(); }, []);
   useEffect(() => { editor?.commands.focus("end"); }, [editor]);
   if (!editor) return null;
   return <div className={"revise-box" + (clean ? " clean" : "")}>

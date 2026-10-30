@@ -24,11 +24,17 @@ export async function discardAttempts(attemptIds: string[], ownerId?: string): P
       const keep = s.attemptIds.map((id) => !gone.has(id));
       const attempts = s.attemptIds.filter((_, i) => keep[i]);
       if (!attempts.length) saveSession(null, ownerId);
-      else saveSession({
-        ...s, attemptIds: attempts, questionIds: s.questionIds.filter((_, i) => keep[i]),
-        index: Math.min(s.index, attempts.length - 1),
-        ...(s.openedSetCount ? { openedSetCount: Math.max(1, s.openedSetCount - 1) } : {}),
-      }, ownerId);
+      else {
+        // The paper stays on the same question: the index moves back by the questions removed before it.
+        const removedBefore = keep.slice(0, s.index).filter((k) => !k).length;
+        // A set discarded from among those opened (the current one, or an earlier one) leaves one fewer opened.
+        const wasOpened = keep.some((k, i) => !k && i <= s.index);
+        saveSession({
+          ...s, attemptIds: attempts, questionIds: s.questionIds.filter((_, i) => keep[i]),
+          index: Math.max(0, Math.min(s.index - removedBefore, attempts.length - 1)),
+          ...(s.openedSetCount && wasOpened ? { openedSetCount: Math.max(1, s.openedSetCount - 1) } : {}),
+        }, ownerId);
+      }
     }
   } catch { /* no session on this device */ }
   requestSync(0);

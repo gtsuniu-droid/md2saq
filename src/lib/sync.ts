@@ -2,7 +2,7 @@ import { loadLibrary, readCatalogue } from "./library";
 import { syncFromBank } from "./bank";
 import { db, getSettings, withRemoteWrites } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet, QuestionRef, Session, Settings } from "../data/types";
-import { cloudConfigured, currentUser, deleteMany, fetchSince, writeMany, type CloudUser } from "./firebase";
+import { cloudConfigured, currentUser, idToken, type CloudUser } from "./firebase";
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
 import { syncNotes } from "./notes";
 import { belongsToAccount } from "./progressAccount";
@@ -14,14 +14,60 @@ import { newerSocial } from "./social";
  * included, so a paper's answers are saved to the account as they are typed),
  * marks, settings and the paper in progress. The browser database stays the
  * working copy; records modified since the last push go up, records modified
- * in the cloud since the last pull come down, newest wins. Questions and sets
- * are not synced here; they come from the shared bank, and a record carries a
- * QuestionRef so it can find its question on a device whose question ids differ.
+ * in the account since the last pull come down, newest wins. The account lives
+ * in the site's own store (/api/account, see netlify/lib/accountStore.ts), not
+ * Firestore, so saving never waits on a read budget or a document size limit.
+ * Questions and sets are not synced here; they come from the shared bank, and a
+ * record carries a QuestionRef so it can find its question on a device whose
+ * question ids differ.
  */
+
+type Rec = Record<string, unknown> & { id: string; _m?: number };
+type Table = "attempts" | "marks";
+/** About what one call to the account store may carry; the store stops at 6 MB. */
+const BYTES_PER_CALL = 3_500_000;
+/** A record too big to send at all (pictures pasted by the dozen) stays on the device and is reported, not retried forever. */
+const MAX_RECORD_BYTES = 5_000_000;
+
+async function account<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await idToken();
+  if (!token) throw new Error("Sign in to sync.");
+  const res = await fetch(`/api/account/${path}`, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${token}`, "content-type": "application/json" } });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `The account store answered ${res.status}.`);
+  }
+  return (await res.json()) as T;
+}
+
+/** Send a device's changes in calls that fit; settings, the paper and deletions travel with the first. Returns how many records were too big to send. */
+async function pushToAccount(parts: { attempts: Rec[]; marks: Rec[]; settings?: Rec; session?: Rec; deletes: { id: string; table: Table; at: number }[] }): Promise<number> {
+  const bytes = (r: Rec) => new TextEncoder().encode(JSON.stringify(r)).length;
+  const items = [...parts.attempts.map((r) => ({ table: "attempts" as Table, r, size: bytes(r) })), ...parts.marks.map((r) => ({ table: "marks" as Table, r, size: bytes(r) }))];
+  let skipped = 0; let first = true;
+  const send = async (batch: typeof items) => {
+    const body = {
+      attempts: batch.filter((i) => i.table === "attempts").map((i) => i.r), marks: batch.filter((i) => i.table === "marks").map((i) => i.r),
+      ...(first ? { ...(parts.settings ? { settings: parts.settings } : {}), ...(parts.session ? { session: parts.session } : {}), deletes: parts.deletes } : {}),
+    };
+    first = false;
+    await account("push", { method: "POST", body: JSON.stringify(body) });
+  };
+  let batch: typeof items = []; let size = 0;
+  for (const item of items) {
+    if (item.size > MAX_RECORD_BYTES) { skipped++; console.warn(`sync: ${item.table} ${item.r.id} is too large to sync (${item.size} bytes); it stays on this device.`); continue; }
+    if (batch.length && size + item.size > BYTES_PER_CALL) { await send(batch); batch = []; size = 0; }
+    batch.push(item); size += item.size;
+  }
+  if (batch.length || first) await send(batch);
+  return skipped;
+}
 
 const CURSOR_PUSH = "sync.pushedAt";
 const CURSOR_PULL = "sync.pulledAt";
 const SESSION_PUSHED = "sync.sessionPushedM";
+/** Set once a device has uploaded everything it holds to the account store (which replaced Firestore). */
+const STORE_SEEDED = "sync.accountStoreSeeded";
 const SETTINGS_SYNCED: (keyof Settings)[] = [
   "minutesPerMark",
   "autoImportBank",
@@ -154,7 +200,9 @@ export async function syncNow(user?: CloudUser | null): Promise<SyncResult | nul
       const notesError = await notesResult;
       if (notesError) throw notesError;
       reportSync({ uid: u.uid, status: "synced", at: Date.now() });
-      return { pushed, pulled: pulled.applied, unresolved: pulled.unresolved };
+      // The board follows every push of answers, told once the sync is done so this device's figures are the account's.
+      if (pushed.count) void publishWeeklyCount(u.uid).catch(() => undefined);
+      return { pushed: pushed.count, pulled: pulled.applied, unresolved: pulled.unresolved + pushed.skipped };
     } catch (error) {
       reportSync({ uid: u.uid, status: "error", message: error instanceof Error ? error.message : "Could not sync history." });
       throw error;
@@ -165,8 +213,11 @@ export async function syncNow(user?: CloudUser | null): Promise<SyncResult | nul
   try { return await job; } finally { running.delete(u.uid); }
 }
 
-async function push(uid: string): Promise<number> {
-  const since = await cursor(uid, CURSOR_PUSH);
+async function push(uid: string): Promise<{ count: number; skipped: number }> {
+  // The first push to the account store sends everything this device holds, whatever was pushed
+  // to Firestore before: nothing a student has on any device is left behind by the move.
+  const seeded = (await db.meta.get(`${STORE_SEEDED}:${uid}`))?.value === 1;
+  const since = seeded ? await cursor(uid, CURSOR_PUSH) : -1;
   const started = Date.now();
   const [attempts, marks, settings, deletes] = await Promise.all([
     db.attempts.where("_m").above(since).filter((a) => belongsToAccount(a, uid)).toArray(),
@@ -174,16 +225,11 @@ async function push(uid: string): Promise<number> {
     db.settings.get("settings"),
     db.syncDeletes.filter((d) => belongsToAccount(d, uid)).toArray(),
   ]);
-  const attemptDocs = attempts.map((a) => stripUndefined(a) as unknown as Record<string, unknown>);
-  const markDocs = marks.map((m) => stripUndefined(m) as unknown as Record<string, unknown>);
-  await writeMany(uid, "attempts", attemptDocs);
-  await writeMany(uid, "marks", markDocs);
-  // The leaderboard shows this week's count; it follows every push of attempts.
-  if (attemptDocs.length) await publishWeeklyCount(uid).catch(() => undefined);
-  if (settings?.cloudUser?.uid === uid && (settings._m ?? 0) > since) {
-    await writeMany(uid, "settings", [stripUndefined(settingsForCloud(settings)) as unknown as Record<string, unknown>]);
-  }
+  const attemptDocs = attempts.map((a) => stripUndefined(a) as unknown as Rec);
+  const markDocs = marks.map((m) => stripUndefined(m) as unknown as Rec);
+  const settingsDoc = settings?.cloudUser?.uid === uid && (settings._m ?? 0) > since ? (stripUndefined(settingsForCloud(settings)) as unknown as Rec) : undefined;
   const env = loadSessionEnvelope(uid);
+  let sessionDoc: Rec | undefined;
   if (env._m > 0 && env._m !== (await cursor(uid, SESSION_PUSHED))) {
     const qrefs: QuestionRef[] = [];
     const library = await loadLibrary();
@@ -194,29 +240,39 @@ async function push(uid: string): Promise<number> {
       qrefs.push(q ? await questionRef(q, bySet.get(q.setId)) : { setId: "", order: -1 });
     }
     const doc: CloudSession = { id: "session", _m: env._m, session: env.session, qrefs };
-    await writeMany(uid, "settings", [stripUndefined(doc) as unknown as Record<string, unknown>]);
-    await setCursor(uid, SESSION_PUSHED, env._m);
+    sessionDoc = stripUndefined(doc) as unknown as Rec;
   }
-  if (deletes.length) {
-    const byTable = { attempts: deletes.filter((d) => d.table === "attempts"), marks: deletes.filter((d) => d.table === "marks") };
-    await deleteMany(uid, "attempts", byTable.attempts.map((d) => d.id));
-    await deleteMany(uid, "marks", byTable.marks.map((d) => d.id));
-    await writeMany(uid, "deleted", deletes.map((d) => ({ id: d.id, table: d.table, _m: d.at })));
-    await db.syncDeletes.bulkDelete(deletes.map((d) => d.id));
-  }
-  await setCursor(uid, CURSOR_PUSH, started);
-  return attemptDocs.length + markDocs.length;
+  const deleteDocs = deletes.map((d) => ({ id: d.id, table: d.table as Table, at: d.at }));
+  const skipped = attemptDocs.length || markDocs.length || settingsDoc || sessionDoc || deleteDocs.length
+    ? await pushToAccount({ attempts: attemptDocs, marks: markDocs, settings: settingsDoc, session: sessionDoc, deletes: deleteDocs })
+    : 0;
+  if (sessionDoc) await setCursor(uid, SESSION_PUSHED, env._m);
+  if (deletes.length) await db.syncDeletes.bulkDelete(deletes.map((d) => d.id));
+  // A record stamped in the same millisecond the push began is caught next time.
+  await setCursor(uid, CURSOR_PUSH, started - 1);
+  if (!seeded) await db.meta.put({ id: `${STORE_SEEDED}:${uid}`, value: 1 });
+  return { count: attemptDocs.length + markDocs.length - skipped, skipped };
 }
 
 async function pull(uid: string): Promise<{ applied: number; unresolved: number }> {
   const since = await cursor(uid, CURSOR_PULL);
-  const started = Date.now();
-  const [attempts, marks, settingsDocs, deleted] = await Promise.all([
-    fetchSince(uid, "attempts", since),
-    fetchSince(uid, "marks", since),
-    fetchSince(uid, "settings", since),
-    fetchSince(uid, "deleted", since),
-  ]);
+  // The store says what arrived since the last pull, by its own clock, and gives the cursor for the next one.
+  const changed = await account<{ at: number; next: number; entries: { id: string; table: Table; _m: number; deleted?: true }[]; settings?: Rec; session?: Rec }>(`changes?since=${since}`);
+  const started = changed.next;
+  // The records that changed, a bounded page per call; whatever did not fit comes back as remaining.
+  const fetched: { table: Table; record: Rec }[] = [];
+  let keys = changed.entries.filter((e) => !e.deleted).map((e) => ({ table: e.table, id: e.id }));
+  while (keys.length) {
+    const page = await account<{ records: { table: Table; record: Rec }[]; remaining: { table: Table; id: string }[] }>("fetch", { method: "POST", body: JSON.stringify({ keys: keys.slice(0, 400) }) });
+    fetched.push(...page.records);
+    const left = [...page.remaining, ...keys.slice(400)];
+    if (left.length >= keys.length) throw new Error("The account store returned nothing for a page of records.");
+    keys = left;
+  }
+  const attempts = fetched.filter((f) => f.table === "attempts").map((f) => f.record);
+  const marks = fetched.filter((f) => f.table === "marks").map((f) => f.record);
+  const settingsDocs = [changed.settings, changed.session].filter((d): d is Rec => !!d);
+  const deleted = changed.entries.filter((e) => e.deleted).map((e) => ({ id: e.id, table: e.table }));
   if (!await readCatalogue()) await syncFromBank().catch(() => undefined);
   const { questions, sets } = await loadLibrary();
   const byId = new Map(questions.map((q) => [q.id, q]));
@@ -288,7 +344,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
 /** Forget the cursors, so the next sync compares everything again (used after sign-in on a device with history). */
 export async function resetCursors(): Promise<void> {
   const uid = (await getSettings()).cloudUser?.uid;
-  if (uid) await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED].map((key) => `${key}:${uid}`));
+  if (uid) await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED, STORE_SEEDED].map((key) => `${key}:${uid}`));
 }
 
 let requested: number | undefined;

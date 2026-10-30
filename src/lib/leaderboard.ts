@@ -90,10 +90,10 @@ function completedSets(attempts: Attempt[], questions: Pick<Question, "id" | "se
   return n;
 }
 
-/** Everything the account has ever answered, and the sets it completed along the way. */
+/** Everything the account has ever answered (every sitting, as the week counts them), and the sets it completed along the way. */
 export function allTimeFigures(attempts: Attempt[], questions: Pick<Question, "id" | "setId">[], ownerId: string): { total: number; totalSets: number } {
   const mine = counted(attempts, ownerId);
-  return { total: new Set(mine.map((a) => a.questionId)).size, totalSets: completedSets(mine, questions) };
+  return { total: mine.length, totalSets: completedSets(mine, questions) };
 }
 
 /** Questions submitted by this account in the week starting at `start`. */

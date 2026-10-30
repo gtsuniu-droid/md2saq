@@ -24,9 +24,13 @@ export const LEADER_LINES: { text: string; emoji?: string; minCount?: number }[]
 
 export const LEADER_LINE_MIN = 5;
 
-/** The line for this leader, or null when the lead is too small to make a fuss of. `pick` is a number in [0, 1). */
-export function leaderLine(name: string, count: number, pick = Math.random()): string | null {
-  if (count < LEADER_LINE_MIN) return null;
+/**
+ * The line for this leader, or null when the lead is too small to make a fuss of. `pick` is a
+ * number in [0, 1). `worthy` says whether the lead deserves a line when the board is ranked
+ * by something other than questions (sets); the count lines still need the questions.
+ */
+export function leaderLine(name: string, count: number, pick = Math.random(), worthy = count >= LEADER_LINE_MIN): string | null {
+  if (!worthy) return null;
   const fitting = LEADER_LINES.filter((l) => count >= (l.minCount ?? 0));
   const line = fitting[Math.min(fitting.length - 1, Math.floor(Math.max(0, Math.min(0.999999, pick)) * fitting.length))];
   const text = line.text.replaceAll("{name}", name).replaceAll("{count}", String(count));

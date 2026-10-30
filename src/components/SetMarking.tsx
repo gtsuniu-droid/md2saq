@@ -70,16 +70,28 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const liveData = useLiveQuery(async () => {
     const settings = await getSettings();
     const ownerId = settings.cloudUser?.uid ?? "";
-    const [allAttempts, questions, allMarks] = await Promise.all([db.attempts.toArray(), db.questions.toArray(), db.marks.toArray()]);
-    const attempts = allAttempts.filter((a) => belongsToAccount(a, ownerId));
-    const marks = allMarks.filter((m) => belongsToAccount(m, ownerId));
-    const anchorId = attempts.some((a) => a.id === attemptId) ? attemptId : fallbackIds.current.find((id) => attempts.some((a) => a.id === id));
-    const review = anchorId ? setAttemptReview(anchorId, attempts, questions, marks, ownerId) : null;
+    // Only what this page needs, by index: the set's questions and every attempt at them (for the
+    // previous mark), the sitting's attempts (for the next set), and the marks on those. Reading
+    // the whole bank here made each saved keystroke of a revision reload every question.
+    const anchor = (await db.attempts.bulkGet([attemptId, ...fallbackIds.current])).find((a): a is Attempt => !!a && belongsToAccount(a, ownerId));
+    if (!anchor) return null;
+    const session = loadSession(ownerId);
+    const inSession = session?.id === anchor.sessionId ? session : null;
+    const anchorQuestion = await db.questions.get(anchor.questionId);
+    const setId = anchorQuestion?.setId ?? anchor.qref?.setId;
+    const setQuestions: Question[] = setId ? await db.questions.where("setId").equals(setId).toArray() : anchorQuestion ? [anchorQuestion] : [];
+    const sessionQuestions: Question[] = inSession ? (await db.questions.bulkGet(inSession.questionIds)).filter((q): q is Question => !!q) : [];
+    const questions: Question[] = [...new Map([...setQuestions, ...sessionQuestions].map((q) => [q.id, q])).values()];
+    const [atSet, inSitting] = await Promise.all([
+      db.attempts.where("questionId").anyOf(setQuestions.map((q) => q.id)).toArray(),
+      anchor.sessionId ? db.attempts.where("sessionId").equals(anchor.sessionId).toArray() : Promise.resolve([anchor]),
+    ]);
+    const attempts = [...new Map([anchor, ...atSet, ...inSitting].filter((a) => belongsToAccount(a, ownerId)).map((a) => [a.id, a])).values()];
+    const marks = (await db.marks.where("attemptId").anyOf(attempts.map((a) => a.id)).toArray()).filter((m) => belongsToAccount(m, ownerId));
+    const review = setAttemptReview(anchor.id, attempts, questions, marks, ownerId);
     if (!review) return null;
     const set = review.setId ? await db.sets.get(review.setId) : undefined;
     const examLocked = review.anchor.mode === "exam" && attempts.some((a) => (review.anchor.sessionId ? a.sessionId === review.anchor.sessionId : a.id === attemptId) && a.submittedAt === undefined);
-    const session = loadSession(ownerId);
-    const inSession = session?.id === review.anchor.sessionId ? session : null;
     const lastIndex = inSession ? Math.max(...review.rows.flatMap((r) => r.attempt ? [inSession.attemptIds.indexOf(r.attempt.id)] : [])) : -1;
     const nextId = inSession && lastIndex >= 0 ? inSession.attemptIds[lastIndex + 1] : undefined;
     const nextAttempt = nextId ? attempts.find((a) => a.id === nextId) : undefined;
@@ -329,7 +341,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
       <span style={{ flex: 1 }} />
       <Link className="button" to={inSession ? `/session/${inSession.id}` : "/home#history"}>{inSession ? "Session summary" : "Back to history"}</Link>
     </div>}
-    {!embedded && behind && set && bankRevision !== undefined && hasUnpublishedEdits(set) && <LibraryUpdateNotice setId={set.id} revision={bankRevision} />}
+    {!embedded && behind && set && bankRevision !== undefined && hasUnpublishedEdits(set) && <LibraryUpdateNotice key={set.id} setId={set.id} revision={bankRevision} />}
     <div className={embedded ? "paper mark-paper embedded" : "paper mark-paper"}>
       {sidebar}
       {body}

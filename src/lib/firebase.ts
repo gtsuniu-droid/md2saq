@@ -158,7 +158,6 @@ export async function currentUser(): Promise<CloudUser | null> {
   return auth.currentUser ? toCloudUser(auth.currentUser) : null;
 }
 
-export type CloudCollection = "attempts" | "marks" | "settings" | "deleted";
 
 export async function fetchNotes(uid: string): Promise<PresentationNote[]> {
   const { firestore } = await services();
@@ -182,46 +181,6 @@ export async function reconcileNote(uid: string, note: PresentationNote): Promis
   });
 }
 
-/** Documents in users/{uid}/{collection} with _m greater than `since`. */
-export async function fetchSince(uid: string, collection: CloudCollection, since: number): Promise<Record<string, unknown>[]> {
-  const { firestore } = await services();
-  const { collection: col, getDocs, query, where, orderBy, limit } = await import("firebase/firestore");
-  const out: Record<string, unknown>[] = [];
-  let cursor = since;
-  // Page through in modified order so a large backlog still arrives.
-  for (let page = 0; page < 50; page++) {
-    const snap = await getDocs(query(col(firestore, "users", uid, collection), where("_m", ">", cursor), orderBy("_m"), limit(400)));
-    if (snap.empty) break;
-    for (const d of snap.docs) out.push(d.data() as Record<string, unknown>);
-    const last = snap.docs[snap.docs.length - 1].data() as { _m?: number };
-    if (snap.size < 400 || typeof last._m !== "number") break;
-    cursor = last._m;
-  }
-  return out;
-}
-
-/** Write documents in batches; each document must carry its own id. */
-export async function writeMany(uid: string, collection: CloudCollection, docs: Record<string, unknown>[]): Promise<void> {
-  if (docs.length === 0) return;
-  const { firestore } = await services();
-  const { doc, writeBatch } = await import("firebase/firestore");
-  for (let i = 0; i < docs.length; i += 400) {
-    const batch = writeBatch(firestore);
-    for (const d of docs.slice(i, i + 400)) batch.set(doc(firestore, "users", uid, collection, String(d.id)), d);
-    await batch.commit();
-  }
-}
-
-export async function deleteMany(uid: string, collection: CloudCollection, ids: string[]): Promise<void> {
-  if (ids.length === 0) return;
-  const { firestore } = await services();
-  const { doc, writeBatch } = await import("firebase/firestore");
-  for (let i = 0; i < ids.length; i += 400) {
-    const batch = writeBatch(firestore);
-    for (const id of ids.slice(i, i + 400)) batch.delete(doc(firestore, "users", uid, collection, id));
-    await batch.commit();
-  }
-}
 
 /** Shared question conversations are separate from private progress and notes. */
 export async function communityServices() {
