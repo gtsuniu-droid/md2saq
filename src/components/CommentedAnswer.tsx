@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import type { AnswerComment } from "../data/types";
 import { getSettings, newId } from "../data/db";
@@ -15,12 +15,14 @@ interface Props {
   comments: AnswerComment[];
   /** Show comments in a margin beside the answer, like a word processor. */
   margin?: boolean;
+  /** Further quiet actions shown beside "Add comment" in the margin layout. */
+  actions?: ReactNode;
 }
 
 const CARD_GAP = 8;
 
 /** Comments belong to the submitted answer, independently of whether it has been marked. */
-export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false }: Props) {
+export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
   const when = (ts: number) => { if (!ts) return ""; const d = new Date(ts); const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); return d.toDateString() === new Date().toDateString() ? `${time} Today` : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`; };
@@ -109,19 +111,46 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     window.addEventListener("resize", onResize);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", onResize); };
   }, [margin]);
+  // The open card sits level with its line; the cards above make room upwards, the ones
+  // below downwards. With none open, each sits level with its line unless the one above is in the way.
   useLayoutEffect(() => {
     if (!margin) return;
-    let cursor = 0;
+    const height = (id: string) => cardRefs.current.get(id)?.offsetHeight ?? 0;
     const next: Record<string, number> = {};
-    for (const item of cardOrder) {
+    const openId = draft?.id ?? active;
+    const at = cardOrder.findIndex((item) => item.id === openId);
+    let start = 0;
+    if (at >= 0) {
+      next[cardOrder[at].id] = cardOrder[at].anchorTop;
+      let above = cardOrder[at].anchorTop;
+      // Cards above that run out of room stack at the top, each peeking out above the next, the nearer the open card the more in front.
+      for (let k = at - 1; k >= 0; k--) { const top = Math.max(k * 10, Math.min(cardOrder[k].anchorTop, above - height(cardOrder[k].id) - CARD_GAP)); next[cardOrder[k].id] = top; above = top; }
+      start = at + 1;
+    }
+    let cursor = start ? next[cardOrder[start - 1].id] + height(cardOrder[start - 1].id) + CARD_GAP : 0;
+    for (const item of cardOrder.slice(start)) {
       const top = Math.max(item.anchorTop, cursor);
       next[item.id] = top;
-      const height = cardRefs.current.get(item.id)?.offsetHeight ?? 0;
-      cursor = top + height + CARD_GAP;
+      cursor = top + height(item.id) + CARD_GAP;
     }
     setLaid((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
-    setMarginHeight(cursor);
-  }, [margin, cardOrder, active, draft?.text, status]);
+    setMarginHeight(Math.max(cursor, ...Object.values(next).map((top, i) => top + height(Object.keys(next)[i]))));
+  }, [margin, cardOrder, active, draft?.id, draft?.text, status]);
+  // Cards glide to their places rather than jumping; a card's first position is set outright.
+  const placed = useRef(new Set<string>());
+  useLayoutEffect(() => {
+    if (!margin) return;
+    const openId = draft?.id ?? active;
+    const at = cardOrder.findIndex((item) => item.id === openId);
+    cardOrder.forEach((item, k) => {
+      const el = cardRefs.current.get(item.id); const top = laid[item.id];
+      if (!el || top === undefined) return;
+      const zIndex = at < 0 ? 1 : k === at ? cardOrder.length + 2 : k < at ? k + 1 : at + 1 - (k - at) + cardOrder.length;
+      if (!placed.current.has(item.id) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { gsap.set(el, { top, zIndex }); placed.current.add(item.id); }
+      else gsap.to(el, { top, zIndex, duration: 0.28, ease: "power2.out", overwrite: "auto" });
+    });
+    for (const id of [...placed.current]) if (!(id in laid)) placed.current.delete(id);
+  }, [margin, laid, cardOrder, active, draft?.id]);
   useEffect(() => {
     if (!margin) return;
     const cards = cardRefs.current;
@@ -192,7 +221,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   const answer = <div ref={root} className="answer-html" onPointerUp={captureSelection} onKeyUp={captureSelection} onClick={(e) => openHighlight(e.target)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } }} dangerouslySetInnerHTML={{ __html: rendered.html }} />;
 
   const draftCard = (positioned: boolean) => draft && (
-    <div key={draft.id} ref={(el) => { if (el) cardRefs.current.set(draft.id, el); else cardRefs.current.delete(draft.id); }} className="answer-comment-card draft" role="region" aria-label="Write a comment" style={positioned ? { top: laid[draft.id] ?? selectionTop } : undefined}>
+    <div key={draft.id} ref={(el) => { if (el) cardRefs.current.set(draft.id, el); else cardRefs.current.delete(draft.id); }} className="answer-comment-card draft" role="region" aria-label="Write a comment" >
       {positioned ? author() : draft.quote ? <blockquote>{draft.quote}</blockquote> : <p className="muted comment-scope">On the whole answer</p>}
       <textarea ref={input} rows={1} aria-label="Comment" placeholder="Comment" value={draft.text} onChange={(e) => { setDraft({ ...draft, text: e.target.value }); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void save(); } if (e.key === "Escape" && !busy) setDraft(null); }} />
       <div className="row comment-actions"><button className="small link" disabled={busy} onClick={() => setDraft(null)}>Cancel</button><button className="primary small" disabled={busy || !draft.text.trim()} onClick={() => void save()}>{busy ? "Saving…" : draft.updatedAt ? "Save" : "Comment"}</button></div>
@@ -223,14 +252,14 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     <div ref={textBox} className="commented-answer-text">
       {answer}
       {!draft && selection && selectionAt && <button type="button" className="comment-fab" style={{ top: selectionAt.top, left: selectionAt.left }} aria-label="Comment on the selected text" title="Comment on the selected text" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>{commentIcon}</button>}
-      {!draft && !selection && <button className="small comment-add" title="Comment on the whole answer, or select some text first to comment on a passage" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>Add comment</button>}
+      {!draft && !selection && <span className="comment-add-row"><button className="small comment-add" title="Comment on the whole answer, or select some text first to comment on a passage" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>Add comment</button>{actions}</span>}
     </div>
     <aside className="comment-margin" aria-label="Comments" style={{ minHeight: marginHeight }}>
       {ordered.map((c) => {
         const open = c.id === active && !draft;
         const editing = draft?.id === c.id;
         if (editing) return draftCard(true);
-        return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (!isGeneralComment(c) && tops[c.id] === undefined ? " orphan" : "") + (isGeneralComment(c) ? " general" : "")} style={{ top: laid[c.id] ?? tops[c.id] ?? 0 }} role="region" aria-label="Answer comment">
+        return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (!isGeneralComment(c) && tops[c.id] === undefined ? " orphan" : "") + (isGeneralComment(c) ? " general" : "")} role="region" aria-label="Answer comment">
           <button type="button" className="comment-card-body" onClick={() => { setActive(open ? null : c.id); setDraft(null); setStatus(""); }} aria-expanded={open}>
             {c.by === "marker" ? marker(c.createdAt) : author(c.createdAt)}
             <p className="pre">{c.text}</p>

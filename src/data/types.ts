@@ -130,6 +130,8 @@ export interface PartAnswer {
   /** Plain text, for search and hit highlighting. */
   text: string;
   flagged?: boolean;
+  /** The answer as revised after reading the model answer; the answer itself stays as submitted. */
+  revision?: { doc: unknown; text: string; at: number };
 }
 
 /** Where a question sits in its set, so a synced record can find it on a device whose question ids differ. */

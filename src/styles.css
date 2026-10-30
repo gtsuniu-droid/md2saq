@@ -1386,7 +1386,7 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .commented-answer-text .answer-html { line-height: 1.65; }
 .comment-add { position: absolute; right: .6rem; bottom: .5rem; background: var(--card); box-shadow: 0 2px 8px #0002; }
 .comment-margin { position: relative; min-width: 0; }
-.comment-margin .answer-comment-card { position: absolute; left: 0; right: 0; margin: 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--border); border-left: 3px solid #bd8a22; border-radius: 8px; box-shadow: 0 1px 2px #0000000a; transition: box-shadow .15s ease, top .2s ease; }
+.comment-margin .answer-comment-card { position: absolute; left: 0; right: 0; margin: 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--border); border-left: 3px solid #bd8a22; border-radius: 8px; box-shadow: 0 1px 2px #0000000a; transition: box-shadow .15s ease; }
 .comment-margin .answer-comment-card.open, .comment-margin .answer-comment-card.draft { box-shadow: 0 8px 24px #0f172a1f; z-index: 2; }
 .comment-margin .answer-comment-card.orphan { border-left-color: var(--border); opacity: .75; }
 .comment-card-body { display: block; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; min-height: 0; font: inherit; color: inherit; cursor: pointer; }
@@ -1433,7 +1433,7 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .comment-add { display: inline-flex; align-items: center; gap: .4rem; right: .7rem; bottom: .6rem; padding: .3rem .7rem; border-radius: 999px; border-color: transparent; background: var(--fg); color: var(--bg); font-weight: 600; box-shadow: 0 6px 18px #0f172a2a; }
 .comment-add:hover:not(:disabled) { background: var(--fg); color: var(--bg); border-color: transparent; opacity: .92; }
 .comment-add svg { width: 14px; height: 14px; }
-.comment-margin .answer-comment-card { padding: .7rem .8rem .65rem; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 2px 10px #0f172a0d; transition: box-shadow .15s ease, border-color .15s ease, top .2s ease, transform .15s ease; }
+.comment-margin .answer-comment-card { padding: .7rem .8rem .65rem; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 2px 10px #0f172a0d; transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease; }
 .comment-margin .answer-comment-card:hover { border-color: color-mix(in srgb, #f0c74a 60%, var(--border)); }
 .comment-margin .answer-comment-card.open, .comment-margin .answer-comment-card.draft { border-color: #f0c74a; box-shadow: 0 10px 28px #0f172a1f; transform: translateX(-4px); z-index: 2; }
 .comment-margin .answer-comment-card.orphan { opacity: .6; }
@@ -1872,3 +1872,19 @@ button.study-answer > .row { display: flex; width: 100%; }
 .comment-add:hover:not(:disabled) { background: var(--card); color: var(--fg); border-color: var(--muted); opacity: 1; }
 .mark-model-chevron { width: 12px; height: 12px; margin-left: .15rem; opacity: .7; transition: transform .15s ease; }
 .mark-model-chevron.open { transform: rotate(90deg); }
+
+/* Revising an answer after the model answer: the same box, editable, with the changes tracked as you type. */
+.mark-views-tools { margin-left: auto; display: inline-flex; gap: .1rem; }
+.mark-views-tools button.link { min-height: 0; padding: .2rem .5rem; font-size: .8rem; }
+.revise-box { position: relative; padding: .85rem 1rem 1.4rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); line-height: 1.65; }
+.revise-box:focus-within { border-color: color-mix(in srgb, var(--navy) 45%, var(--border)); }
+.revise-box .ProseMirror { outline: none; min-height: 3.5rem; }
+.revise-box .ProseMirror p { margin: 0 0 .25rem; }
+.revise-box .ProseMirror p:empty::before { content: "\00a0"; }
+.tc-ins { color: #2457c5; text-decoration: underline; text-decoration-color: #2457c5; text-underline-offset: 3px; }
+.tc-del { color: #b3413a; text-decoration: line-through; text-decoration-color: #b3413a; white-space: pre-wrap; opacity: .85; }
+@media (prefers-color-scheme: dark) { .tc-ins { color: #8fb3ff; text-decoration-color: #8fb3ff; } .tc-del { color: #e0736b; text-decoration-color: #e0736b; } }
+.revise-saved { position: absolute; right: .8rem; bottom: .4rem; font-size: .74rem; }
+.mark-verdict.plain { padding: 0; border: 0; background: transparent; margin: .7rem 0 .5rem; }
+.comment-add-row { position: absolute; right: .6rem; bottom: .5rem; display: inline-flex; gap: .3rem; }
+.comment-add-row .comment-add { position: static; }

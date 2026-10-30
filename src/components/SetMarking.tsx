@@ -30,6 +30,7 @@ import { keepForMarking, markFilled, newSuggestions, placeSuggestedComments } fr
 import { isGeneralComment } from "../lib/answerComments";
 import { tickList, tickedScore } from "../lib/markingTicks";
 import { wordDiff } from "../lib/wordDiff";
+import RevisedAnswer from "./RevisedAnswer";
 
 interface Props {
   attemptId: string;
@@ -354,7 +355,12 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const max = draft.parts.reduce((a, p) => a + p.maxScore, 0);
   const flagged = draft.reviewLater || draft.lookedAtAnswer;
   // "Your answer" or the marker's full-marks rewrite of it, per part.
-  const [view, setView] = useState<Record<string, "answer" | "full">>({});
+  const [view, setView] = useState<Record<string, "answer" | "full" | "revise">>({});
+  const [clean, setClean] = useState<Record<string, boolean>>({});
+  const discardRevision = async (label: string) => {
+    await db.attempts.update(attempt.id, { answers: attempt.answers.map((a) => a.label === label ? { ...a, revision: undefined } : a) });
+    requestSync(); setView((v) => ({ ...v, [label]: "answer" }));
+  };
   // A part's general comments from the marker are its verdict, shown with the score rather than in the margin.
   const comments = attempt.answerComments ?? [];
   const verdictsFor = (label: string) => comments.filter((c) => c.by === "marker" && c.partLabel === label && isGeneralComment(c));
@@ -399,7 +405,8 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
         const label = pi.part.label;
         const verdicts = verdictsFor(label);
         const list = richAnswerDocument(pi.part) ? null : tickList(pi.part.modelAnswer);
-        const showing = pm.rewrite ? view[label] ?? "answer" : "answer";
+        const showing = view[label] ?? "answer";
+        const revised = !!pi.answer?.revision;
         return (
           <div key={pi.part.label} className="part mark-part" id={id} onFocusCapture={() => onFocusPart(id)}>
             {(pi.part.text || pi.part.textDoc) ? (
@@ -409,7 +416,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
                 {question.parts.length > 0 && pi.part.marks !== undefined && <span className="marks">({pi.part.marks} mark{pi.part.marks === 1 ? "" : "s"})</span>}
               </div>
             ) : null}
-            <div className="mark-verdict">
+            <div className={"mark-verdict" + (verdicts.length || (list && !isFolded(label, label)) ? "" : " plain")}>
               <div className="mark-score">
                 <label>Score</label>
                 {scoreField(`score:${label}`, pm.score, (n) => setPart(label, { score: n }), pm.maxScore || undefined, `Score${label ? ` for part ${label}` : ""}`, !hasMark && !suggested?.has(label))}
@@ -419,16 +426,20 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               {verdicts.length ? <div className="mark-verdict-text">{verdicts.map((v) => <p key={v.id} className="pre">{v.text}</p>)}<span className="muted mark-verdict-by">Marker</span></div>
                 : list && !isFolded(label, label) ? <p className="muted mark-verdict-hint">Tick the points you made in the model answer below and the score follows, or type it.</p> : null}
             </div>
-            {pm.rewrite && <div className="mark-views" role="group" aria-label="Answer view">
+            {pi.answer && (pm.rewrite || revised || showing !== "answer") && <div className="mark-views" role="group" aria-label="Answer view">
               <button type="button" className="small" aria-pressed={showing === "answer"} onClick={() => setView((v) => ({ ...v, [label]: "answer" }))}>Your answer</button>
-              <button type="button" className="small" aria-pressed={showing === "full"} onClick={() => setView((v) => ({ ...v, [label]: "full" }))}>Full marks</button>
+              {pm.rewrite && <button type="button" className="small" aria-pressed={showing === "full"} onClick={() => setView((v) => ({ ...v, [label]: "full" }))}>Full marks</button>}
+              <button type="button" className="small" aria-pressed={showing === "revise"} title="Rewrite your answer having read the model answer; what you submitted is kept as it was" onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>{revised ? "Revised" : "Revise"}</button>
               {showing === "full" && <span className="muted">Struck text earned nothing; teal text earns the mark.</span>}
+              {showing === "revise" && <span className="mark-views-tools"><button type="button" className="small link" onClick={() => setClean((c) => ({ ...c, [label]: !c[label] }))}>{clean[label] ? "Show changes" : "Hide changes"}</button>{revised && <button type="button" className="small link" onClick={() => void discardRevision(label)}>Discard</button>}</span>}
             </div>}
-            {showing === "full" && pm.rewrite ? <div className="full-marks">
+            {showing === "revise" && pi.answer ? <RevisedAnswer key={`${attempt.id}:${label}:revise`} attemptId={attempt.id} answer={pi.answer} clean={!!clean[label]} />
+            : showing === "full" && pm.rewrite ? <div className="full-marks">
               <p className="pre">{wordDiff(pi.answer?.text ?? "", pm.rewrite).map((part, i) => part.kind === "del" ? <del key={i}>{part.text}</del> : part.kind === "ins" ? <ins key={i}>{part.text}</ins> : <span key={i}>{part.text}</span>)}</p>
               <p className="muted full-marks-note">Your own words, with the smallest changes that would earn each mark.</p>
             </div>
-            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={pi.answer?.doc} text={pi.answer?.text} comments={marginComments} margin />}
+            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={pi.answer?.doc} text={pi.answer?.text} comments={marginComments} margin
+                actions={pi.answer && !pm.rewrite && !revised ? <button type="button" className="small comment-add" title="Rewrite your answer having read the model answer; what you submitted is kept as it was" onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>Revise</button> : undefined} />}
             {previous && (
               <details className="mark-previous">
                 <summary>Previous attempt{previousMark ? ` (${previousMark.parts.find((p) => p.label === pi.part.label)?.score ?? "?"}/${previousMark.parts.find((p) => p.label === pi.part.label)?.maxScore ?? "?"})` : ""}</summary>

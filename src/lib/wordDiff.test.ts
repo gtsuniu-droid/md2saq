@@ -11,7 +11,13 @@ it("strikes what was replaced and adds what earns the mark, leaving kept words p
   expect(show("Gone", "")).toBe("[-Gone-]");
   // A short word matching by chance between two changes does not split them.
   expect(show("mesenteric adenitis and Meckel", "luminal obstruction and remnant")).toBe("[-mesenteric adenitis and Meckel-][+luminal obstruction and remnant+]");
-  expect(show("pain in the RIF", "tenderness in the RIF")).toBe("[-pain-] [+tenderness+] in the RIF");
+  expect(show("pain in the RIF", "tenderness in the RIF")).toBe("[-pain -][+tenderness+] in the RIF");
+});
+
+it("rebuilds the current text from everything but the deletions", () => {
+  const before = "McBurney point would support appendicitis."; const after = "McBurney point, with guarding, would favour appendicitis over the other two.";
+  expect(wordDiff(before, after).filter((p) => p.kind !== "del").map((p) => p.text).join("")).toBe(after);
+  expect(wordDiff(before, "").filter((p) => p.kind !== "del").map((p) => p.text).join("")).toBe("");
 });
 
 it("keeps line breaks and ignores case when matching words", () => {

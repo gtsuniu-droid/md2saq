@@ -8,7 +8,7 @@ import { answerParts } from "./questions";
  * and kept in the student's private store so their connected assistant can read it and send
  * back suggested marks. Pure, so the site and its functions share it.
  */
-export interface MarkingPart { id: string; label: string; marks: number; prompt: string; answer: string; model: string }
+export interface MarkingPart { id: string; label: string; marks: number; prompt: string; answer: string; model: string; /** The student's own revision after reading the model answer, when they made one. */ revised?: string }
 export interface MarkingQuestion { attemptId: string; number: number; stems: string[]; text: string; model: string; parts: MarkingPart[] }
 export interface SetForMarking { key: string; name: string; at: number; notes?: string; questions: MarkingQuestion[] }
 
@@ -53,10 +53,11 @@ export function buildSetForMarking(key: string, name: string, rows: { question?:
   for (const { question, attempt, order } of rows) {
     if (!question || attempt?.submittedAt === undefined) { previous = question ?? previous; continue; }
     const number = order + 1;
-    const parts = answerParts(question).map((p) => ({
-      id: partId(number, p.label), label: p.label, marks: p.marks ?? 0, prompt: p.text.trim(),
-      answer: attempt.answers.find((a) => a.label === p.label)?.text ?? "", model: modelOf(p),
-    }));
+    const parts = answerParts(question).map((p) => {
+      const a = attempt.answers.find((x) => x.label === p.label);
+      const revised = a?.revision?.text.trim();
+      return { id: partId(number, p.label), label: p.label, marks: p.marks ?? 0, prompt: p.text.trim(), answer: a?.text ?? "", model: modelOf(p), ...(revised && revised !== a?.text.trim() ? { revised } : {}) };
+    });
     // A model answer for the whole question, when the parts have none of their own.
     const whole = question.parts.length > 0 && !parts.some((p) => p.model) ? modelOf(question) : "";
     questions.push({ attemptId: attempt.id, number, stems: introducedStems(question, previous).map((s) => s.text.trim()), text: question.text.trim(), model: whole, parts });
@@ -76,6 +77,7 @@ export function setText(s: SetForMarking): string {
     for (const p of q.parts) {
       if (p.label) out.push("", `### ${p.id}${p.marks ? ` [${p.marks} mark${p.marks === 1 ? "" : "s"}]` : ""}`, ...(p.prompt ? [p.prompt] : []));
       out.push("", "My answer:", p.answer.trim() || "(no answer)");
+      if (p.revised) out.push("", "My revised answer, after reading the model answer:", p.revised);
       if (p.model) out.push("", "Model answer:", p.model);
     }
     if (q.model) out.push("", `Model answer for question ${q.number}:`, q.model);

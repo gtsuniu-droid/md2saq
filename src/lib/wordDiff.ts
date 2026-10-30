@@ -39,9 +39,11 @@ export function wordDiff(before: string, after: string): DiffPart[] {
     if (p.kind === "del") dels += p.text; else inss += p.text;
   });
   flush();
-  // Whitespace at the end of a change is not part of it.
+  // Whitespace at the end of an insertion is not part of it. A deletion keeps its trailing
+  // whitespace (struck through, it is invisible): the parts other than deletions must rebuild
+  // the current text exactly, since positions in it are counted from them.
   return clustered.flatMap((p) => {
-    if (p.kind === "same") return [p];
+    if (p.kind !== "ins") return [p];
     const trimmed = p.text.replace(/\s+$/, "");
     const tail = p.text.slice(trimmed.length);
     return [...(trimmed ? [{ kind: p.kind, text: trimmed }] : []), ...(tail ? [{ kind: "same" as const, text: tail }] : [])];

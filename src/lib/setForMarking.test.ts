@@ -20,6 +20,7 @@ it("lays a set out for marking, the shared case once, every part with its marks 
   expect(built.questions[0].parts[1].model).toBe("- 12-lead ECG within 10 minutes"); // kept only with formatting
   const text = setText(built);
   expect(text.indexOf(stem)).toBe(text.lastIndexOf(stem));
+  expect(text).not.toContain("revised answer"); // none was made
   for (const bit of ["# Set 12: Chest pain", "### 1(a) [2 marks]", "My answer:\nSTEMI and pericarditis", "Model answer:\n- [1] STEMI", "## Question 2 [3 marks]", "## Marking notes\nAccept NSTEMI."]) expect(text).toContain(bit);
   expect(text).not.toMatch(/\bAI\b/);
   // Marked strictly, with a pearl per part, whoever the text is pasted to.
