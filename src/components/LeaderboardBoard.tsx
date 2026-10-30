@@ -83,7 +83,8 @@ export function BoardRows({ rows, unit, me, period = "week" }: { rows: Leaderboa
 
 /**
  * The entrance: second and third rise, then first; the numbers count up; the crown drops
- * onto first place; the rows slide in; each trend arrow pops. Skipped under reduced motion.
+ * onto first place; the rows slide in; each trend arrow pops; the leader's line pops out of
+ * the podium like a speech bubble and gives a little wiggle. Skipped under reduced motion.
  */
 export function useBoardEntrance(root: RefObject<HTMLElement | null>, deps: unknown[]): void {
   useLayoutEffect(() => {
@@ -94,6 +95,7 @@ export function useBoardEntrance(root: RefObject<HTMLElement | null>, deps: unkn
     const crown = el.querySelector<HTMLElement>("[data-crown]");
     const rows = [...el.querySelectorAll<HTMLElement>("[data-row]")];
     const arrows = [...el.querySelectorAll<HTMLElement>("[data-trend]")];
+    const crow = el.querySelector<HTMLElement>("[data-crow]");
     const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!podium.length || reduced) return;
     const order = [2, 3, 1].flatMap((n) => podium.filter((p) => p.dataset.podium === String(n)));
@@ -108,7 +110,12 @@ export function useBoardEntrance(root: RefObject<HTMLElement | null>, deps: unkn
     if (crown) tl.from(crown, { y: -30, opacity: 0, rotation: -14, duration: 0.6, ease: "back.out(2)" }, 0.9);
     if (rows.length) tl.from(rows, { x: -18, opacity: 0, duration: 0.4, ease: "power2.out", stagger: 0.06 }, 0.7);
     if (arrows.length) tl.to(arrows, { scale: 1.4, duration: 0.25, yoyo: true, repeat: 1, ease: "power1.inOut", stagger: 0.06, transformOrigin: "50% 50%" }, 1.5);
-    return () => { tl.kill(); gsap.set([...order, ...rows, ...arrows, ...(crown ? [crown] : [])], { clearProps: "all" }); for (const c of counts) c.textContent = c.dataset.count ?? ""; };
+    if (crow) {
+      tl.from(crow, { scale: 0, opacity: 0, duration: 0.5, ease: "back.out(2.4)", transformOrigin: "50% 0%" }, 1.55);
+      tl.to(crow, { rotation: 2.5, duration: 0.09, yoyo: true, repeat: 5, ease: "sine.inOut", transformOrigin: "50% 0%" }, 2.0);
+      tl.set(crow, { rotation: 0 });
+    }
+    return () => { tl.kill(); gsap.set([...order, ...rows, ...arrows, ...(crown ? [crown] : []), ...(crow ? [crow] : [])], { clearProps: "all" }); for (const c of counts) c.textContent = c.dataset.count ?? ""; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }

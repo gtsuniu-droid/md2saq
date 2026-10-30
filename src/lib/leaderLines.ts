@@ -3,23 +3,23 @@
  * visit. Only when the lead is worth crowing about (five questions or more), and the lines
  * that quote the count only once it is a big one.
  */
-export const LEADER_LINES: { text: string; minCount?: number }[] = [
-  { text: "{name} is cooking." },
-  { text: "{name} is very demure, very mindful, very first." },
-  { text: "{name} understood the assignment." },
-  { text: "It's giving {name}." },
-  { text: "{name} said “bet” and answered {count} questions.", minCount: 20 },
-  { text: "{name} ate and left no crumbs." },
-  { text: "Let {name} cook." },
-  { text: "{name} is in their flop-proof era." },
-  { text: "Sigma grindset: {name}." },
-  { text: "{name} is locked in." },
-  { text: "{name} is on demon time with the SAQs." },
-  { text: "{name} is gatekeeping first place." },
-  { text: "{name} is the main character this week." },
-  { text: "Skill issue for everyone except {name}." },
-  { text: "{name} has {count} questions and zero chill.", minCount: 20 },
-  { text: "{name} is lowkey carrying the whole board." },
+export const LEADER_LINES: { text: string; emoji?: string; minCount?: number }[] = [
+  { text: "{name} is cooking", emoji: "🍳" },
+  { text: "{name} is very demure, very mindful, very first", emoji: "💅" },
+  { text: "{name} understood the assignment", emoji: "📝" },
+  { text: "It's giving {name}", emoji: "✨" },
+  { text: "{name} said “bet” and answered {count} questions", emoji: "😤", minCount: 20 },
+  { text: "{name} ate and left no crumbs" },
+  { text: "Let {name} cook", emoji: "🔥" },
+  { text: "{name} is in their flop-proof era", emoji: "😮‍💨" },
+  { text: "Sigma grindset: {name}", emoji: "🗿" },
+  { text: "{name} is locked in", emoji: "🔒" },
+  { text: "{name} is on demon time with the SAQs", emoji: "😈" },
+  { text: "{name} is gatekeeping first place", emoji: "🚧" },
+  { text: "{name} is the main character this week" },
+  { text: "Skill issue for everyone except {name}", emoji: "💀" },
+  { text: "{name} has {count} questions and zero chill", emoji: "🧊", minCount: 20 },
+  { text: "{name} is lowkey carrying the whole board", emoji: "🏋️" },
 ];
 
 export const LEADER_LINE_MIN = 5;
@@ -29,5 +29,6 @@ export function leaderLine(name: string, count: number, pick = Math.random()): s
   if (count < LEADER_LINE_MIN) return null;
   const fitting = LEADER_LINES.filter((l) => count >= (l.minCount ?? 0));
   const line = fitting[Math.min(fitting.length - 1, Math.floor(Math.max(0, Math.min(0.999999, pick)) * fitting.length))];
-  return line.text.replaceAll("{name}", name).replaceAll("{count}", String(count));
+  const text = line.text.replaceAll("{name}", name).replaceAll("{count}", String(count));
+  return line.emoji ? `${text} ${line.emoji}` : text;
 }

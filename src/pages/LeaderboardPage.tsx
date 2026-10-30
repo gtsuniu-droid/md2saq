@@ -26,7 +26,7 @@ export default function LeaderboardPage() {
   // A line for the week's leader, picked once per visit.
   const pick = useMemo(() => Math.random(), []);
   const crow = period === "week" && sorted[0] ? leaderLine(sorted[0].name, sorted[0].count, pick) : null;
-  useBoardEntrance(root, [rows !== null, unit, period]);
+  useBoardEntrance(root, [rows !== null, unit, period, crow]);
 
   if (!settings) return null;
   if (!cloudConfigured()) return <div className="leaderboard"><h1>Leaderboard</h1><p className="muted">The leaderboard needs the site's sign-in to be set up.</p></div>;
@@ -52,7 +52,7 @@ export default function LeaderboardPage() {
       {sorted.length > 0 && (
         <>
           <Podium rows={sorted} unit={unit} me={user?.uid ?? ""} period={period} />
-          {crow && <p className="lb-crow" role="status">{crow}</p>}
+          {crow && <p className="lb-crow" data-crow role="status">{crow}</p>}
           {line && <div className="lb-standing"><p><strong>{firstSentence(line)}</strong>{line.includes(". ") ? ` ${line.slice(line.indexOf(". ") + 2)}` : ""}</p><Link to="/home#new-session" className="button primary">Practise now</Link></div>}
           <BoardRows rows={sorted} unit={unit} me={user?.uid ?? ""} period={period} />
         </>
