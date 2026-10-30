@@ -13,7 +13,7 @@ export interface MarkingQuestion { attemptId: string; number: number; stems: str
 export interface SetForMarking { key: string; name: string; at: number; notes?: string; questions: MarkingQuestion[] }
 
 /** Suggested marks for one part: a score, a line of feedback, and comments on quoted passages of the answer. */
-export interface SuggestedPart { attemptId: string; label: string; score: number; feedback: string; comments: { quote: string; text: string; start: number; end: number }[] }
+export interface SuggestedPart { attemptId: string; label: string; score: number; feedback: string; comments: { quote: string; text: string; start: number; end: number }[]; /** The student's answer rewritten for full marks in their own words, when it fell short. */ rewrite?: string }
 export interface SuggestedMarks { at: number; summary?: string; parts: SuggestedPart[] }
 
 /**
@@ -25,7 +25,7 @@ export const MARKING_RULES = [
   "No marks for vague, generic or implied points (\"order bloods\", \"manage symptoms\", \"refer\"), for points the model answer does not credit, or for being on the right track. Never give the benefit of the doubt.",
   "When a question asks for a number of items (e.g. THREE), mark only the first that many; later ones earn nothing, and a wrong item still uses up its place.",
   "A point contradicted elsewhere in the answer earns nothing. Half marks only where the model answer or notes allow them; never round up, never exceed a part's marks.",
-  "In each part's feedback, say which points earned marks and which were missed, then end with one high-yield clinical pearl for this question (a fact that wins marks or a trap to avoid), on its own line starting \"Pearl:\".",
+  "In each part's feedback, say which points earned marks and which were missed, then end with one high-yield clinical pearl for this question (a fact that wins marks or a trap to avoid), written as a plain closing sentence with no label.",
 ];
 
 /** "1(a)", or "2" for a question without parts: how a part is named in the text and by the connector. */
@@ -89,7 +89,7 @@ export function setText(s: SetForMarking): string {
  * part's marks, and a comment's quote must appear word for word in the answer. What passes is
  * kept; the rest comes back as problems, so whoever sent it can correct and send again.
  */
-export function checkSuggested(s: SetForMarking, input: { part: string; score: number; feedback?: string; comments?: { quote: string; comment: string }[] }[], summary?: string, now = Date.now()): { marks: SuggestedMarks; problems: string[] } {
+export function checkSuggested(s: SetForMarking, input: { part: string; score: number; feedback?: string; comments?: { quote: string; comment: string }[]; rewrite?: string }[], summary?: string, now = Date.now()): { marks: SuggestedMarks; problems: string[] } {
   const problems: string[] = [];
   const byId = new Map(s.questions.flatMap((q) => q.parts.map((p) => [p.id.toLowerCase().replace(/\s+/g, ""), { q, p }] as const)));
   const parts: SuggestedPart[] = [];
@@ -105,7 +105,9 @@ export function checkSuggested(s: SetForMarking, input: { part: string; score: n
       if (start < 0 || !c.comment?.trim()) { problems.push(`${p.id}: "${c.quote.slice(0, 60)}" is not in the answer word for word; that comment was left out.`); return []; }
       return [{ quote: c.quote, text: c.comment.trim(), start, end: start + c.quote.length }];
     });
-    parts.push({ attemptId: q.attemptId, label: p.label, score, feedback: (m.feedback ?? "").trim(), comments });
+    // A rewrite is kept only where it changes something; the full-marks answer is the student's own otherwise.
+    const rewrite = (m.rewrite ?? "").trim().slice(0, 10_000);
+    parts.push({ attemptId: q.attemptId, label: p.label, score, feedback: (m.feedback ?? "").trim(), comments, ...(rewrite && rewrite !== p.answer.trim() ? { rewrite } : {}) });
   }
   return { marks: { at: now, ...(summary?.trim() ? { summary: summary.trim() } : {}), parts }, problems };
 }

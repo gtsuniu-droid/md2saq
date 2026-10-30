@@ -185,6 +185,8 @@ export interface PartMark {
   maxScore: number;
   /** Indices of marking points hit, when a model answer exists for the part. */
   pointsHit: number[];
+  /** The answer rewritten for full marks, as suggested by whoever marked the set. */
+  rewrite?: string;
 }
 
 export type ReviewRating = "again" | "hard" | "good" | "easy";

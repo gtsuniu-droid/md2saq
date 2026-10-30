@@ -37,17 +37,18 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
 
   server.registerTool("markMyAnswers", {
     title: "Mark my answers",
-    description: "Send suggested marks for one of the connected student's sets (see getMyAnswers): per part, a score, feedback, and comments on quoted passages of their answer. The marking page fills them in for the student to check and save. Sending again replaces earlier suggestions for the set.",
+    description: "Send suggested marks for one of the connected student's sets (see getMyAnswers): per part, a score, feedback, comments on quoted passages of their answer, and where it fell short a rewrite of their answer that would earn full marks. The marking page fills them in for the student to check and save. Sending again replaces earlier suggestions for the set.",
     inputSchema: {
       set: setRef,
       marks: z.array(z.object({
         part: z.string().describe('The part as getMyAnswers names it, e.g. "1(a)", or "2" for a question without parts.'),
         score: z.number().min(0).describe("Marked strictly: only points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked."),
-        feedback: z.string().max(2000).describe('Which points earned marks and which were missed, then one high-yield clinical pearl on its own line starting "Pearl:".'),
+        feedback: z.string().max(2000).describe("Which points earned marks and which were missed, ending with one high-yield clinical pearl as a plain closing sentence, with no label."),
         comments: z.array(z.object({
           quote: z.string().min(1).max(500).describe("A passage copied word for word from the student's answer to this part."),
           comment: z.string().min(1).max(1000),
         })).max(10).optional(),
+        rewrite: z.string().max(10_000).optional().describe("When the part fell short of full marks: the student's answer rewritten to earn them, in their own words and layout, changing the least needed (replace or add the missing specific points, drop what earned nothing). Leave out at full marks."),
       })).min(1),
       summary: z.string().max(3000).optional().describe("An overall note for the set: strengths and what to work on."),
     },

@@ -23,10 +23,14 @@ const CARD_GAP = 8;
 export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
-  const author = <span className="comment-author">{me?.photo ? <img src={me.photo} alt="" referrerPolicy="no-referrer" /> : <span className="comment-avatar">{(me?.name ?? me?.email ?? "You").charAt(0).toUpperCase()}</span>}<span>{me?.name ?? me?.email ?? "You"}</span></span>;
+  const when = (ts: number) => { if (!ts) return ""; const d = new Date(ts); const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); return d.toDateString() === new Date().toDateString() ? `${time} Today` : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`; };
+  const author = (ts = 0) => <span className="comment-author">{me?.photo ? <img src={me.photo} alt="" referrerPolicy="no-referrer" /> : <span className="comment-avatar me">{(me?.name ?? me?.email ?? "You").charAt(0).toUpperCase()}</span>}<span><span>{me?.name ?? me?.email ?? "You"}</span>{ts ? <span className="comment-when">{when(ts)}</span> : null}</span></span>;
   // Comments sent back as suggested marks, from whoever the student asked to mark the set.
-  const marker = <span className="comment-author"><span className="comment-avatar">✓</span><span>Marker</span></span>;
+  const marker = (ts = 0) => <span className="comment-author"><span className="comment-avatar">✓</span><span><span>Marker</span>{ts ? <span className="comment-when">{when(ts)}</span> : null}</span></span>;
   const shell = useRef<HTMLDivElement>(null);
+  const textBox = useRef<HTMLDivElement>(null);
+  // Where the selection ends, within the answer box: the comment button sits there.
+  const [selectionAt, setSelectionAt] = useState<{ top: number; left: number } | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
   const [selection, setSelection] = useState<AnswerAnchor | null>(null);
@@ -140,6 +144,10 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     const ok = validCommentAnchor(rendered.plain, anchor) && !isGeneralComment(anchor);
     setSelection((prev) => !ok ? null : prev && prev.start === start && prev.end === end ? prev : anchor);
     if (ok && shell.current) setSelectionTop(range.getBoundingClientRect().top - shell.current.getBoundingClientRect().top);
+    if (ok && textBox.current) {
+      const rects = range.getClientRects(); const r = rects[rects.length - 1] ?? range.getBoundingClientRect(); const box = textBox.current.getBoundingClientRect();
+      setSelectionAt({ top: r.top - box.top + r.height / 2, left: Math.min(r.right - box.left, box.width - 48) });
+    }
   };
   const captureRef = useRef(captureSelection);
   captureRef.current = captureSelection;
@@ -185,7 +193,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
 
   const draftCard = (positioned: boolean) => draft && (
     <div key={draft.id} ref={(el) => { if (el) cardRefs.current.set(draft.id, el); else cardRefs.current.delete(draft.id); }} className="answer-comment-card draft" role="region" aria-label="Write a comment" style={positioned ? { top: laid[draft.id] ?? selectionTop } : undefined}>
-      {positioned ? author : draft.quote ? <blockquote>{draft.quote}</blockquote> : <p className="muted comment-scope">On the whole answer</p>}
+      {positioned ? author() : draft.quote ? <blockquote>{draft.quote}</blockquote> : <p className="muted comment-scope">On the whole answer</p>}
       <textarea ref={input} rows={1} aria-label="Comment" placeholder="Comment" value={draft.text} onChange={(e) => { setDraft({ ...draft, text: e.target.value }); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void save(); } if (e.key === "Escape" && !busy) setDraft(null); }} />
       <div className="row comment-actions"><button className="small link" disabled={busy} onClick={() => setDraft(null)}>Cancel</button><button className="primary small" disabled={busy || !draft.text.trim()} onClick={() => void save()}>{busy ? "Saving…" : draft.updatedAt ? "Save" : "Comment"}</button></div>
     </div>
@@ -208,10 +216,14 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     </div>;
   }
 
+  const commentIcon = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9l-3.5 3v-3H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M10 7v5M7.5 9.5h5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
+  // Long enough to be cut to two lines when closed.
+  const long = (c: AnswerComment) => c.text.length > 110 || c.text.includes("\n");
   return <div ref={shell} className="commented-answer with-margin">
-    <div className="commented-answer-text">
+    <div ref={textBox} className="commented-answer-text">
       {answer}
-      {!draft && <button className="small comment-add" title={selection ? "Comment on the selected text" : "Comment on the whole answer, or select some text first to comment on a passage"} onMouseDown={(e) => e.preventDefault()} onClick={startDraft}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7l-3 2.5V11.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>{selection ? "Comment on selection" : "Add comment"}</button>}
+      {!draft && selection && selectionAt && <button type="button" className="comment-fab" style={{ top: selectionAt.top, left: selectionAt.left }} aria-label="Comment on the selected text" title="Comment on the selected text" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>{commentIcon}</button>}
+      {!draft && !selection && <button className="small comment-add" title="Comment on the whole answer, or select some text first to comment on a passage" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>Add comment</button>}
     </div>
     <aside className="comment-margin" aria-label="Comments" style={{ minHeight: marginHeight }}>
       {ordered.map((c) => {
@@ -220,8 +232,9 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
         if (editing) return draftCard(true);
         return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (!isGeneralComment(c) && tops[c.id] === undefined ? " orphan" : "") + (isGeneralComment(c) ? " general" : "")} style={{ top: laid[c.id] ?? tops[c.id] ?? 0 }} role="region" aria-label="Answer comment">
           <button type="button" className="comment-card-body" onClick={() => { setActive(open ? null : c.id); setDraft(null); setStatus(""); }} aria-expanded={open}>
-            {c.by === "marker" ? marker : author}
+            {c.by === "marker" ? marker(c.createdAt) : author(c.createdAt)}
             <p className="pre">{c.text}</p>
+            {long(c) && <span className="comment-more">{open ? "Show less" : "Show more"}</span>}
           </button>
           {open && <div className="row comment-actions">
             {!validCommentAnchor(rendered.plain, c) && <span className="muted comment-note">“{c.quote}” has changed.</span>}

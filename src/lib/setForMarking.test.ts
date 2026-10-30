@@ -24,18 +24,20 @@ it("lays a set out for marking, the shared case once, every part with its marks 
   expect(text).not.toMatch(/\bAI\b/);
   // Marked strictly, with a pearl per part, whoever the text is pasted to.
   for (const rule of MARKING_RULES) expect(text).toContain(rule);
-  expect(MARKING_RULES.join(" ")).toMatch(/strictly[\s\S]*benefit of the doubt[\s\S]*only the first that many[\s\S]*Pearl:/);
+  expect(MARKING_RULES.join(" ")).toMatch(/strictly[\s\S]*benefit of the doubt[\s\S]*only the first that many[\s\S]*pearl[\s\S]*no label/);
 });
 
 it("keeps what a marker sent that fits the set, and says what did not", () => {
   const { marks, problems } = checkSuggested(built, [
-    { part: "1(a)", score: 1, feedback: "STEMI right; pericarditis less likely here.", comments: [{ quote: "pericarditis", comment: "Dissection fits the low BP better." }, { quote: "not in the answer", comment: "x" }] },
-    { part: "1 (B)", score: 5, feedback: "Good." },
+    { part: "1(a)", score: 1, feedback: "STEMI right; pericarditis less likely here.", comments: [{ quote: "pericarditis", comment: "Dissection fits the low BP better." }, { quote: "not in the answer", comment: "x" }], rewrite: "STEMI and aortic dissection" },
+    { part: "1 (B)", score: 5, feedback: "Good.", rewrite: "ECG" },
     { part: "3", score: 1 },
   ], "Solid start.", 7);
   expect(marks.parts.map((p) => [p.attemptId, p.label, p.score])).toEqual([["t1", "a", 1], ["t1", "b", 1]]);
   expect(marks.parts[0].comments).toEqual([{ quote: "pericarditis", text: "Dissection fits the low BP better.", start: 10, end: 22 }]);
   expect(marks).toMatchObject({ at: 7, summary: "Solid start." });
+  // A rewrite stays where it changes the answer; one that repeats it is dropped.
+  expect(marks.parts.map((p) => p.rewrite)).toEqual(["STEMI and aortic dissection", undefined]);
   expect(problems).toHaveLength(3); // the missing quote, the score over the part's marks, the part that does not exist
 });
 

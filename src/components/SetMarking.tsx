@@ -27,6 +27,9 @@ import { questionRef, requestSync } from "../lib/sync";
 import { clearMarkingDraft, loadMarkingDraft, writeMarkingDraft } from "../lib/markingDrafts";
 import { buildSetForMarking, setText } from "../lib/setForMarking";
 import { keepForMarking, markFilled, newSuggestions, placeSuggestedComments } from "../lib/suggestedMarks";
+import { isGeneralComment } from "../lib/answerComments";
+import { tickList, tickedScore } from "../lib/markingTicks";
+import { wordDiff } from "../lib/wordDiff";
 
 interface Props {
   attemptId: string;
@@ -114,7 +117,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const markPrompt = forMarking ? [
     `Using the SAQ Practice connector: mark my answers to "${forMarking.name}" (set id ${forMarking.key}).`,
     `Read them with getMyAnswers (set: "${forMarking.key}") and mark every part strictly, as a finals examiner would, following its howToMark: marks only for points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked; no benefit of the doubt.`,
-    `Quote the passages of my answers you comment on, end each part's feedback with one high-yield clinical pearl ("Pearl: ..."), then send the marks with markMyAnswers (set: "${forMarking.key}").`,
+    `Quote the passages of my answers you comment on, end each part's feedback with one high-yield clinical pearl as a plain sentence, and where a part fell short include a rewrite of my answer that would earn full marks in my own words; then send it all with markMyAnswers (set: "${forMarking.key}").`,
     "I will check and save them on the marking page.",
   ].join("\n") : "";
   // Parts given a suggested score, per attempt, so their score boxes show it.
@@ -133,7 +136,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
           const draft = attempt && current[attempt.id];
           const parts = marks.parts.filter((p) => p.attemptId === attempt?.id);
           if (!draft || !question || !parts.length) continue;
-          next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score } : pm; }), scored: [...new Set([...(draft.scored ?? []), ...parts.map((p) => p.label)])] };
+          next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score, ...(s.rewrite ? { rewrite: s.rewrite } : {}) } : pm; }), scored: [...new Set([...(draft.scored ?? []), ...parts.map((p) => p.label)])] };
           writeMarkingDraft(ownerId, attempt.id, question.id, next[attempt.id], mark);
         }
         // The overall note goes with the first question, unless the student wrote one there already.
@@ -330,7 +333,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const [noteOpen, setNoteOpen] = useState(!!draft.notes || !!draft.learningPoint || draft.errorTags.length > 0);
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   const toggle = (key: string) => setFolded((f) => ({ ...f, [key]: !f[key] }));
-  const foldButton = (key: string, open: boolean) => <button type="button" className="mark-model-toggle" aria-expanded={open} onClick={() => toggle(key)}><ModelIcon />Model answer<span className="mark-model-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span></button>;
+  const foldButton = (key: string, open: boolean) => <button type="button" className="mark-model-toggle" aria-expanded={open} onClick={() => toggle(key)}><ModelIcon />Model answer<svg className={"mark-model-chevron" + (open ? " open" : "")} viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></button>;
   const patch = <K extends keyof MarkingDraft>(key: K, value: MarkingDraft[K]) => onChange({ ...draft, [key]: value });
   // A score typed for a part marks it as scored, so a deliberate nought counts as marked.
   const setPart = (label: string, change: Partial<PartMark>) => onChange({ ...draft, parts: draft.parts.map((p) => (p.label === label ? { ...p, ...change } : p)), ...(change.score !== undefined ? { scored: [...new Set([...(draft.scored ?? []), label])] } : {}) });
@@ -350,15 +353,32 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const total = draft.parts.reduce((a, p) => a + p.score, 0);
   const max = draft.parts.reduce((a, p) => a + p.maxScore, 0);
   const flagged = draft.reviewLater || draft.lookedAtAnswer;
+  // "Your answer" or the marker's full-marks rewrite of it, per part.
+  const [view, setView] = useState<Record<string, "answer" | "full">>({});
+  // A part's general comments from the marker are its verdict, shown with the score rather than in the margin.
+  const comments = attempt.answerComments ?? [];
+  const verdictsFor = (label: string) => comments.filter((c) => c.by === "marker" && c.partLabel === label && isGeneralComment(c));
+  const marginComments = comments.filter((c) => !(c.by === "marker" && isGeneralComment(c)));
+  // Once a part has a score the model answer has done its job and folds away; before that it is open for marking against.
+  const isFolded = (key: string, label: string) => folded[key] ?? (hasMark || !!suggested?.has(label) || !!draft.scored?.includes(label));
+  const tick = (label: string, list: NonNullable<ReturnType<typeof tickList>>, pm: PartMark, index: number) => {
+    const pointsHit = pm.pointsHit.includes(index) ? pm.pointsHit.filter((i) => i !== index) : [...pm.pointsHit, index];
+    setEntered((set) => new Set(set).add(`score:${label}`));
+    setPart(label, { pointsHit, score: tickedScore(list, pointsHit, pm.maxScore) });
+  };
 
   return (
     <section className="question-block mark-block" id={idFor("")} aria-label={`Question ${order + 1}`}>
       <div className="qhead">
         <span>{order + 1}</span>
         <span style={{ flex: 1 }} />
-        <QuestionCommunity key={question.id} question={question} set={set} />
-        {admin && <FixWithClaude set={set} question={question} />}
-        {admin && <button className="small" onClick={() => onEdit(question)}>Edit question</button>}
+        <details className="q-menu">
+          <summary aria-label={`More for question ${order + 1}`} title="Report, discussion and tools">···</summary>
+          <div className="q-menu-list" onClick={(e) => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.parentElement?.removeAttribute("open"); }}>
+            <QuestionCommunity key={question.id} question={question} set={set} />
+            {admin && <><div className="q-menu-sep" /><div className="q-menu-label">Admin</div><FixWithClaude set={set} question={question} /><button type="button" className="small" onClick={() => onEdit(question)}>Edit question</button></>}
+          </div>
+        </details>
       </div>
       {showText && (
         <div className="part-head" style={{ marginBottom: ".8rem" }}>
@@ -369,13 +389,17 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
       {(question.images ?? []).filter((im) => im.place === "question").map((im) => (
         <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
       ))}
-      {wholeModel && <div className={"mark-panel whole" + (folded.whole ? " folded" : "")}><div className="mark-panel-head">{foldButton("whole", !folded.whole)}<span style={{ flex: 1 }} />{admin && <button type="button" className="small link mark-model-edit" onClick={() => onEdit(question)}>Edit</button>}</div>{!folded.whole && <div className="mark-model-body"><ModelAnswerContent answer={question} /></div>}</div>}
+      {wholeModel && <div className={"mark-panel whole" + (isFolded("whole", "") ? " folded" : "")}><div className="mark-panel-head">{foldButton("whole", !isFolded("whole", ""))}<span style={{ flex: 1 }} />{admin && <button type="button" className="small link mark-model-edit" onClick={() => onEdit(question)}>Edit</button>}</div>{!isFolded("whole", "") && <div className="mark-model-body"><ModelAnswerContent answer={question} /></div>}</div>}
 
       {partsInfo.map((pi) => {
         const pm = draft.parts.find((p) => p.label === pi.part.label);
         if (!pm) return null;
         const prevAns = previous?.answers.find((a) => a.label === pi.part.label);
         const id = idFor(pi.part.label);
+        const label = pi.part.label;
+        const verdicts = verdictsFor(label);
+        const list = richAnswerDocument(pi.part) ? null : tickList(pi.part.modelAnswer);
+        const showing = pm.rewrite ? view[label] ?? "answer" : "answer";
         return (
           <div key={pi.part.label} className="part mark-part" id={id} onFocusCapture={() => onFocusPart(id)}>
             {(pi.part.text || pi.part.textDoc) ? (
@@ -385,31 +409,44 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
                 {question.parts.length > 0 && pi.part.marks !== undefined && <span className="marks">({pi.part.marks} mark{pi.part.marks === 1 ? "" : "s"})</span>}
               </div>
             ) : null}
-            <div className="mark-answer-head">
-              <h4>Your answer</h4>
-              <span style={{ flex: 1 }} />
+            <div className="mark-verdict">
               <div className="mark-score">
                 <label>Score</label>
-                {scoreField(`score:${pi.part.label}`, pm.score, (n) => setPart(pi.part.label, { score: n }), pm.maxScore || undefined, `Score${pi.part.label ? ` for part ${pi.part.label}` : ""}`, !hasMark && !suggested?.has(pi.part.label))}
+                {scoreField(`score:${label}`, pm.score, (n) => setPart(label, { score: n }), pm.maxScore || undefined, `Score${label ? ` for part ${label}` : ""}`, !hasMark && !suggested?.has(label))}
                 <span className="mark-score-sep">/</span>
-                {scoreField(`max:${pi.part.label}`, pm.maxScore, (n) => setPart(pi.part.label, { maxScore: n }), undefined, `Maximum score${pi.part.label ? ` for part ${pi.part.label}` : ""}`)}
+                {scoreField(`max:${label}`, pm.maxScore, (n) => setPart(label, { maxScore: n }), undefined, `Maximum score${label ? ` for part ${label}` : ""}`)}
               </div>
+              {verdicts.length ? <div className="mark-verdict-text">{verdicts.map((v) => <p key={v.id} className="pre">{v.text}</p>)}<span className="muted mark-verdict-by">Marker</span></div>
+                : list && !isFolded(label, label) ? <p className="muted mark-verdict-hint">Tick the points you made in the model answer below and the score follows, or type it.</p> : null}
             </div>
-            <CommentedAnswer key={`${attempt.id}:${pi.part.label}`} attemptId={attempt.id} partLabel={pi.part.label} doc={pi.answer?.doc} text={pi.answer?.text} comments={attempt.answerComments ?? []} margin />
+            {pm.rewrite && <div className="mark-views" role="group" aria-label="Answer view">
+              <button type="button" className="small" aria-pressed={showing === "answer"} onClick={() => setView((v) => ({ ...v, [label]: "answer" }))}>Your answer</button>
+              <button type="button" className="small" aria-pressed={showing === "full"} onClick={() => setView((v) => ({ ...v, [label]: "full" }))}>Full marks</button>
+              {showing === "full" && <span className="muted">Struck text earned nothing; teal text earns the mark.</span>}
+            </div>}
+            {showing === "full" && pm.rewrite ? <div className="full-marks">
+              <p className="pre">{wordDiff(pi.answer?.text ?? "", pm.rewrite).map((part, i) => part.kind === "del" ? <del key={i}>{part.text}</del> : part.kind === "ins" ? <ins key={i}>{part.text}</ins> : <span key={i}>{part.text}</span>)}</p>
+              <p className="muted full-marks-note">Your own words, with the smallest changes that would earn each mark.</p>
+            </div>
+            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={pi.answer?.doc} text={pi.answer?.text} comments={marginComments} margin />}
             {previous && (
               <details className="mark-previous">
                 <summary>Previous attempt{previousMark ? ` (${previousMark.parts.find((p) => p.label === pi.part.label)?.score ?? "?"}/${previousMark.parts.find((p) => p.label === pi.part.label)?.maxScore ?? "?"})` : ""}</summary>
                 {prevAns?.doc ? <AnswerHtml doc={prevAns.doc} /> : <p className="pre">{prevAns?.text || "No answer written."}</p>}
               </details>
             )}
-            <div className={"mark-panel" + (folded[pi.part.label] ? " folded" : "")}>
+            <div className={"mark-panel" + (isFolded(label, label) ? " folded" : "")}>
               <div className="mark-panel-head">
-                {foldButton(pi.part.label, !folded[pi.part.label])}
+                {foldButton(label, !isFolded(label, label))}
+                {list && !isFolded(label, label) && <span className="muted mark-panel-note">tick what you got</span>}
                 <span style={{ flex: 1 }} />
                 {admin && <button type="button" className="small link mark-model-edit" onClick={() => onEdit(question)}>Edit</button>}
               </div>
-              {!folded[pi.part.label] && <div className="mark-model-body">
-                {hasModelAnswer(pi.part) ? <ModelAnswerContent answer={pi.part} /> : <p className="muted">{wholeModel ? "See the model answer above." : "No model answer for this part."}</p>}
+              {!isFolded(label, label) && <div className="mark-model-body">
+                {list ? <>
+                  <ul className="tick-list">{list.rows.map((r) => <li key={r.index}><label className={"tick-row" + (pm.pointsHit.includes(r.index) ? " on" : "")}><input type="checkbox" checked={pm.pointsHit.includes(r.index)} onChange={() => tick(label, list, pm, r.index)} /><span>{r.text}</span><span className="tick-marks">{r.marks}</span></label></li>)}</ul>
+                  {list.guidance.length > 0 && <details className="tick-guidance"><summary>Marking guidance</summary>{list.guidance.map((g, i) => <p key={i} className="pre">{g}</p>)}</details>}
+                </> : hasModelAnswer(pi.part) ? <ModelAnswerContent answer={pi.part} /> : <p className="muted">{wholeModel ? "See the model answer above." : "No model answer for this part."}</p>}
               </div>}
             </div>
           </div>
