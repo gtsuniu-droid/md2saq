@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { validUsername, normaliseUsername } from "./social";
-import { firstSentence, questionsInWeek, setsInWeek, sortRows, standing, trend, weekKey, weekStart, type LeaderboardRow } from "./leaderboard";
+import { allTimeFigures, firstSentence, questionsInWeek, setsInWeek, sortRows, standing, trend, weekKey, weekStart, type LeaderboardRow } from "./leaderboard";
 import type { Attempt } from "../data/types";
 
 it("accepts sensible usernames and refuses the rest", () => {
@@ -32,10 +32,12 @@ it("counts a week from Monday, by questions and by whole sets, for the account o
   expect(setsInWeek([...attempts, blank], questions, "me", start)).toBe(1);
   expect(setsInWeek(attempts, questions, "me", start)).toBe(1);
   expect(questionsInWeek(attempts, "me", start - 7 * 86_400_000)).toBe(1);
+  // All time: every counted question ever, and the sets they complete, blanks aside.
+  expect(allTimeFigures([...attempts, blank], questions, "me")).toEqual({ total: 5, totalSets: 2 });
 });
 
 it("orders by the chosen unit and describes where you stand", () => {
-  const row = (uid: string, count: number, sets: number, prevCount = 0): LeaderboardRow => ({ uid, name: uid, count, sets, prevCount, prevSets: 0, visible: true, updatedAt: 0 });
+  const row = (uid: string, count: number, sets: number, prevCount = 0): LeaderboardRow => ({ uid, name: uid, count, sets, prevCount, prevSets: 0, total: count * 10, totalSets: sets * 3, visible: true, updatedAt: 0 });
   const rows = [row("Jackson", 41, 9, 50), row("Eiden", 58, 4), row("Emma", 37, 7, 37)];
   expect(sortRows(rows, "questions").map((r) => r.uid)).toEqual(["Eiden", "Jackson", "Emma"]);
   expect(sortRows(rows, "sets").map((r) => r.uid)).toEqual(["Jackson", "Emma", "Eiden"]);
@@ -44,6 +46,9 @@ it("orders by the chosen unit and describes where you stand", () => {
   expect(standing(sortRows(rows, "questions"), "nobody", "questions")).toBeNull();
   expect(firstSentence("You lead this week with 36 questions.")).toBe("You lead this week with 36 questions.");
   expect(firstSentence("You're 3rd with 4 sets. 4 more to pass Emma.")).toBe("You're 3rd with 4 sets.");
+  // All time ranks by the lifetime figures and says so.
+  expect(sortRows(rows, "questions", "all").map((r) => r.uid)).toEqual(["Eiden", "Jackson", "Emma"]);
+  expect(standing(sortRows(rows, "sets", "all"), "Jackson", "sets", "all")).toBe("You lead all time with 27 sets. Emma is 6 behind.");
   expect(trend(rows[0], "questions")).toBe("down");
   expect(trend(rows[1], "questions")).toBe("up");
   expect(trend(rows[2], "questions")).toBe("same");

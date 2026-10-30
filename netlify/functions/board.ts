@@ -31,7 +31,7 @@ export default async (req: Request, context?: Context): Promise<Response> => {
   const photo = typeof b.photo === "string" && /^https:\/\//.test(b.photo) ? b.photo.slice(0, 2000) : undefined;
   // A device that never saw the student join or leave sends no `visible`, and has no say.
   const now = Date.now();
-  const post: Posted = { name, ...(photo ? { photo } : {}), ...(typeof b.visible === "boolean" ? { visible: b.visible, choiceAt: Math.min(count("choiceAt"), now) } : {}), week, count: count("count"), sets: count("sets"), prevCount: count("prevCount"), prevSets: count("prevSets"), at: now };
+  const post: Posted = { name, ...(photo ? { photo } : {}), ...(typeof b.visible === "boolean" ? { visible: b.visible, choiceAt: Math.min(count("choiceAt"), now) } : {}), week, count: count("count"), sets: count("sets"), prevCount: count("prevCount"), prevSets: count("prevSets"), total: count("total"), totalSets: count("totalSets"), at: now };
   const [records, last] = await Promise.all([
     postRecord(uid, post),
     openNamedStore("bank").get(CACHE_KEY, { type: "json" }) as Promise<CacheBody | null>,

@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, expect, it } from "vitest";
 import { db } from "../data/db";
 import { DEFAULT_SETTINGS, type AnswerComment } from "../data/types";
-import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, repliesTo, validCommentAnchor, writeAnswerComment } from "./answerComments";
+import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, repliesTo, validCommentAnchor, withParagraphBreaks, writeAnswerComment } from "./answerComments";
 const comment = (id='c'): AnswerComment => ({id,partLabel:'a',start:3,end:9,quote:'answer',text:'Explain this point',createdAt:0,updatedAt:0});
 it('anchors exact occurrences and refuses stale or invalid passages',()=>{
  expect(validCommentAnchor('My answer and answer',comment())).toBe(true);
@@ -74,4 +74,12 @@ it('keeps replies under their comment, with no passage of their own, and removes
  await deleteAnswerComment('a','c',parent.updatedAt);
  comments=(await db.attempts.get('a'))!.answerComments!;
  expect(comments).toEqual([]);
+});
+
+it('moves a position from the run-together text to the text with line breaks between paragraphs',()=>{
+ const paragraphs=['Sit upright','Oxygen','Diuretics'];
+ const broken=paragraphs.join('\n'); const unbroken=paragraphs.join('');
+ for (const word of ['upright','Oxygen','Diuretics']) { const at=unbroken.indexOf(word); expect(broken.slice(withParagraphBreaks(paragraphs,at,'start'),withParagraphBreaks(paragraphs,at+word.length,'end'))).toBe(word); }
+ expect(withParagraphBreaks(paragraphs,unbroken.length,'end')).toBe(broken.length);
+ expect(withParagraphBreaks([],4)).toBe(4);
 });

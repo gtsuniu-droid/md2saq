@@ -25,7 +25,34 @@ export function resumedSession(s: Session, now: number): Session {
   const away = Math.max(0, now - s.pausedAt);
   const { pausedAt: _dropped, ...rest } = s;
   void _dropped;
-  return { ...rest, startedAt: s.startedAt + away };
+  // Every set's clock moves with the paper's.
+  const setClocks = s.setClocks ? Object.fromEntries(Object.entries(s.setClocks).map(([k, c]) => [k, { ...c, startedAt: c.startedAt + away }])) : undefined;
+  return { ...rest, startedAt: s.startedAt + away, ...(setClocks ? { setClocks } : {}) };
+}
+
+/** Timed practice in whole sets runs a clock per set rather than one for the paper. */
+export function perSetClocks(s: Pick<Session, "mode" | "studyUnit" | "totalSec" | "examFormat">): boolean {
+  return s.mode === "practice" && s.studyUnit === "sets" && !!s.totalSec && !s.examFormat;
+}
+
+/** Seconds left on one set's clock, frozen while paused; null before the set is opened. */
+export function setRemainingSec(s: Session, key: string, now: number): number | null {
+  const clock = s.setClocks?.[key];
+  if (!clock) return null;
+  const at = s.pausedAt ?? now;
+  return Math.min(clock.totalSec, Math.max(0, Math.ceil((clock.startedAt + clock.totalSec * 1000 - at) / 1000)));
+}
+
+export function setOvertimeSec(s: Session, key: string, now: number): number {
+  const clock = s.setClocks?.[key];
+  if (!clock) return 0;
+  return Math.max(0, Math.floor(((s.pausedAt ?? now) - clock.startedAt) / 1000) - clock.totalSec);
+}
+
+/** The session with a clock started for a set, given its share of the paper's time; an open clock stays. */
+export function withSetClock(s: Session, key: string, totalSec: number, now: number): Session {
+  if (s.setClocks?.[key]) return s;
+  return { ...s, setClocks: { ...s.setClocks, [key]: { startedAt: now, totalSec: Math.max(60, Math.round(totalSec)) } } };
 }
 
 /** Seconds left on the exam clock, frozen while paused; null when untimed. */

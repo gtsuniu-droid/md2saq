@@ -1913,3 +1913,15 @@ button.study-answer > .row { display: flex; width: 100%; }
 .answer-diff del .answer-comment-highlight { text-decoration: line-through; text-decoration-color: #b3413a; }
 .mark-panel-head { cursor: pointer; user-select: none; }
 .mark-panel-head:hover { background: color-mix(in srgb, var(--teal) 11%, var(--card)); }
+
+/* Revising inside the commented answer: the editor fills the box; the margin stays beside it. */
+.answer-editing .revise-box { margin: -.85rem -1rem; border: 0; background: transparent; padding: .85rem 1rem 1.4rem; }
+.answer-editing .ProseMirror .answer-comment-highlight { cursor: text; }
+
+/* Exam timing tiles take a number; blank keeps the format's own. */
+.exam-time { display: inline-flex; align-items: baseline; gap: .3rem; margin: 0; }
+.exam-time input { width: 4.2rem; min-height: 32px; padding: .2rem .4rem; text-align: center; font-weight: 600; font-size: 1rem; }
+.exam-time strong { font-size: .9rem; }
+
+/* One line for the week's leader, under the podium. */
+.lb-crow { margin: -.4rem 0 1rem; text-align: center; font-size: .95rem; color: var(--muted); font-style: italic; }

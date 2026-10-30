@@ -485,7 +485,8 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               {showing === "full" && <span className="muted">Struck text earned nothing; teal text earns the mark.</span>}
               {(showing === "revise" || (showing === "answer" && revised)) && <span className="mark-views-tools"><button type="button" className="small link" onClick={() => setClean((c) => ({ ...c, [label]: !c[label] }))}>{clean[label] ? "Show changes" : "Hide changes"}</button>{revised && showing === "revise" && <button type="button" className="small link" onClick={() => void discardRevision(label)}>Discard</button>}</span>}
             </div>}
-            {showing === "revise" ? <RevisedAnswer key={`${attempt.id}:${label}:revise`} attemptId={attempt.id} answer={answer} clean={!!clean[label]} />
+            {showing === "revise" ? <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={answer.doc} text={answer.text} comments={marginComments} margin
+                editor={({ active, onLayout }) => <RevisedAnswer key={`${attempt.id}:${label}:revise`} attemptId={attempt.id} answer={answer} clean={!!clean[label]} comments={marginComments} active={active} onLayout={onLayout} />} />
             : showing === "full" && pm.rewrite ? <div className="full-marks">
               <p className="pre">{wordDiff(pi.answer?.text ?? "", pm.rewrite).map((part, i) => part.kind === "del" ? <del key={i}>{part.text}</del> : part.kind === "ins" ? <ins key={i}>{part.text}</ins> : <span key={i}>{part.text}</span>)}</p>
               <p className="muted full-marks-note">Your own words, with the smallest changes that would earn each mark.</p>

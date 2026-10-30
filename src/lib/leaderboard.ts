@@ -12,6 +12,8 @@ import { isBlankAttempt } from "./blankAttempt";
  * leaderboard/{uid}; nobody can write another's.
  */
 export type LeaderboardUnit = "questions" | "sets";
+/** This week (Monday to Sunday) or everything the account has ever done. */
+export type LeaderboardPeriod = "week" | "all";
 
 export interface LeaderboardRow {
   uid: string;
@@ -23,6 +25,9 @@ export interface LeaderboardRow {
   /** Last week's figures, for the trend arrows. */
   prevCount: number;
   prevSets: number;
+  /** Everything ever: questions answered and sets completed, as the account's own device counted them. */
+  total: number;
+  totalSets: number;
   /** The account's Google picture, when it has one. */
   photo?: string;
   /** Opted in: shown to other students. Other rows reach admins only. */
@@ -63,8 +68,30 @@ export function weekKey(ts: number): string {
 }
 
 // A set clicked through with nothing written is not work done: blank attempts never count.
-const inWeek = (attempts: Attempt[], ownerId: string, start: number) =>
-  attempts.filter((a) => belongsToAccount(a, ownerId) && a.submittedAt !== undefined && a.submittedAt >= start && a.submittedAt < start + 7 * DAY && !isBlankAttempt(a));
+const counted = (attempts: Attempt[], ownerId: string) => attempts.filter((a) => belongsToAccount(a, ownerId) && a.submittedAt !== undefined && !isBlankAttempt(a));
+const inWeek = (attempts: Attempt[], ownerId: string, start: number) => counted(attempts, ownerId).filter((a) => a.submittedAt! >= start && a.submittedAt! < start + 7 * DAY);
+
+/** Sets of which every question is among these attempts. */
+function completedSets(attempts: Attempt[], questions: Pick<Question, "id" | "setId">[]): number {
+  const setOf = new Map(questions.map((q) => [q.id, q.setId]));
+  const size = new Map<string, number>();
+  for (const q of questions) size.set(q.setId, (size.get(q.setId) ?? 0) + 1);
+  const done = new Map<string, Set<string>>();
+  for (const a of attempts) {
+    const setId = setOf.get(a.questionId);
+    if (!setId) continue;
+    done.set(setId, (done.get(setId) ?? new Set()).add(a.questionId));
+  }
+  let n = 0;
+  for (const [setId, ids] of done) if (ids.size >= (size.get(setId) ?? Infinity)) n++;
+  return n;
+}
+
+/** Everything the account has ever answered, and the sets it completed along the way. */
+export function allTimeFigures(attempts: Attempt[], questions: Pick<Question, "id" | "setId">[], ownerId: string): { total: number; totalSets: number } {
+  const mine = counted(attempts, ownerId);
+  return { total: new Set(mine.map((a) => a.questionId)).size, totalSets: completedSets(mine, questions) };
+}
 
 /** Questions submitted by this account in the week starting at `start`. */
 export function questionsInWeek(attempts: Attempt[], ownerId: string, start: number): number {
@@ -73,18 +100,7 @@ export function questionsInWeek(attempts: Attempt[], ownerId: string, start: num
 
 /** Sets completed in the week: every question of the set submitted within it. */
 export function setsInWeek(attempts: Attempt[], questions: Pick<Question, "id" | "setId">[], ownerId: string, start: number): number {
-  const setOf = new Map(questions.map((q) => [q.id, q.setId]));
-  const size = new Map<string, number>();
-  for (const q of questions) size.set(q.setId, (size.get(q.setId) ?? 0) + 1);
-  const done = new Map<string, Set<string>>();
-  for (const a of inWeek(attempts, ownerId, start)) {
-    const setId = setOf.get(a.questionId);
-    if (!setId) continue;
-    done.set(setId, (done.get(setId) ?? new Set()).add(a.questionId));
-  }
-  let n = 0;
-  for (const [setId, ids] of done) if (ids.size >= (size.get(setId) ?? Infinity)) n++;
-  return n;
+  return completedSets(inWeek(attempts, ownerId, start), questions);
 }
 
 export function weekLabel(start: number): string {
@@ -117,6 +133,7 @@ export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolea
     uid, name: boardName(settings), week: weekKey(Date.now()), ...(photo ? { photo } : {}),
     count: questionsInWeek(attempts, uid, start), sets: setsInWeek(attempts, library.questions, uid, start),
     prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
+    ...allTimeFigures(attempts, library.questions, uid),
   };
   // Two copies: the site's own store, which the board is served from and which has no daily
   // read budget, and Firestore, kept for the Admin page and as a fallback. Only the first is
@@ -168,9 +185,9 @@ export function onBoard(listener: (board: BoardRead) => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-type BoardBody = { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number }[] };
+type BoardBody = { stale?: boolean; asOf?: number; rows: { uid: string; name: string; photo?: string; questions: number; sets: number; prevQuestions: number; prevSets: number; total?: number; totalSets?: number }[] };
 const boardFrom = (body: BoardBody): BoardRead => ({
-  rows: body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, photo: r.photo, visible: true, updatedAt: Date.now() })),
+  rows: body.rows.map((r) => ({ uid: r.uid, name: r.name, count: r.questions, sets: r.sets, prevCount: r.prevQuestions, prevSets: r.prevSets, total: r.total ?? 0, totalSets: r.totalSets ?? 0, photo: r.photo, visible: true, updatedAt: Date.now() })),
   ...(body.stale ? { staleSince: body.asOf ?? null } : {}),
 });
 
@@ -213,16 +230,17 @@ export async function fetchLeaderboard(includeHidden = false): Promise<BoardRead
     const week = typeof v.week === "string" ? v.week : "";
     const current = week === thisWeek;
     const prev = current ? { count: n("prevCount"), sets: n("prevSets") } : week === lastWeek ? { count: n("count"), sets: n("sets") } : { count: 0, sets: 0 };
-    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: current ? n("count") : 0, sets: current ? n("sets") : 0, prevCount: prev.count, prevSets: prev.sets, photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, visible: v.visible !== false, updatedAt: at?.toMillis?.() ?? 0 };
+    return { uid: d.id, name: typeof v.name === "string" ? v.name : "Student", count: current ? n("count") : 0, sets: current ? n("sets") : 0, prevCount: prev.count, prevSets: prev.sets, total: n("total"), totalSets: n("totalSets"), photo: typeof v.photo === "string" && /^https:\/\//.test(v.photo) ? v.photo : undefined, visible: v.visible !== false, updatedAt: at?.toMillis?.() ?? 0 };
   });
   return { rows };
 }
 
-export const score = (row: LeaderboardRow, unit: LeaderboardUnit): number => (unit === "sets" ? row.sets : row.count);
+export const score = (row: LeaderboardRow, unit: LeaderboardUnit, period: LeaderboardPeriod = "week"): number =>
+  period === "all" ? (unit === "sets" ? row.totalSets : row.total) : unit === "sets" ? row.sets : row.count;
 const previous = (row: LeaderboardRow, unit: LeaderboardUnit): number => (unit === "sets" ? row.prevSets : row.prevCount);
 
-export function sortRows(rows: LeaderboardRow[], unit: LeaderboardUnit): LeaderboardRow[] {
-  return [...rows].sort((a, b) => score(b, unit) - score(a, unit) || a.name.localeCompare(b.name));
+export function sortRows(rows: LeaderboardRow[], unit: LeaderboardUnit, period: LeaderboardPeriod = "week"): LeaderboardRow[] {
+  return [...rows].sort((a, b) => score(b, unit, period) - score(a, unit, period) || a.name.localeCompare(b.name));
 }
 
 export function trend(row: LeaderboardRow, unit: LeaderboardUnit): "up" | "down" | "same" {
@@ -236,16 +254,17 @@ export const firstSentence = (line: string): string => line.split(". ")[0].repla
 const ordinal = (n: number): string => { const s = ["th", "st", "nd", "rd"]; const v = n % 100; return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`; };
 
 /** One sentence about where the signed-in person stands, or null when they are not on the board. */
-export function standing(sorted: LeaderboardRow[], uid: string, unit: LeaderboardUnit): string | null {
+export function standing(sorted: LeaderboardRow[], uid: string, unit: LeaderboardUnit, period: LeaderboardPeriod = "week"): string | null {
   const i = sorted.findIndex((r) => r.uid === uid);
   if (i < 0) return null;
-  const me = score(sorted[i], unit);
+  const me = score(sorted[i], unit, period);
   const word = unit === "sets" ? (me === 1 ? "set" : "sets") : (me === 1 ? "question" : "questions");
+  const when = period === "all" ? "all time" : "this week";
   if (i === 0) {
     const next = sorted[1];
-    return next ? `You lead this week with ${me} ${word}. ${next.name} is ${me - score(next, unit)} behind.` : `You lead this week with ${me} ${word}.`;
+    return next ? `You lead ${when} with ${me} ${word}. ${next.name} is ${me - score(next, unit, period)} behind.` : `You lead ${when} with ${me} ${word}.`;
   }
   const above = sorted[i - 1];
-  const gap = score(above, unit) - me + 1;
+  const gap = score(above, unit, period) - me + 1;
   return `You're ${ordinal(i + 1)} with ${me} ${word}. ${gap} more to pass ${above.name}.`;
 }

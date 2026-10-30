@@ -45,7 +45,7 @@ it("rolls a last-week table into last week's column, and stands on posted record
   expect([rolled.questions, rolled.sets, rolled.prevQuestions, rolled.prevSets]).toEqual([0, 0, 10, 2]);
   const alone = staleTable(null, new Map<string, Rec>([["d", { name: "Dee", week: weekKey(now - 7 * 24 * 3600_000), count: 5, sets: 1, prevCount: 0, prevSets: 0, visible: false, at: now }]]), now, "429");
   expect(alone.asOf).toBeUndefined();
-  expect(alone.rowsWithEmail).toEqual([{ uid: "d", name: "Dee", photo: undefined, nickname: "Dee", joined: false, lastSeenAt: now, questions: 0, sets: 0, prevQuestions: 5, prevSets: 1, source: "device" }]);
+  expect(alone.rowsWithEmail).toEqual([{ uid: "d", name: "Dee", photo: undefined, nickname: "Dee", joined: false, lastSeenAt: now, questions: 0, sets: 0, prevQuestions: 5, prevSets: 1, total: 0, totalSets: 0, source: "device" }]);
 });
 
 it("serves the last count with every device record over it, keeping the higher count", () => {

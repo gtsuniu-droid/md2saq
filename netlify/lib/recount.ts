@@ -132,7 +132,7 @@ export async function recount(posted: Map<string, Rec>, now = Date.now()): Promi
     const uid = m.name.split("/").pop()!;
     const n = nick.get(uid);
     const { pair: f, source } = figures.get(uid) ?? { pair: { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } } as Pair, source: "none" as const };
-    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || n?.name || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || n?.photo, nickname: n?.name, joined: n !== undefined && n.visible !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, lastSeenAt: num(m.fields?.lastSeenAt), source };
+    return { uid, name: (str(m.fields?.name) || "").trim().split(/\s+/)[0] || n?.name || "Student", email: str(m.fields?.email), photo: str(m.fields?.photo) || n?.photo, nickname: n?.name, joined: n !== undefined && n.visible !== false, questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets, total: n?.total ?? 0, totalSets: n?.totalSets ?? 0, lastSeenAt: num(m.fields?.lastSeenAt), source };
   });
   sortRows(rows);
   const body: CacheBody = { at: now, week: weekStart(now), accounts: rows.length, rowsWithEmail: rows };
@@ -157,5 +157,5 @@ export function recountLater(last: CacheBody | null, context: Context | undefine
 
 /** A Firestore leaderboard document as a record. Records from before the joined flag existed count as joined. */
 function recordOf(f: Record<string, FsValue>): Rec {
-  return { name: str(f.name), photo: str(f.photo), visible: f.visible?.booleanValue, week: str(f.week) ?? "", count: num(f.count) ?? 0, sets: num(f.sets) ?? 0, prevCount: num(f.prevCount) ?? 0, prevSets: num(f.prevSets) ?? 0, at: num(f.updatedAt) ?? 0 };
+  return { name: str(f.name), photo: str(f.photo), visible: f.visible?.booleanValue, week: str(f.week) ?? "", count: num(f.count) ?? 0, sets: num(f.sets) ?? 0, prevCount: num(f.prevCount) ?? 0, prevSets: num(f.prevSets) ?? 0, total: num(f.total), totalSets: num(f.totalSets), at: num(f.updatedAt) ?? 0 };
 }

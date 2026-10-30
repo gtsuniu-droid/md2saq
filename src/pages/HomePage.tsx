@@ -48,6 +48,9 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [examPick, setExamPick] = useState<"random" | "choose">("random");
   const [examCount, setExamCount] = useState(String(EXAM_STEMS));
+  // Blank means the format's own timing for that many sets; 0 reading means answers open at once.
+  const [examReading, setExamReading] = useState("");
+  const [examWriting, setExamWriting] = useState("");
   const [replacing, setReplacing] = useState<"practice" | "exam" | { questionIds: string[]; study: StudySession } | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const gate = useAccountGate();
@@ -156,7 +159,9 @@ export default function HomePage() {
   const examSetsAvailable = examPool.reduce((n, [, cases]) => n + cases.length, 0);
   const examSize = Math.min(EXAM_MAX_STEMS, Math.max(1, Math.round(Number(examCount) || EXAM_STEMS)));
   const examReady = examSetsAvailable >= examSize && (examPick === "random" || selected.size > 0);
-  const examClock = examTiming(examSize);
+  const examDefault = examTiming(examSize);
+  const examMinutes = (raw: string, fallback: number, min: number) => { const n = Number(raw); return raw.trim() === "" || !Number.isFinite(n) ? fallback : Math.max(min, Math.round(n)) * 60; };
+  const examClock = { readingSec: examMinutes(examReading, examDefault.readingSec, 0), totalSec: examMinutes(examWriting, examDefault.totalSec, 1) };
   const buildExam = () => buildExamPaper(data.sets, data.questions, Math.random, { count: examSize, presentations: examPresentations });
   const startExam = async (force = false) => {
     if (starting) return;
@@ -277,8 +282,8 @@ export default function HomePage() {
             <label className="session-inline-label">How many sets?<input aria-label="Number of sets in the exam" type="number" min={1} max={EXAM_MAX_STEMS} step={1} value={examCount} onChange={(e) => setExamCount(e.target.value)} /></label>
             <span className="muted">Up to {EXAM_MAX_STEMS}. {examPick === "random" ? "One set from each of as many presentations as possible." : "One set from each chosen presentation first, then more from the same ones."}</span>
           </div>
-          <div className="exam-format"><div><strong>{examSize} {examSize === 1 ? "stem" : "stems"}</strong><span>{examPick === "random" ? "Mixed presentations" : `${selected.size} chosen`}</span></div><div><strong>{Math.round(examClock.readingSec / 60)} min</strong><span>Reading time</span></div><div><strong>{examClock.totalSec >= 3600 ? `${Math.round((examClock.totalSec / 3600) * 10) / 10} h` : `${Math.round(examClock.totalSec / 60)} min`}</strong><span>Writing time</span></div></div>
-          <p className="muted">Answers unlock after reading time. The clock never stops, and the paper submits itself when it runs out.</p>
+          <div className="exam-format"><div><strong>{examSize} {examSize === 1 ? "stem" : "stems"}</strong><span>{examPick === "random" ? "Mixed presentations" : `${selected.size} chosen`}</span></div><div><label className="exam-time"><input aria-label="Reading time in minutes" type="number" min={0} step={1} placeholder={String(Math.round(examDefault.readingSec / 60))} value={examReading} onChange={(e) => setExamReading(e.target.value)} /><strong>min</strong></label><span>Reading time</span></div><div><label className="exam-time"><input aria-label="Writing time in minutes" type="number" min={1} step={1} placeholder={String(Math.round(examDefault.totalSec / 60))} value={examWriting} onChange={(e) => setExamWriting(e.target.value)} /><strong>min</strong></label><span>Writing time</span></div></div>
+          <p className="muted">{examClock.readingSec ? "Answers unlock after reading time. " : "No reading time: answers open at once. "}The clock never stops, and the paper submits itself when it runs out.</p>
           {!examReady && <p role="status">{examPick === "choose" && !selected.size ? "Choose at least one presentation." : `${examSetsAvailable} ${examSetsAvailable === 1 ? "set" : "sets"} available${examPick === "choose" ? " in the chosen presentations" : ""}; lower the number or add sets.`}</p>}
           {examError && <p className="field-error" role="alert">{examError}</p>}
           <button className="primary" onClick={() => void startExam()} disabled={starting || !examReady}>{starting ? "Preparing exam…" : "Start exam"}</button>

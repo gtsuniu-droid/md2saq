@@ -62,5 +62,20 @@ export async function deleteAnswerComment(attemptId: string, id: string, expecte
   });
 }
 
+/**
+ * Comment positions count in the answer's text with its paragraphs run together. Where the
+ * text is read with one line break between paragraphs, each earlier paragraph adds one.
+ */
+export function withParagraphBreaks(paragraphs: string[], offset: number, edge: "start" | "end" = "start"): number {
+  let seen = 0;
+  for (let i = 0; i < paragraphs.length; i++) {
+    const end = seen + paragraphs[i].length;
+    // On a boundary, the start of a passage belongs to the next paragraph, its end to the one before.
+    if (offset < end || (offset === end && (edge === "end" || i === paragraphs.length - 1))) return offset + i;
+    seen = end;
+  }
+  return offset + Math.max(0, paragraphs.length - 1);
+}
+
 /** The replies under a comment, oldest first. */
 export const repliesTo = (comments: AnswerComment[], id: string): AnswerComment[] => comments.filter((c) => c.replyTo === id).sort((a, b) => a.createdAt - b.createdAt);

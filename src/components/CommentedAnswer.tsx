@@ -3,7 +3,7 @@ import gsap from "gsap";
 import type { AnswerComment } from "../data/types";
 import { getSettings, newId } from "../data/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, repliesTo, validCommentAnchor, writeAnswerComment, type AnswerAnchor } from "../lib/answerComments";
+import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, repliesTo, validCommentAnchor, withParagraphBreaks, writeAnswerComment, type AnswerAnchor } from "../lib/answerComments";
 import { requestSync } from "../lib/sync";
 import { renderAnswer } from "../lib/answerRender";
 import { diffWithOrigin } from "../lib/wordDiff";
@@ -22,12 +22,14 @@ interface Props {
   revision?: string;
   /** With a revision: mark what changed (default), or read the revised text clean. */
   showChanges?: boolean;
+  /** An editor shown in place of the answer (revising it), which draws the comment highlights itself and says when its layout changed. */
+  editor?: (ctx: { active: string | null; onLayout: () => void }) => ReactNode;
 }
 
 const CARD_GAP = 8;
 
 /** Comments belong to the submitted answer, independently of whether it has been marked. */
-export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions, revision, showChanges = true }: Props) {
+export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions, revision, showChanges = true, editor }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
   const when = (ts: number) => { if (!ts) return ""; const d = new Date(ts); const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); return d.toDateString() === new Date().toDateString() ? `${time} Today` : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`; };
@@ -138,7 +140,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       for (const id of ids) if (next[id] === undefined || top < next[id]) next[id] = top;
     });
     setTops((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
-  }, [margin, rendered.html, mine.length, resized, revision, showChanges]);
+  }, [margin, rendered.html, mine.length, resized, revision, showChanges, !!editor]);
   useEffect(() => {
     if (!margin) return;
     let frame = 0;
@@ -194,7 +196,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   }, [margin, draft?.id]);
 
   const captureSelection = () => {
-    if (draft || revision !== undefined || !root.current || (!text && !doc)) return;
+    if (draft || revision !== undefined || editor || !root.current || (!text && !doc)) return;
     const selected = window.getSelection();
     if (!selected?.rangeCount || selected.isCollapsed) { setSelection(null); return; }
     const range = selected.getRangeAt(0);
@@ -259,9 +261,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     const unbroken = text || doc ? rendered.plain : "";
     const blocks = text || doc ? rendered.paragraphs : [];
     const original = blocks.join("\n");
-    // Comment positions count in the unbroken text; in the original with its line breaks each earlier paragraph adds one.
-    const withBreaks = (offset: number) => { let seen = 0; for (let i = 0; i < blocks.length; i++) { if (offset <= seen + blocks[i].length) return offset + i; seen += blocks[i].length; } return offset + Math.max(0, blocks.length - 1); };
-    const valid = comments.filter((c) => c.partLabel === partLabel && validCommentAnchor(unbroken, c)).map((c) => isGeneralComment(c) ? c : { ...c, start: withBreaks(c.start), end: withBreaks(c.end) });
+    const valid = comments.filter((c) => c.partLabel === partLabel && validCommentAnchor(unbroken, c)).map((c) => isGeneralComment(c) ? c : { ...c, start: withParagraphBreaks(blocks, c.start, "start"), end: withParagraphBreaks(blocks, c.end, "end") });
     const segments = (value: string, offset: number) => commentSegments(value, valid, offset).map((seg, i) => seg.ids.length
       ? <mark key={i} className={"answer-comment-highlight" + (seg.ids.some((id) => id === active) ? " active" : "")} data-comment-ids={JSON.stringify(seg.ids)} role="button" tabIndex={0} aria-label={`Comment on: ${seg.text}`}>{seg.text}</mark>
       : <span key={i}>{seg.text}</span>);
@@ -272,7 +272,9 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       : <span key={i}>{part.at === undefined ? part.text : segments(part.text, part.at)}</span>)}</p>;
   }, [revision, showChanges, rendered.plain, rendered.paragraphs, text, doc, comments, partLabel, active]);
   const onAnswerKey = (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } };
-  const answer = revised
+  const answer = editor
+    ? <div ref={root} className="answer-html answer-editing" onClick={(e) => openHighlight(e.target)} onKeyDown={onAnswerKey}>{editor({ active, onLayout: () => setResized((n) => n + 1) })}</div>
+    : revised
     ? <div ref={root} className="answer-html" onClick={(e) => openHighlight(e.target)} onKeyDown={onAnswerKey}>{revised}</div>
     : <div ref={root} className="answer-html" onPointerUp={captureSelection} onKeyUp={captureSelection} onClick={(e) => openHighlight(e.target)} onKeyDown={onAnswerKey} dangerouslySetInnerHTML={{ __html: rendered.html }} />;
 
@@ -309,7 +311,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     <div ref={textBox} className="commented-answer-text">
       {answer}
       {!draft && selection && selectionAt && <button type="button" className="comment-fab" style={{ top: selectionAt.top, left: selectionAt.left }} aria-label="Comment on the selected text" title="Comment on the selected text" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>{commentIcon}</button>}
-      {!draft && !selection && <span className="comment-add-row"><button className="small comment-add" title="Comment on the whole answer, or select some text first to comment on a passage" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>Add comment</button>{actions}</span>}
+      {!draft && !selection && !editor && <span className="comment-add-row"><button className="small comment-add" title="Comment on the whole answer, or select some text first to comment on a passage" onMouseDown={(e) => e.preventDefault()} onClick={startDraft}>Add comment</button>{actions}</span>}
     </div>
     <aside className="comment-margin" aria-label="Comments" style={{ minHeight: marginHeight }}>
       {ordered.map((c) => {

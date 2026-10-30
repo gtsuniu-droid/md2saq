@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Session } from "../data/types";
-import { pausedSession, remainingSec, resumedSession } from "./sessionClock";
+import { pausedSession, perSetClocks, remainingSec, resumedSession, setOvertimeSec, setRemainingSec, withSetClock } from "./sessionClock";
 
 // A timed practice paper: the only kind that pauses. Exams run on regardless.
 const base: Session = { id: "s", mode: "practice", questionIds: ["q1", "q2"], index: 0, totalSec: 600, startedAt: 1_000_000, attemptIds: [] };
@@ -80,4 +80,21 @@ it("an exam clock keeps running while the tab is away and submits the moment it 
   expect(resumedSession({ ...exam, pausedAt: exam.startedAt + 100_000 }, exam.startedAt + 400_000).startedAt).toBe(exam.startedAt);
   expect(shouldAutoSubmit(exam, exam.startedAt + 600_000)).toBe(true);
   expect(shouldAutoSubmit({ ...exam, mode: "practice" }, exam.startedAt + 600_000)).toBe(false);
+});
+
+it("runs a clock per set for timed practice in whole sets, which pauses and resumes with the paper", () => {
+    const sets: Session = { ...base, studyUnit: "sets" };
+    expect(perSetClocks(sets)).toBe(true);
+    expect(perSetClocks(base)).toBe(false);
+    expect(perSetClocks({ ...sets, mode: "exam" })).toBe(false);
+    expect(perSetClocks({ ...sets, totalSec: undefined })).toBe(false);
+    expect(setRemainingSec(sets, "q1", base.startedAt)).toBeNull();
+    const started = withSetClock(sets, "q1", 300, base.startedAt + 50_000);
+    expect(setRemainingSec(started, "q1", base.startedAt + 110_000)).toBe(240);
+    // Opening the set again does not restart its clock.
+    expect(withSetClock(started, "q1", 900, base.startedAt + 200_000).setClocks?.q1.totalSec).toBe(300);
+    expect(setOvertimeSec(started, "q1", base.startedAt + 400_000)).toBe(50);
+    const paused = pausedSession(started, base.startedAt + 110_000);
+    const resumed = resumedSession(paused, base.startedAt + 1_000_000);
+    expect(setRemainingSec(resumed, "q1", base.startedAt + 1_000_000)).toBe(240);
 });

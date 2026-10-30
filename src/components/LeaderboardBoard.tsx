@@ -1,7 +1,7 @@
 import gsap from "gsap";
 import { useLayoutEffect, useState, type RefObject } from "react";
 import { cloudConfigured, signInWithGoogle } from "../lib/firebase";
-import { score, trend, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
+import { score, trend, type LeaderboardPeriod, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
 import { setProgressAccount } from "../lib/progressAccount";
 
 const MEDAL = ["gold", "silver", "bronze"];
@@ -20,12 +20,22 @@ export function UnitToggle({ unit, onChange, small }: { unit: LeaderboardUnit; o
   );
 }
 
+/** This week or all time. */
+export function PeriodToggle({ period, onChange, small }: { period: LeaderboardPeriod; onChange: (p: LeaderboardPeriod) => void; small?: boolean }) {
+  return (
+    <div className={`seg lb-seg${small ? " small" : ""}`} role="group" aria-label="Which period">
+      <button type="button" className={period === "week" ? "on" : ""} aria-pressed={period === "week"} onClick={() => onChange("week")}>This week</button>
+      <button type="button" className={period === "all" ? "on" : ""} aria-pressed={period === "all"} onClick={() => onChange("all")}>All time</button>
+    </div>
+  );
+}
+
 function Crown() {
   return <svg className="lb-crown" data-crown viewBox="0 0 32 24" role="img" aria-label="First place"><path d="M3 20h26l2-13-8 6-7-10-7 10-8-6z" fill="#e7ab23" /><rect x="3" y="20" width="26" height="3" rx="1" fill="#c98f12" /></svg>;
 }
 
 /** The top three, first place raised in the middle. `rows` must already be sorted. */
-export function Podium({ rows, unit, me, compact }: { rows: LeaderboardRow[]; unit: LeaderboardUnit; me: string; compact?: boolean }) {
+export function Podium({ rows, unit, me, compact, period = "week" }: { rows: LeaderboardRow[]; unit: LeaderboardUnit; me: string; compact?: boolean; period?: LeaderboardPeriod }) {
   const top = rows.slice(0, 3);
   const slots: { rank: number; row?: LeaderboardRow }[] = [{ rank: 2, row: top[1] }, { rank: 1, row: top[0] }, { rank: 3, row: top[2] }];
   const word = unit === "sets" ? "sets" : "questions";
@@ -36,8 +46,8 @@ export function Podium({ rows, unit, me, compact }: { rows: LeaderboardRow[]; un
           {rank === 1 && <Crown />}
           <span className="lb-avatar-wrap"><Avatar name={row.name} rank={rank} photo={row.photo} /><span className="lb-rank-badge">{rank}</span></span>
           <strong className="lb-name">{row.name}{row.uid === me && <span className="lb-you">you</span>}</strong>
-          <span className={`lb-count ${MEDAL[rank - 1]}`} data-count={score(row, unit)}>{score(row, unit)}</span>
-          {!compact && <small className="muted">{score(row, unit) === 1 ? word.slice(0, -1) : word}</small>}
+          <span className={`lb-count ${MEDAL[rank - 1]}`} data-count={score(row, unit, period)}>{score(row, unit, period)}</span>
+          {!compact && <small className="muted">{score(row, unit, period) === 1 ? word.slice(0, -1) : word}</small>}
         </li>
       ) : <li key={`empty-${rank}`} className="lb-podium-item empty" aria-hidden="true" />)}
     </ol>
@@ -55,7 +65,7 @@ export function TrendArrow({ row, unit }: { row: LeaderboardRow; unit: Leaderboa
 }
 
 /** Everyone below the podium. */
-export function BoardRows({ rows, unit, me }: { rows: LeaderboardRow[]; unit: LeaderboardUnit; me: string }) {
+export function BoardRows({ rows, unit, me, period = "week" }: { rows: LeaderboardRow[]; unit: LeaderboardUnit; me: string; period?: LeaderboardPeriod }) {
   if (rows.length <= 3) return null;
   return (
     <ol className="lb-list" start={4}>
@@ -64,7 +74,7 @@ export function BoardRows({ rows, unit, me }: { rows: LeaderboardRow[]; unit: Le
           <span className="lb-pos">{i + 4}</span>
           <Avatar name={r.name} rank={99} photo={r.photo} />
           <span className="lb-row-name">{r.name}{r.uid === me && <span className="lb-you">you</span>}</span>
-          <span className="lb-score">{score(r, unit)}<TrendArrow row={r} unit={unit} /></span>
+          <span className="lb-score">{score(r, unit, period)}{period === "week" && <TrendArrow row={r} unit={unit} />}</span>
         </li>
       ))}
     </ol>

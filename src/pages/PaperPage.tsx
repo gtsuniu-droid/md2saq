@@ -17,7 +17,8 @@ import Editor from "../components/Editor";
 import { answerParts, formatClock, partLabel, stemsOf } from "../lib/questions";
 import { loadSession, pauseSession, resumeSession, saveSession } from "../lib/session";
 import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/answerDrafts";
-import { canWriteAnswers, readingRemainingSec, overtimeSec, remainingSec, shouldAutoSubmit } from "../lib/sessionClock";
+import { canWriteAnswers, perSetClocks, readingRemainingSec, overtimeSec, remainingSec, setOvertimeSec, setRemainingSec, shouldAutoSubmit, withSetClock } from "../lib/sessionClock";
+import { suggestedSessionMinutes } from "../lib/sessionBuilder";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
 import SetMarking from "../components/SetMarking";
@@ -180,7 +181,7 @@ export default function PaperPage() {
 
   const prefs = useLiveQuery(async () => {
     const settings = await getSettings();
-    return { ambossOnPaper: settings.ambossOnPaper, admin: isAdmin(settings) };
+    return { ambossOnPaper: settings.ambossOnPaper, admin: isAdmin(settings), minutesPerMark: settings.minutesPerMark };
   }, []);
   const ambossOnPaper = session?.examFormat ? false : prefs?.ambossOnPaper ?? false;
   const admin = !session?.examFormat && (prefs?.admin ?? false);
@@ -223,11 +224,25 @@ export default function PaperPage() {
     const next = data.questions.slice(index + 1).find(q => q.setId !== question.setId);
     prefetchSet(next?.setId);
   }, [content.ready, question?.setId, data?.questions.map(q => q.id).join(",")]);
-  const remaining = session ? remainingSec(session, now) : null;
+  // Timed practice in whole sets: each set has its own clock, started when it is opened, with
+  // its share of the paper's time (by the sets' suggested minutes). Other papers keep one clock.
+  const perSet = !!session && perSetClocks(session);
+  const groupsNow = session && data ? sessionSetGroups(session, data.questions) : [];
+  const groupNow = groupsNow.find((g) => g.indices.includes(index));
+  const clockKey = groupNow && data ? data.questions[groupNow.indices[0]]?.id : undefined;
+  useEffect(() => {
+    if (!perSet || !session || !data || !groupNow || !clockKey || session.setClocks?.[clockKey] || prefs === undefined) return;
+    const minutes = (g: typeof groupNow) => suggestedSessionMinutes(g.indices.map((i) => data.questions[i]), data.sets, prefs.minutesPerMark, "sets");
+    const whole = groupsNow.reduce((sum, g) => sum + minutes(g), 0);
+    const next = withSetClock(session, clockKey, session.totalSec! * (whole ? minutes(groupNow) / whole : 1 / groupsNow.length), Date.now());
+    saveSession(next); setSession(next);
+  }, [perSet, clockKey, prefs === undefined, session?.id]);
+  const remaining = !session ? null : perSet ? (clockKey ? setRemainingSec(session, clockKey, now) : null) : remainingSec(session, now);
   const readingLeft = session ? readingRemainingSec(session, now) : 0;
   const reading = readingLeft > 0;
   const displayedRemaining = reading ? readingLeft : remaining;
   const expired = remaining !== null && remaining <= 0;
+  const overtime = session ? (perSet && clockKey ? setOvertimeSec(session, clockKey, now) : overtimeSec(session, now)) : 0;
   const examExpired = !!session && shouldAutoSubmit(session, now);
 
   const flushAttempt = useCallback(async (attemptId: string) => {
@@ -498,8 +513,8 @@ export default function PaperPage() {
           <span>{setMode ? `Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
         </span>
         {displayedRemaining !== null && (expired && session.mode === "practice"
-          ? <span className="timer over" aria-label="Practice overtime"><small>Over time</small>{formatClock(overtimeSec(session, now))}</span>
-          : <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : "Writing time remaining"}>{(reading || session.examFormat) && <small>{reading ? "Reading" : "Writing"}</small>}{formatClock(displayedRemaining)}</span>
+          ? <span className="timer over" aria-label={perSet ? "Over this set's time" : "Practice overtime"}><small>{perSet ? "Set over" : "Over time"}</small>{formatClock(overtime)}</span>
+          : <span className={"timer" + (displayedRemaining <= 60 ? " low" : "")} aria-label={reading ? "Reading time remaining" : perSet ? "Time left for this set" : "Writing time remaining"}>{(reading || session.examFormat || perSet) && <small>{reading ? "Reading" : perSet ? "This set" : "Writing"}</small>}{formatClock(displayedRemaining)}</span>
         )}
         <span style={{ flex: 1 }} />
         {session.mode === "practice" && !session.examFormat && <AmbossSearch />}
@@ -513,7 +528,7 @@ export default function PaperPage() {
       </div>
       {behindRevision !== undefined && <LibraryUpdateNotice setId={question.setId} revision={behindRevision} />}
       {reading && <div className="practice-time-notice" role="status">Reading time. Answers unlock automatically when writing begins.</div>}
-      {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">Suggested time reached. Keep writing and submit when you're ready.</div>}
+      {expired && session.mode === "practice" && <div className="practice-time-notice" role="status">{perSet ? "This set's suggested time is up. Keep writing and submit when you're ready." : "Suggested time reached. Keep writing and submit when you're ready."}</div>}
       {addingImages && <div className="practice-time-notice" role="status">Adding pictures…</div>}
       {saveError && <div className="practice-time-notice" role="alert">{saveError}</div>}
       <div className="paper">

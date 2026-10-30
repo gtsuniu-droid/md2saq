@@ -4,13 +4,19 @@ import { db } from "../data/db";
 import type { PartAnswer } from "../data/types";
 import { requestSync } from "../lib/sync";
 import { EDITOR_EXTENSIONS } from "./Editor";
-import { TrackChanges, trackChangesKey } from "./trackChangesExtension";
+import { CommentHighlights, commentHighlightsKey, TrackChanges, trackChangesKey } from "./trackChangesExtension";
+import type { AnswerComment } from "../data/types";
 
 interface Props {
   attemptId: string;
   answer: PartAnswer;
   /** Hide the tracked-changes markup and show the revised text clean. */
   clean: boolean;
+  /** The margin comments on this part, whose highlights the editor draws; and the one open. */
+  comments?: AnswerComment[];
+  active?: string | null;
+  /** Called after the text changed, so the margin can line its cards up again. */
+  onLayout?: () => void;
 }
 
 /**
@@ -18,14 +24,15 @@ interface Props {
  * typed is kept as a revision beside the answer, which stays exactly as it was submitted, so
  * marks and history still refer to the real attempt. Saves itself as you type.
  */
-export default function RevisedAnswer({ attemptId, answer, clean }: Props) {
+export default function RevisedAnswer({ attemptId, answer, clean, comments = [], active = null, onLayout }: Props) {
   const [saved, setSaved] = useState(false);
   const timer = useRef(0);
   const editor = useEditor({
-    extensions: [...EDITOR_EXTENSIONS, TrackChanges.configure({ original: answer.doc, originalText: answer.text })],
+    extensions: [...EDITOR_EXTENSIONS, TrackChanges.configure({ original: answer.doc, originalText: answer.text }), CommentHighlights.configure({ original: answer.doc, originalText: answer.text })],
     content: ((answer.revision?.doc ?? answer.doc) as object | null) ?? (answer.text ? { type: "doc", content: answer.text.split(/\r?\n/).map((line) => ({ type: "paragraph", content: line ? [{ type: "text", text: line }] : [] })) } : undefined),
     editorProps: { attributes: { role: "textbox", "aria-label": "Your revised answer", "aria-multiline": "true" } },
     onUpdate: ({ editor }) => {
+      onLayout?.();
       const doc = editor.getJSON(); const text = editor.getText({ blockSeparator: "\n" });
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => {
@@ -40,6 +47,9 @@ export default function RevisedAnswer({ attemptId, answer, clean }: Props) {
     },
   });
   useEffect(() => { if (editor) editor.view.dispatch(editor.state.tr.setMeta(trackChangesKey, { shown: !clean })); }, [editor, clean]);
+  const anchored = comments.filter((c) => c.partLabel === answer.label && !c.replyTo && !(c.start === 0 && c.end === 0 && !c.quote));
+  const anchoredKey = anchored.map((c) => `${c.id}:${c.start}:${c.end}`).join("|");
+  useEffect(() => { if (editor) { editor.view.dispatch(editor.state.tr.setMeta(commentHighlightsKey, { comments: anchored.map((c) => ({ id: c.id, start: c.start, end: c.end, quote: c.quote })), active })); onLayout?.(); } }, [editor, anchoredKey, active]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   useEffect(() => { editor?.commands.focus("end"); }, [editor]);
   if (!editor) return null;

@@ -345,6 +345,8 @@ export interface Session {
   attemptIds: string[];
   /** Pauses ordinary papers; fixed-format exams ignore this field. */
   pausedAt?: number;
+  /** Timed practice in whole sets: each set's own clock, keyed by its first question, started when the set is opened. */
+  setClocks?: Record<string, { startedAt: number; totalSec: number }>;
   /** The six-digit study code this paper was started from, when friends sit the same questions. */
   studyCode?: string;
 }

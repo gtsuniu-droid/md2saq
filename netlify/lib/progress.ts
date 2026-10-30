@@ -39,7 +39,7 @@ export function weeklyFigures(attempts: AttemptRow[], questionCount: Map<string,
  * student last joined or left (0: before that was recorded), which decides between devices
  * that disagree about it.
  */
-export interface BoardRecord { name: string; photo?: string; visible: boolean; choiceAt?: number; week: string; count: number; sets: number; prevCount: number; prevSets: number; at: number }
+export interface BoardRecord { name: string; photo?: string; visible: boolean; choiceAt?: number; week: string; count: number; sets: number; prevCount: number; prevSets: number; /** Everything ever, as the device counted it. */ total?: number; totalSets?: number; at: number }
 /** What a device posts: `visible` is left out when the device has no say (it never saw the choice). */
 export type Posted = Omit<BoardRecord, "visible"> & { visible?: boolean };
 
@@ -98,7 +98,7 @@ export function adopt(stored: BoardRecord | undefined, legacy: Rec): BoardRecord
 export type Rec = Omit<BoardRecord, "name" | "visible"> & { name?: string; visible?: boolean };
 export type Pair = { week: { questions: number; sets: number }; last: { questions: number; sets: number } };
 const zero: Pair = { week: { questions: 0, sets: 0 }, last: { questions: 0, sets: 0 } };
-export interface Row { uid: string; name: string; email?: string; photo?: string; nickname?: string; joined: boolean; questions: number; sets: number; prevQuestions: number; prevSets: number; lastSeenAt?: number; source: "server" | "device" | "none" }
+export interface Row { uid: string; name: string; email?: string; photo?: string; nickname?: string; joined: boolean; questions: number; sets: number; prevQuestions: number; prevSets: number; total?: number; totalSets?: number; lastSeenAt?: number; source: "server" | "device" | "none" }
 export type CacheBody = { at: number; week: number; accounts: number; rowsWithEmail: Row[]; stale?: true; asOf?: number; reason?: string };
 /** The board table every visitor is served, kept in the bank's store; a full count is redone once it is this old. */
 export const CACHE_KEY = "progress-cache";
@@ -123,12 +123,14 @@ export function fromRecord(n: Rec | undefined, now: number): Pair {
 export function overlay(cur: Row | undefined, uid: string, p: Rec, now: number): Row {
   const f = fromRecord(p, now);
   const device = { questions: f.week.questions, sets: f.week.sets, prevQuestions: f.last.questions, prevSets: f.last.sets };
-  if (!cur) return { uid, name: (p.name ?? "").trim().split(/\s+/)[0] || "Student", photo: p.photo, nickname: p.name, joined: p.visible !== false, lastSeenAt: p.at, ...device, source: "device" };
+  if (!cur) return { uid, name: (p.name ?? "").trim().split(/\s+/)[0] || "Student", photo: p.photo, nickname: p.name, joined: p.visible !== false, lastSeenAt: p.at, ...device, total: p.total ?? 0, totalSets: p.totalSets ?? 0, source: "device" };
   const raised = device.questions > cur.questions || device.sets > cur.sets;
   return {
     ...cur, nickname: p.name ?? cur.nickname, photo: p.photo ?? cur.photo, joined: p.visible !== false, lastSeenAt: Math.max(cur.lastSeenAt ?? 0, p.at),
     questions: Math.max(cur.questions, device.questions), sets: Math.max(cur.sets, device.sets),
     prevQuestions: Math.max(cur.prevQuestions, device.prevQuestions), prevSets: Math.max(cur.prevSets, device.prevSets),
+    // All-time figures only grow; the device's own count is the fuller one.
+    total: Math.max(cur.total ?? 0, p.total ?? 0), totalSets: Math.max(cur.totalSets ?? 0, p.totalSets ?? 0),
     source: raised ? "device" : cur.source,
   };
 }
@@ -136,7 +138,7 @@ export function overlay(cur: Row | undefined, uid: string, p: Rec, now: number):
 /** What the public board shows: joined accounts only, under their nicknames, no emails. */
 export function publicBoard(body: CacheBody) {
   const state = body.stale ? { stale: true, asOf: body.asOf, reason: body.reason } : {};
-  return { week: body.week, ...state, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets })) };
+  return { week: body.week, ...state, rows: body.rowsWithEmail.filter((r) => r.joined).map((r) => ({ uid: r.uid, name: r.nickname || r.name, photo: r.photo, questions: r.questions, sets: r.sets, prevQuestions: r.prevQuestions, prevSets: r.prevSets, total: r.total ?? 0, totalSets: r.totalSets ?? 0 })) };
 }
 
 /**
