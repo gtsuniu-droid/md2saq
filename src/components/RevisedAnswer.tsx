@@ -32,7 +32,9 @@ export default function RevisedAnswer({ attemptId, answer, clean }: Props) {
         void db.transaction("rw", db.attempts, async () => {
           const attempt = await db.attempts.get(attemptId);
           if (!attempt) return;
-          await db.attempts.update(attemptId, { answers: attempt.answers.map((a) => a.label === answer.label ? { ...a, revision: { doc, text, at: Date.now() } } : a) });
+          const has = attempt.answers.some((a) => a.label === answer.label);
+          const answers = has ? attempt.answers.map((a) => a.label === answer.label ? { ...a, revision: { doc, text, at: Date.now() } } : a) : [...attempt.answers, { label: answer.label, text: "", doc: null, revision: { doc, text, at: Date.now() } }];
+          await db.attempts.update(attemptId, { answers });
         }).then(() => { requestSync(); setSaved(true); window.setTimeout(() => setSaved(false), 1500); });
       }, 700);
     },

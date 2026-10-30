@@ -156,6 +156,8 @@ export interface AnswerComment {
   updatedAt: number;
   /** "marker": left with suggested marks, rather than written by the student. */
   by?: "marker";
+  /** A reply: shown under the comment with this id, with no passage of its own. */
+  replyTo?: string;
 }
 
 export interface Attempt {

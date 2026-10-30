@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { wordDiff } from "./wordDiff";
+import { diffWithOrigin, wordDiff } from "./wordDiff";
 
 const show = (a: string, b: string) => wordDiff(a, b).map((p) => (p.kind === "same" ? p.text : p.kind === "del" ? `[-${p.text}-]` : `[+${p.text}+]`)).join("");
 
@@ -25,4 +25,11 @@ it("keeps line breaks and ignores case when matching words", () => {
   expect(parts.filter((p) => p.kind === "same").map((p) => p.text).join("")).toBe("carpal tunnel\n- ");
   expect(parts.find((p) => p.kind === "del")?.text).toBe("typing");
   expect(parts.find((p) => p.kind === "ins")?.text).toBe("wakes at night");
+});
+
+it("tells where kept and removed text sat in the original", () => {
+  const before = "Aspirin and PCI"; const parts = diffWithOrigin(before, "Aspirin 300 mg then PCI");
+  for (const p of parts) if (p.at !== undefined) expect(before.slice(p.at, p.at + p.text.length)).toBe(p.text);
+  expect(parts.filter((p) => p.at !== undefined).map((p) => p.text).join("")).toBe("Aspirin and PCI");
+  expect(parts.filter((p) => p.kind === "ins").every((p) => p.at === undefined)).toBe(true);
 });

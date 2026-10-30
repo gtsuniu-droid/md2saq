@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { Link, useNavigate } from "react-router";
 import { db, getSettings, newId } from "../data/db";
-import { ERROR_TAGS, type Attempt, type Mark, type PartMark, type Question, type QuestionSet } from "../data/types";
+import { ERROR_TAGS, type Attempt, type Mark, type PartAnswer, type PartMark, type Question, type QuestionSet } from "../data/types";
 import QuickEdit from "./QuickEdit";
 import AmbossText from "./AmbossText";
 import AnswerHtml from "./AnswerHtml";
@@ -37,6 +37,7 @@ import { readCatalogue } from "../lib/library";
 import { hasUnpublishedEdits } from "../lib/bankEditState";
 import { discardAttempts } from "../lib/discardAttempts";
 import { isBlankAttempt } from "../lib/blankAttempt";
+import { hasAnswerContent } from "../lib/answerContent";
 
 interface Props {
   attemptId: string;
@@ -366,8 +367,11 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const [typing, setTyping] = useState<Record<string, string>>({});
   const [noteOpen, setNoteOpen] = useState(!!draft.notes || !!draft.learningPoint || draft.errorTags.length > 0);
   const [folded, setFolded] = useState<Record<string, boolean>>({});
-  const toggle = (key: string) => setFolded((f) => ({ ...f, [key]: !f[key] }));
-  const foldButton = (key: string, open: boolean) => <button type="button" className="mark-model-toggle" aria-expanded={open} onClick={() => toggle(key)}><ModelIcon />Model answer<svg className={"mark-model-chevron" + (open ? " open" : "")} viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></button>;
+  // Whether a part's model answer started folded (see isFolded below).
+  const defaultFold = useRef<Record<string, boolean>>({});
+  const toggle = (key: string) => setFolded((f) => ({ ...f, [key]: !(f[key] ?? defaultFold.current[key] ?? false) }));
+  // The whole bar folds and unfolds; the buttons on it do their own thing without folding it.
+  const foldButton = (key: string, open: boolean) => <button type="button" className="mark-model-toggle" aria-expanded={open} onClick={(e) => { e.stopPropagation(); toggle(key); }}><ModelIcon />Model answer<svg className={"mark-model-chevron" + (open ? " open" : "")} viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></button>;
   const patch = <K extends keyof MarkingDraft>(key: K, value: MarkingDraft[K]) => onChange({ ...draft, [key]: value });
   // A score typed for a part marks it as scored, so a deliberate nought counts as marked.
   const setPart = (label: string, change: Partial<PartMark>) => onChange({ ...draft, parts: draft.parts.map((p) => (p.label === label ? { ...p, ...change } : p)), ...(change.score !== undefined ? { scored: [...new Set([...(draft.scored ?? []), label])] } : {}) });
@@ -402,7 +406,6 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
   const marginComments = comments.filter((c) => !(c.by === "marker" && isGeneralComment(c)));
   // A part that arrives marked has its model answer folded; one being marked now stays open
   // while the score is typed or ticked (the first look decides, not every keystroke).
-  const defaultFold = useRef<Record<string, boolean>>({});
   const isFolded = (key: string, label: string) => {
     if (folded[key] !== undefined) return folded[key];
     if (defaultFold.current[key] === undefined) defaultFold.current[key] = hasMark || !!suggested?.has(label) || !!draft.scored?.includes(label);
@@ -441,7 +444,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
       {(question.images ?? []).filter((im) => im.place === "question").map((im) => (
         <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
       ))}
-      {wholeModel && <div className={"mark-panel whole" + (isFolded("whole", "") ? " folded" : "")}><div className="mark-panel-head">{foldButton("whole", !isFolded("whole", ""))}<span style={{ flex: 1 }} />{admin && <button type="button" className="small link mark-model-edit" onClick={() => onEdit(question)}>Edit</button>}</div>{!isFolded("whole", "") && <div className="mark-model-body"><ModelAnswerContent answer={question} /></div>}</div>}
+      {wholeModel && <div className={"mark-panel whole" + (isFolded("whole", "") ? " folded" : "")}><div className="mark-panel-head" onClick={() => toggle("whole")}>{foldButton("whole", !isFolded("whole", ""))}<span style={{ flex: 1 }} />{admin && <button type="button" className="small link mark-model-edit" onClick={(e) => { e.stopPropagation(); onEdit(question); }}>Edit</button>}</div>{!isFolded("whole", "") && <div className="mark-model-body"><ModelAnswerContent answer={question} /></div>}</div>}
 
       {partsInfo.map((pi) => {
         const pm = draft.parts.find((p) => p.label === pi.part.label);
@@ -452,7 +455,10 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
         const verdicts = verdictsFor(label);
         const list = richAnswerDocument(pi.part) ? null : tickList(pi.part.modelAnswer);
         const showing = view[label] ?? "answer";
-        const revised = !!pi.answer?.revision;
+        // A part never answered still has a place to write one now; it is kept as a revision like any other.
+        const answer: PartAnswer = pi.answer ?? { label, text: "", doc: null };
+        const revised = !!answer.revision;
+        const blank = !hasAnswerContent(answer);
         return (
           <div key={pi.part.label} className="part mark-part" id={id} onFocusCapture={() => onFocusPart(id)}>
             {(pi.part.text || pi.part.textDoc) ? (
@@ -472,20 +478,20 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               {verdicts.length ? <div className="mark-verdict-text">{verdicts.map((v) => <p key={v.id} className="pre">{v.text}</p>)}<span className="muted mark-verdict-by">Marker</span></div>
                 : list && asTicks[label] && !isFolded(label, label) ? <p className="muted mark-verdict-hint">Tick the points you made below and the score follows, or type it.</p> : null}
             </div>
-            {pi.answer && (pm.rewrite || revised || showing !== "answer") && <div className="mark-views" role="group" aria-label="Answer view">
+            {(pm.rewrite || revised || showing !== "answer") && <div className="mark-views" role="group" aria-label="Answer view">
               <button type="button" className="small" aria-pressed={showing === "answer"} onClick={() => setView((v) => ({ ...v, [label]: "answer" }))}>Your answer</button>
               {pm.rewrite && <button type="button" className="small" aria-pressed={showing === "full"} onClick={() => setView((v) => ({ ...v, [label]: "full" }))}>Full marks</button>}
-              <button type="button" className="small" aria-pressed={showing === "revise"} title="Rewrite your answer having read the model answer; what you submitted is kept as it was" onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>{revised ? "Revised" : "Revise"}</button>
+              <button type="button" className="small" aria-pressed={showing === "revise"} title="Rewrite your answer having read the model answer; what you submitted is kept as it was" onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>{revised ? (blank ? "Written" : "Revised") : blank ? "Write an answer" : "Revise"}</button>
               {showing === "full" && <span className="muted">Struck text earned nothing; teal text earns the mark.</span>}
               {showing === "revise" && <span className="mark-views-tools"><button type="button" className="small link" onClick={() => setClean((c) => ({ ...c, [label]: !c[label] }))}>{clean[label] ? "Show changes" : "Hide changes"}</button>{revised && <button type="button" className="small link" onClick={() => void discardRevision(label)}>Discard</button>}</span>}
             </div>}
-            {showing === "revise" && pi.answer ? <RevisedAnswer key={`${attempt.id}:${label}:revise`} attemptId={attempt.id} answer={pi.answer} clean={!!clean[label]} />
+            {showing === "revise" ? <RevisedAnswer key={`${attempt.id}:${label}:revise`} attemptId={attempt.id} answer={answer} clean={!!clean[label]} />
             : showing === "full" && pm.rewrite ? <div className="full-marks">
               <p className="pre">{wordDiff(pi.answer?.text ?? "", pm.rewrite).map((part, i) => part.kind === "del" ? <del key={i}>{part.text}</del> : part.kind === "ins" ? <ins key={i}>{part.text}</ins> : <span key={i}>{part.text}</span>)}</p>
               <p className="muted full-marks-note">Your own words, with the smallest changes that would earn each mark.</p>
             </div>
-            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={pi.answer?.doc} text={pi.answer?.text} comments={marginComments} margin
-                actions={pi.answer && !pm.rewrite && !revised ? <button type="button" className="small comment-add" title="Rewrite your answer having read the model answer; what you submitted is kept as it was" onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>Revise</button> : undefined} />}
+            : <CommentedAnswer key={`${attempt.id}:${label}`} attemptId={attempt.id} partLabel={label} doc={answer.doc} text={answer.text} comments={marginComments} margin revision={answer.revision?.text}
+                actions={!pm.rewrite && !revised ? <button type="button" className="small comment-add" title={blank ? "Write an answer now; the submitted blank is kept as it was" : "Rewrite your answer having read the model answer; what you submitted is kept as it was"} onClick={() => setView((v) => ({ ...v, [label]: "revise" }))}>{blank ? "Write an answer" : "Revise"}</button> : undefined} />}
             {previous && (
               <details className="mark-previous">
                 <summary>Previous attempt{previousMark ? ` (${previousMark.parts.find((p) => p.label === pi.part.label)?.score ?? "?"}/${previousMark.parts.find((p) => p.label === pi.part.label)?.maxScore ?? "?"})` : ""}</summary>
@@ -493,11 +499,11 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               </details>
             )}
             <div className={"mark-panel" + (isFolded(label, label) ? " folded" : "")}>
-              <div className="mark-panel-head">
+              <div className="mark-panel-head" onClick={() => toggle(label)}>
                 {foldButton(label, !isFolded(label, label))}
                 <span style={{ flex: 1 }} />
-                {list && !isFolded(label, label) && <button type="button" className="small link mark-model-edit" aria-pressed={!!asTicks[label]} title="Tick the points you made and the score adds up; or read the model answer as written" onClick={() => setAsTicks((t) => ({ ...t, [label]: !t[label] }))}>{asTicks[label] ? "As written" : "Tick list"}</button>}
-                {admin && <button type="button" className="small link mark-model-edit" onClick={() => onEdit(question)}>Edit</button>}
+                {list && !isFolded(label, label) && <button type="button" className="small link mark-model-edit" aria-pressed={!!asTicks[label]} title="Tick the points you made and the score adds up; or read the model answer as written" onClick={(e) => { e.stopPropagation(); setAsTicks((t) => ({ ...t, [label]: !t[label] })); }}>{asTicks[label] ? "As written" : "Tick list"}</button>}
+                {admin && <button type="button" className="small link mark-model-edit" onClick={(e) => { e.stopPropagation(); onEdit(question); }}>Edit</button>}
               </div>
               {!isFolded(label, label) && <div className="mark-model-body">
                 {list && asTicks[label] ? <>

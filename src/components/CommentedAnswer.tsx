@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import gsap from "gsap";
 import type { AnswerComment } from "../data/types";
 import { getSettings, newId } from "../data/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, validCommentAnchor, writeAnswerComment, type AnswerAnchor } from "../lib/answerComments";
+import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, repliesTo, validCommentAnchor, writeAnswerComment, type AnswerAnchor } from "../lib/answerComments";
 import { requestSync } from "../lib/sync";
 import { renderAnswer } from "../lib/answerRender";
+import { diffWithOrigin } from "../lib/wordDiff";
 
 interface Props {
   attemptId: string;
@@ -17,12 +18,14 @@ interface Props {
   margin?: boolean;
   /** Further quiet actions shown beside "Add comment" in the margin layout. */
   actions?: ReactNode;
+  /** The answer as revised after reading the model answer: shown in place of the original with the changes marked, comments still on the words they were on. */
+  revision?: string;
 }
 
 const CARD_GAP = 8;
 
 /** Comments belong to the submitted answer, independently of whether it has been marked. */
-export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions }: Props) {
+export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions, revision }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const me = useLiveQuery(async () => (await getSettings()).cloudUser, []);
   const when = (ts: number) => { if (!ts) return ""; const d = new Date(ts); const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); return d.toDateString() === new Date().toDateString() ? `${time} Today` : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${time}`; };
@@ -47,8 +50,35 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   const [tops, setTops] = useState<Record<string, number>>({});
   const [marginHeight, setMarginHeight] = useState(0);
   const [resized, setResized] = useState(0);
-  const mine = comments.filter((c) => c.partLabel === partLabel);
+  const all = comments.filter((c) => c.partLabel === partLabel);
+  // Cards are the comments themselves; replies hang under them.
+  const mine = all.filter((c) => !c.replyTo);
   const current = mine.find((c) => c.id === active);
+  const [reply, setReply] = useState("");
+  const replyInput = useRef<HTMLTextAreaElement>(null);
+  const sendReply = async (to: string) => {
+    const text = reply.trim();
+    if (!text || busy) return;
+    setBusy(true); setStatus("");
+    try { await writeAnswerComment(attemptId, { id: newId(), partLabel, ...GENERAL_ANCHOR, text, createdAt: 0, updatedAt: 0, replyTo: to }); requestSync(); setReply(""); }
+    catch (e) { setStatus(e instanceof Error ? e.message : "Could not save the reply."); }
+    finally { setBusy(false); }
+  };
+  // Replies show under their comment whether or not it is open; the box to add one only when it is.
+  const thread = (c: AnswerComment, open: boolean) => {
+    const replies = repliesTo(all, c.id);
+    if (!replies.length && !open) return null;
+    return <div className="comment-thread">
+      {replies.map((r) => <div key={r.id} className="comment-reply" onClick={() => { if (!open) { setActive(c.id); setDraft(null); setStatus(""); } }}>
+        {r.by === "marker" ? marker(r.createdAt) : author(r.createdAt)}
+        <p className="pre">{r.text}</p>
+        {open && <button type="button" className="small link comment-reply-delete" disabled={busy} onClick={(e) => { e.stopPropagation(); void remove(r); }} aria-label="Delete reply">Delete</button>}
+      </div>)}
+      {open && <textarea ref={replyInput} className="comment-reply-box" rows={1} aria-label="Reply" placeholder="Reply" value={reply} disabled={busy}
+        onChange={(e) => { setReply(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; }}
+        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendReply(c.id); } if (e.key === "Escape") setReply(""); }} />}
+    </div>;
+  };
   const rendered = useMemo(() => {
     const container = renderAnswer(doc, text);
     const plain = container.textContent ?? "";
@@ -83,7 +113,8 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`;
     el.focus(); el.setSelectionRange(el.value.length, el.value.length);
   }, [draft?.id]);
-  useEffect(() => { setSelection(null); setDraft(null); setActive(null); setShowList(false); setStatus(""); }, [attemptId, partLabel]);
+  useEffect(() => { setSelection(null); setDraft(null); setActive(null); setShowList(false); setStatus(""); setReply(""); }, [attemptId, partLabel]);
+  useEffect(() => { setReply(""); }, [active]);
 
   // Margin layout: each card sits level with its highlight, pushed down only to avoid the one above.
   const ordered = useMemo(() => [...mine].sort((a, b) => a.start - b.start), [mine]);
@@ -103,7 +134,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       for (const id of ids) if (next[id] === undefined || top < next[id]) next[id] = top;
     });
     setTops((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
-  }, [margin, rendered.html, mine.length, resized]);
+  }, [margin, rendered.html, mine.length, resized, revision]);
   useEffect(() => {
     if (!margin) return;
     let frame = 0;
@@ -135,7 +166,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     }
     setLaid((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
     setMarginHeight(Math.max(cursor, ...Object.values(next).map((top, i) => top + height(Object.keys(next)[i]))));
-  }, [margin, cardOrder, active, draft?.id, draft?.text, status]);
+  }, [margin, cardOrder, active, draft?.id, draft?.text, status, reply, all.length]);
   // Cards glide to their places rather than jumping; a card's first position is set outright.
   const placed = useRef(new Set<string>());
   useLayoutEffect(() => {
@@ -159,7 +190,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   }, [margin, draft?.id]);
 
   const captureSelection = () => {
-    if (draft || !root.current || (!text && !doc)) return;
+    if (draft || revision !== undefined || !root.current || (!text && !doc)) return;
     const selected = window.getSelection();
     if (!selected?.rangeCount || selected.isCollapsed) { setSelection(null); return; }
     const range = selected.getRangeAt(0);
@@ -218,7 +249,23 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     finally { setBusy(false); }
   };
 
-  const answer = <div ref={root} className="answer-html" onPointerUp={captureSelection} onKeyUp={captureSelection} onClick={(e) => openHighlight(e.target)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } }} dangerouslySetInnerHTML={{ __html: rendered.html }} />;
+  // The revision read in place of the original: kept and removed words carry the comments made on them.
+  const revised = useMemo(() => {
+    if (revision === undefined) return null;
+    const original = text || doc ? rendered.plain : "";
+    const valid = comments.filter((c) => c.partLabel === partLabel && validCommentAnchor(original, c));
+    const segments = (value: string, offset: number) => commentSegments(value, valid, offset).map((seg, i) => seg.ids.length
+      ? <mark key={i} className={"answer-comment-highlight" + (seg.ids.some((id) => id === active) ? " active" : "")} data-comment-ids={JSON.stringify(seg.ids)} role="button" tabIndex={0} aria-label={`Comment on: ${seg.text}`}>{seg.text}</mark>
+      : <span key={i}>{seg.text}</span>);
+    return <p className="pre answer-diff">{diffWithOrigin(original, revision).map((part, i) =>
+      part.kind === "ins" ? <ins key={i} className="tc-ins">{part.text}</ins>
+      : part.kind === "del" ? <del key={i} className="tc-del">{part.at === undefined ? part.text : segments(part.text, part.at)}</del>
+      : <span key={i}>{part.at === undefined ? part.text : segments(part.text, part.at)}</span>)}</p>;
+  }, [revision, rendered.plain, text, doc, comments, partLabel, active]);
+  const onAnswerKey = (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { const target = e.target as HTMLElement; if (target.hasAttribute("data-comment-ids")) { e.preventDefault(); openHighlight(target); } } };
+  const answer = revised
+    ? <div ref={root} className="answer-html" onClick={(e) => openHighlight(e.target)} onKeyDown={onAnswerKey}>{revised}</div>
+    : <div ref={root} className="answer-html" onPointerUp={captureSelection} onKeyUp={captureSelection} onClick={(e) => openHighlight(e.target)} onKeyDown={onAnswerKey} dangerouslySetInnerHTML={{ __html: rendered.html }} />;
 
   const draftCard = (positioned: boolean) => draft && (
     <div key={draft.id} ref={(el) => { if (el) cardRefs.current.set(draft.id, el); else cardRefs.current.delete(draft.id); }} className="answer-comment-card draft" role="region" aria-label="Write a comment" >
@@ -238,6 +285,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
       {showList && <div className="answer-comment-list">{mine.map((c) => <button className="small" key={c.id} onClick={() => { setActive(c.id); setDraft(null); }}><span>{c.quote ? `“${c.quote}”` : "Whole answer"}</span><span>{c.text}</span></button>)}</div>}
       {draft ? draftCard(false) : current && <div className="answer-comment-card" role="region" aria-label="Answer comment">
         {current.quote ? <blockquote>{current.quote}</blockquote> : <p className="muted comment-scope">On the whole answer</p>}<p className="pre">{current.text}</p>
+        {repliesTo(all, current.id).map((r) => <p key={r.id} className="pre comment-reply-plain"><span className="muted">{r.by === "marker" ? "Marker" : "You"}: </span>{r.text}</p>)}
         {!validCommentAnchor(rendered.plain, current) && <p className="muted">The original passage has changed.</p>}
         <div className="row"><button className="small" disabled={busy} onClick={() => { setDraft({ ...current }); setStatus(""); }}>Edit comment</button><button className="small link" disabled={busy} onClick={() => void remove()}>Remove comment</button><button className="small link" onClick={() => setActive(null)}>Close</button></div>
       </div>}
@@ -270,6 +318,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
             <button className="small link" disabled={busy} onClick={() => { setDraft({ ...c }); setStatus(""); }}>Edit</button>
             <button className="small link" disabled={busy} onClick={() => void remove(c)}>Delete</button>
           </div>}
+          {thread(c, open)}
         </div>;
       })}
       {draft && !mine.some((c) => c.id === draft.id) && draftCard(true)}

@@ -49,3 +49,17 @@ export function wordDiff(before: string, after: string): DiffPart[] {
     return [...(trimmed ? [{ kind: p.kind, text: trimmed }] : []), ...(tail ? [{ kind: "same" as const, text: tail }] : [])];
   }).reduce<DiffPart[]>((acc, p) => { const last = acc[acc.length - 1]; if (last && last.kind === p.kind) last.text += p.text; else acc.push({ ...p }); return acc; }, []);
 }
+
+/** The parts with, for text that was in the original (kept or removed), its offset there. */
+export function diffWithOrigin(before: string, after: string): (DiffPart & { at?: number })[] {
+  let at = 0;
+  return wordDiff(before, after).flatMap((p) => {
+    if (p.kind === "ins") return [p];
+    if (before.startsWith(p.text, at)) { const part = { ...p, at }; at += p.text.length; return [part]; }
+    // Whitespace left over from an insertion runs into the kept text that follows: it is not in the original.
+    const lead = p.text.length - p.text.trimStart().length;
+    const rest = p.text.slice(lead);
+    if (lead && rest && before.startsWith(rest, at)) { const part = { ...p, text: rest, at }; at += rest.length; return [{ kind: p.kind, text: p.text.slice(0, lead) }, part]; }
+    return [p];
+  });
+}

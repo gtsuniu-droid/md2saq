@@ -35,6 +35,7 @@ export function commentSegments(text: string, comments: AnswerComment[], offset 
 export async function writeAnswerComment(attemptId: string, comment: AnswerComment, expectedUpdatedAt?: number): Promise<void> {
   const owner = (await getSettings()).cloudUser?.uid ?? "";
   if (!comment.id || !comment.text.trim()) throw new Error("Write a comment first.");
+  if (comment.replyTo && !isGeneralComment(comment)) throw new Error("A reply has no passage of its own.");
   if (!isGeneralComment(comment) && (!comment.quote.trim() || !Number.isInteger(comment.start) || !Number.isInteger(comment.end) || comment.start < 0 || comment.end <= comment.start)) throw new Error("Select some answer text and write a comment.");
   await db.transaction("rw", db.attempts, async () => {
     const attempt = await db.attempts.get(attemptId);
@@ -57,6 +58,9 @@ export async function deleteAnswerComment(attemptId: string, id: string, expecte
     const existing = comments.find((c) => c.id === id);
     if (!existing) return;
     if (existing.updatedAt !== expectedUpdatedAt) throw new Error("This comment changed elsewhere. Reopen it before removing it.");
-    await db.attempts.update(attemptId, { answerComments: comments.filter((c) => c.id !== id) });
+    await db.attempts.update(attemptId, { answerComments: comments.filter((c) => c.id !== id && c.replyTo !== id) });
   });
 }
+
+/** The replies under a comment, oldest first. */
+export const repliesTo = (comments: AnswerComment[], id: string): AnswerComment[] => comments.filter((c) => c.replyTo === id).sort((a, b) => a.createdAt - b.createdAt);

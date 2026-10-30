@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, expect, it } from "vitest";
 import { db } from "../data/db";
 import { DEFAULT_SETTINGS, type AnswerComment } from "../data/types";
-import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, validCommentAnchor, writeAnswerComment } from "./answerComments";
+import { GENERAL_ANCHOR, commentSegments, deleteAnswerComment, isGeneralComment, repliesTo, validCommentAnchor, writeAnswerComment } from "./answerComments";
 const comment = (id='c'): AnswerComment => ({id,partLabel:'a',start:3,end:9,quote:'answer',text:'Explain this point',createdAt:0,updatedAt:0});
 it('anchors exact occurrences and refuses stale or invalid passages',()=>{
  expect(validCommentAnchor('My answer and answer',comment())).toBe(true);
@@ -60,4 +60,18 @@ it('accepts a general comment on the whole answer and never highlights it',async
  expect((await db.attempts.get('a'))?.answerComments?.[0]).toMatchObject({id:'g',quote:'',start:0,end:0,text:'Explain this point'});
  await expect(writeAnswerComment('a',{...general,id:'empty',text:'  '})).rejects.toThrow('Write a comment');
  await expect(writeAnswerComment('a',{...comment('bad'),quote:''})).rejects.toThrow('Select');
+});
+
+it('keeps replies under their comment, with no passage of their own, and removes them with it',async()=>{
+ await writeAnswerComment('a',comment());
+ const reply={id:'r1',partLabel:'a',...GENERAL_ANCHOR,text:'Agreed, fixed in the revision.',createdAt:5,updatedAt:0,replyTo:'c'};
+ await writeAnswerComment('a',reply);
+ await expect(writeAnswerComment('a',{...reply,id:'r2',start:3,end:9,quote:'answer'})).rejects.toThrow(/no passage/);
+ let comments=(await db.attempts.get('a'))!.answerComments!;
+ expect(repliesTo(comments,'c').map((c)=>c.id)).toEqual(['r1']);
+ expect(commentSegments('My answer',comments).flatMap((s)=>s.ids)).toEqual(['c']); // the reply highlights nothing
+ const parent=comments.find((c)=>c.id==='c')!;
+ await deleteAnswerComment('a','c',parent.updatedAt);
+ comments=(await db.attempts.get('a'))!.answerComments!;
+ expect(comments).toEqual([]);
 });
