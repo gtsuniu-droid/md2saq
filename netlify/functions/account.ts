@@ -9,7 +9,7 @@ import { verifiedUid } from "../lib/idtoken";
  *   GET  /api/account/changes?since=<cursor>  what arrived since then, and the cursor for next time;
  *                                              the account's old Firestore records fold in behind it, a page per pull
  *   POST /api/account/fetch   { keys: [{ table, id }] }  the records named, as many as fit, and which are left
- *   POST /api/account/push    { attempts, marks, settings, session, deletes }  a device's changes
+ *   POST /api/account/push    { attempts, marks, notes, settings, session, deletes }  a device's changes
  */
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -33,7 +33,7 @@ export default async (req: Request, context?: Context): Promise<Response> => {
     }
     if (req.method === "POST" && action === "fetch") {
       const body = (await req.json().catch(() => null)) as { keys?: unknown } | null;
-      const keys = Array.isArray(body?.keys) ? body!.keys.filter((k): k is { table: Table; id: string } => !!k && typeof k === "object" && (k.table === "attempts" || k.table === "marks") && validId(k.id)) : null;
+      const keys = Array.isArray(body?.keys) ? body!.keys.filter((k): k is { table: Table; id: string } => !!k && typeof k === "object" && (k.table === "attempts" || k.table === "marks" || k.table === "notes") && validId(k.id)) : null;
       if (!keys) return json({ error: "Name the records to fetch." }, 400);
       return json(await fetchRecords(uid, keys));
     }

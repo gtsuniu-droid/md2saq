@@ -2,16 +2,20 @@ import { openNamedStore, type JsonStore } from "./store";
 import type { AttemptRow } from "./progress";
 
 /**
- * Each account's own records (attempts, marks, settings, the paper in progress) in the site's
- * blob store, so that saving answers and syncing them between devices never waits on a
- * Firestore read budget or trips its document size limit. One blob per record, plus a small
- * index per account that says what exists and when it last changed: a device asks the index
- * for what changed since its last pull, then reads just those records.
+ * Each account's own records (attempts, marks, private notes, settings, the paper in
+ * progress) in the site's blob store, so that saving answers and syncing them between devices
+ * never waits on a Firestore read budget or trips its document size limit. One blob per
+ * record, plus a small index per account that says what exists and when it last changed: a
+ * device asks the index for what changed since its last pull, then reads just those records.
  *
  * Newest wins by the record's own change stamp `_m`, as it does on devices. A deletion is a
  * tombstone in the index with the time it was made; a record edited after that comes back.
+ * Tombstones older than `TOMBSTONE_MS` are dropped whenever the index is next rewritten.
+ * Notes are never deleted outright: a deleted note is a note with `deleted: true`.
  */
-export type Table = "attempts" | "marks";
+export type Table = "attempts" | "marks" | "notes";
+/** Tables a deletion may name: notes carry their own deleted flag instead. */
+export type DeletableTable = "attempts" | "marks";
 export type Rec = Record<string, unknown> & { id: string; _m?: number };
 
 export interface Entry {
@@ -22,6 +26,8 @@ export interface Entry {
   del?: true;
   /** Attempts only, so the board can be counted from the index alone: when it was submitted, its question, the bank set it sits in, and whether nothing was written. */
   s?: number; q?: string; b?: string; o?: number; e?: true;
+  /** Notes only: the revision, so a device holding this very version need not fetch it. */
+  r?: string;
 }
 export interface AccountIndex {
   v: 1;
@@ -35,12 +41,14 @@ export interface AccountIndex {
   sessionAt?: number;
   /** The Firestore import: done when `imported` is set; otherwise how far it got, when it was last claimed, and when it last failed. */
   imported?: number;
+  /** Set once the account's Firestore notes have been folded in too (they moved later than the rest). */
+  importedNotes?: number;
   importTried?: number;
   importFailedAt?: number;
   importState?: { stage: number; pageToken?: string };
 }
-export interface PushBody { attempts?: Rec[]; marks?: Rec[]; settings?: Rec; session?: Rec; deletes?: { id: string; table: Table; at: number }[] }
-export interface Change { id: string; table: Table; _m: number; deleted?: true }
+export interface PushBody { attempts?: Rec[]; marks?: Rec[]; notes?: Rec[]; settings?: Rec; session?: Rec; deletes?: { id: string; table: DeletableTable; at: number }[] }
+export interface Change { id: string; table: Table; _m: number; deleted?: true; rev?: string }
 /** `next` is the cursor for the following pull: a little before now, so a version taken in while this reply was being made is seen next time rather than never. */
 export interface Changes { at: number; next: number; entries: Change[]; settings?: Rec; session?: Rec }
 
@@ -49,6 +57,8 @@ export const BYTES_PER_CALL = 3_500_000;
 /** How many records one fetch may name; the rest are handed back for the next call. */
 export const KEYS_PER_CALL = 400;
 export const CURSOR_MARGIN_MS = 5_000;
+/** How long a deletion stays in the index for devices that have not pulled since. */
+export const TOMBSTONE_MS = 90 * 24 * 3600 * 1000;
 /** Any id a device may have minted over the years, bar the key separator: a push is never refused for an old-style id. */
 const ID = /^[^/\\?#\s]{1,200}$/;
 
@@ -66,6 +76,7 @@ const hasImage = (node: unknown): boolean => !!node && typeof node === "object" 
 
 /** What the index keeps of a record, beyond its stamp. */
 export function summarise(table: Table, r: Rec): Partial<Entry> {
+  if (table === "notes") return typeof r.revision === "string" ? { r: r.revision } : {};
   if (table !== "attempts") return {};
   const answers = Array.isArray(r.answers) ? (r.answers as { text?: unknown; doc?: unknown }[]) : [];
   const blank = answers.length === 0 || answers.every((a) => !(typeof a.text === "string" && a.text.trim()) && !hasImage(a.doc));
@@ -87,34 +98,46 @@ export function validPush(b: unknown): PushBody | null {
   if (!b || typeof b !== "object") return null;
   const p = b as Record<string, unknown>;
   const list = (v: unknown): Rec[] | null => v === undefined ? [] : Array.isArray(v) && v.length <= 2000 && v.every(validRecord) ? (v as Rec[]) : null;
-  const attempts = list(p.attempts); const marks = list(p.marks);
-  if (!attempts || !marks) return null;
+  const attempts = list(p.attempts); const marks = list(p.marks); const notes = list(p.notes);
+  if (!attempts || !marks || !notes) return null;
   if (p.settings !== undefined && !validRecord(p.settings)) return null;
   if (p.session !== undefined && !validRecord(p.session)) return null;
   const deletes = p.deletes === undefined ? [] : Array.isArray(p.deletes) && p.deletes.length <= 5000 && p.deletes.every((d) => d && typeof d === "object" && typeof d.id === "string" && ID.test(d.id) && (d.table === "attempts" || d.table === "marks") && typeof d.at === "number") ? (p.deletes as PushBody["deletes"]) : null;
   if (!deletes) return null;
-  return { attempts, marks, ...(p.settings ? { settings: p.settings as Rec } : {}), ...(p.session ? { session: p.session as Rec } : {}), deletes };
+  return { attempts, marks, ...(notes.length ? { notes } : {}), ...(p.settings ? { settings: p.settings as Rec } : {}), ...(p.session ? { session: p.session as Rec } : {}), deletes };
 }
 
-/** Whether a record stamped `m` replaces the index's entry `cur` (none, older, or a tombstone it postdates). */
-const newer = (cur: Entry | undefined, m: number) => !cur || m > cur._m || (m === cur._m && !cur.del);
+/** Whether a record stamped `m` replaces the index's entry `cur`: none, or older. The same stamp is the same version, already kept. */
+const newer = (cur: Entry | undefined, m: number) => !cur || m > cur._m;
+
+/** Tombstones a device cannot still need: made (or taken in) longer ago than `TOMBSTONE_MS`. */
+export function pruneTombstones(entries: Record<string, Entry>, now: number): Record<string, Entry> {
+  const out: Record<string, Entry> = {};
+  for (const [id, e] of Object.entries(entries)) if (!e.del || now - (e.a ?? e._m) < TOMBSTONE_MS) out[id] = e;
+  return out;
+}
 
 /**
  * Take a device's changes in: records newer than what is kept are written and indexed,
- * deletions become tombstones, settings and the paper follow their own stamps.
+ * deletions become tombstones, settings and the paper follow their own stamps. A push that
+ * brings nothing newer (a device re-sending what the store already has) leaves the index
+ * untouched, so it is neither rewritten nor read again by every other device.
  */
 export async function push(uid: string, body: PushBody, now = Date.now(), store = accounts()): Promise<{ at: number }> {
-  const incoming: [Table, Rec][] = [...(body.attempts ?? []).map((r): [Table, Rec] => ["attempts", r]), ...(body.marks ?? []).map((r): [Table, Rec] => ["marks", r])];
+  const incoming: [Table, Rec][] = [...(body.attempts ?? []).map((r): [Table, Rec] => ["attempts", r]), ...(body.marks ?? []).map((r): [Table, Rec] => ["marks", r]), ...(body.notes ?? []).map((r): [Table, Rec] => ["notes", r])];
   const before = (await readIndex(uid, store)) ?? empty();
   const deleted = new Map((body.deletes ?? []).map((d) => [d.id, d]));
   // A record and its own deletion in one push: the later of the two wins.
   const writes = incoming.filter(([, r]) => newer(before.entries[r.id], r._m ?? 0) && !((deleted.get(r.id)?.at ?? -1) >= (r._m ?? 0)));
-  // A deletion applies unless the record was edited (or deleted) later than it was made.
-  const drops = (body.deletes ?? []).filter((d) => { const cur = before.entries[d.id]; return !cur || cur._m <= d.at; });
+  // A deletion applies unless the record was edited later than it was made, or is already a tombstone from then or later.
+  const drops = (body.deletes ?? []).filter((d) => { const cur = before.entries[d.id]; return !cur || (cur.del ? cur._m < d.at : cur._m <= d.at); });
+  const newerSettings = !!body.settings && (body.settings._m ?? 0) > (before.settings?._m ?? 0);
+  const newerSession = !!body.session && (body.session._m ?? 0) > (before.session?._m ?? 0);
+  if (!writes.length && !drops.length && !newerSettings && !newerSession) return { at: now };
   for (let i = 0; i < writes.length; i += 16) await Promise.all(writes.slice(i, i + 16).map(([t, r]) => store.setJSON(recordKey(uid, t, r.id), r)));
   for (let i = 0; i < drops.length; i += 16) await Promise.all(drops.slice(i, i + 16).map((d) => store.delete(recordKey(uid, d.table, d.id)).catch(() => undefined)));
   await store.update<AccountIndex>(indexKey(uid), (current) => {
-    const index = current && current.v === 1 ? { ...current, entries: { ...current.entries } } : empty();
+    const index = current && current.v === 1 ? { ...current, entries: pruneTombstones(current.entries, now) } : empty();
     for (const [t, r] of writes) {
       const m = r._m ?? 0;
       if (newer(index.entries[r.id], m)) index.entries[r.id] = { t, _m: m, a: now, ...summarise(t, r) };
@@ -137,7 +160,7 @@ export async function changes(uid: string, since: number, now = Date.now(), stor
   const next = now - CURSOR_MARGIN_MS;
   if (!idx) return { at: now, next, entries: [] };
   const arrived = (e: { a?: number; _m: number }) => e.a ?? e._m;
-  const entries: Change[] = Object.entries(idx.entries).filter(([, e]) => arrived(e) > since).map(([id, e]) => ({ id, table: e.t, _m: e._m, ...(e.del ? { deleted: true as const } : {}) }));
+  const entries: Change[] = Object.entries(idx.entries).filter(([, e]) => arrived(e) > since).map(([id, e]) => ({ id, table: e.t, _m: e._m, ...(e.del ? { deleted: true as const } : {}), ...(e.r ? { rev: e.r } : {}) }));
   return {
     at: now, next, entries,
     ...(idx.settings && (idx.settingsAt ?? idx.settings._m ?? 0) > since ? { settings: idx.settings } : {}),

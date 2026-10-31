@@ -3,15 +3,46 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../data/db";
 import type { PresentationNote } from "../data/types";
 import { noteIsNewer, noteSection, validateNote } from "./noteModel";
-import { saveNote, syncNotes } from "./notes";
-import { fetchNotes, reconcileNote } from "./firebase";
+import { getNotesSyncState, saveNote, syncNotes } from "./notes";
+import { syncNow } from "./sync";
 import { exportAll, importAll } from "./exportImport";
-vi.mock("./firebase", () => ({ currentUser: vi.fn(async () => null), fetchNotes: vi.fn(async () => []), reconcileNote: vi.fn(async (_uid, note) => note) }));
+
+// The account store, in memory, behind the real /api/account function: a sync here goes through the same code as on the site.
+const blobs = new Map<string, unknown>();
+vi.mock("../../netlify/lib/store", () => ({
+  hosted: () => false,
+  openNamedStore: () => ({
+    get: async (k: string) => blobs.get(k) ?? null,
+    setJSON: async (k: string, v: unknown) => { blobs.set(k, structuredClone(v)); },
+    delete: async (k: string) => { blobs.delete(k); },
+    list: async (prefix: string) => [...blobs.keys()].filter((k) => k.startsWith(prefix)),
+    update: async <T,>(k: string, change: (c: T | null) => T | null | Promise<T | null>) => { const next = await change((blobs.get(k) as T) ?? null); if (next !== null) blobs.set(k, structuredClone(next)); return next; },
+  }),
+}));
+vi.mock("../../netlify/lib/idtoken", () => ({ verifiedUid: async (req: Request) => req.headers.get("authorization")?.slice(7) || null }));
+vi.mock("../../netlify/functions/mcp-token", () => ({ firebaseEnv: () => ({ projectId: "p" }) }));
+vi.mock("../../netlify/lib/recount", () => ({ serviceAccount: () => null, accessToken: async () => "", listPage: async () => ({ docs: [], nextPageToken: "" }) }));
+vi.mock("./firebase", () => ({ cloudConfigured: () => true, currentUser: async () => ({ uid: "alice" }), idToken: async () => "alice" }));
+const account = (await import("../../netlify/functions/account")).default;
+
+const requests: string[] = [];
+let offline = false;
+let duringPush: (() => Promise<void>) | null = null;
 const note = (changes: Partial<PresentationNote> = {}): PresentationNote => ({ id: "n1", presentationId: "abdominal-pain", title: "Approach", kind: "Lecture Notes", doc: { type: "doc", content: [{ type: "paragraph" }] }, text: "", source: "", ownerId: "alice", createdAt: 1, _m: 10, revision: "a", deleted: false, ...changes });
+/** What another of Alice's devices pushed straight to the store. */
+const elsewhere = (notes: PresentationNote[]) => account(new Request("http://x/api/account/push", { method: "POST", headers: { authorization: "Bearer alice" }, body: JSON.stringify({ attempts: [], marks: [], notes, deletes: [] }) }));
+const stored = (id: string) => blobs.get(`alice/notes/${id}`) as PresentationNote | undefined;
+
 beforeEach(async () => {
-  await Promise.all([db.notes.clear(), db.settings.clear()]);
-  vi.mocked(fetchNotes).mockReset().mockResolvedValue([]);
-  vi.mocked(reconcileNote).mockReset().mockImplementation(async (_uid, n) => n);
+  await Promise.all(db.tables.map((t) => t.clear()));
+  blobs.clear(); requests.length = 0; offline = false; duringPush = null;
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const path = new URL(url, "http://x").pathname.replace("/api/account/", "");
+    requests.push(`${init?.method ?? "GET"} ${path}`);
+    if (offline) throw new Error("Offline");
+    if (path === "push" && duringPush) await duringPush();
+    return account(new Request(`http://x${url}`, init));
+  });
 });
 describe("presentation notes", () => {
   it("keeps legacy notes in Overview and preserves clinical sections through backup", async () => {
@@ -31,34 +62,60 @@ describe("presentation notes", () => {
     await expect(saveNote(note({ title: "Stale" }), "old-revision")).rejects.toThrow("changed on another device");
     expect((await db.notes.get("n1"))?.revision).toBe(saved.revision);
   });
-  it("claims device notes for the account but never uploads another account's notes", async () => {
+  it("claims device notes for the account, uploads only its own, and afterwards sends and reads only what changed", async () => {
     await db.notes.bulkPut([note({ ownerId: "" }), note({ id: "bob-note", ownerId: "bob" })]);
     await syncNotes({ uid: "alice" });
-    expect(reconcileNote).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(reconcileNote).mock.calls[0][1].ownerId).toBe("alice");
+    expect(getNotesSyncState().status).toBe("synced");
+    expect(stored("n1")?.ownerId).toBe("alice");
+    expect(stored("bob-note")).toBeUndefined();
     expect((await db.notes.get("bob-note"))?.ownerId).toBe("bob");
+    // The note went up once; the pull then heard of it but, holding that very version, did not fetch it.
+    expect(requests).toEqual(["POST push", "GET changes"]);
+    // Nothing changed since: one request, no records read, no library loaded.
+    requests.length = 0;
+    await syncNow({ uid: "alice" });
+    expect(requests).toEqual(["GET changes"]);
+    // An edit goes up on its own, without the other notes.
+    const edited = await saveNote({ ...note(), title: "Approach, revised" }, "a");
+    await db.notes.put(note({ id: "n2", title: "Second", _m: Date.now() }));
+    requests.length = 0;
+    await syncNow({ uid: "alice" });
+    expect(requests).toEqual(["POST push", "GET changes"]);
+    expect(stored("n1")?.revision).toBe(edited.revision);
+    expect(stored("n2")?.title).toBe("Second");
   });
   it("pulls newer cloud edits and deletions without first overwriting them", async () => {
     await db.notes.put(note());
-    vi.mocked(fetchNotes).mockResolvedValue([note({ _m: 20, revision: "b", deleted: true })]);
+    await elsewhere([note({ _m: 20, revision: "b", deleted: true })]);
     await syncNotes({ uid: "alice" });
-    expect(reconcileNote).not.toHaveBeenCalled();
     expect((await db.notes.get("n1"))?.deleted).toBe(true);
+    expect(stored("n1")?._m).toBe(20);
+    // A note that is only in the account arrives too; another account's never does.
+    await elsewhere([note({ id: "n3", title: "From the other device", _m: 30 })]);
+    blobs.set("alice/notes/stray", note({ id: "stray", ownerId: "carol" }));
+    await syncNow({ uid: "alice" });
+    expect((await db.notes.get("n3"))?.title).toBe("From the other device");
+    expect(await db.notes.get("stray")).toBeUndefined();
   });
-  it("preserves edits made while a cloud transaction was in flight", async () => {
+  it("preserves edits made while the sync was in flight", async () => {
     await db.notes.put(note());
-    vi.mocked(reconcileNote).mockImplementation(async (_uid, n) => {
-      await db.notes.put(note({ _m: 30, revision: "c", title: "Typed during sync" }));
-      return { ...n, _m: 20, revision: "b" };
-    });
+    duringPush = async () => { await db.notes.put(note({ _m: Date.now(), revision: "c", title: "Typed during sync" })); };
     await syncNotes({ uid: "alice" });
     expect((await db.notes.get("n1"))?.title).toBe("Typed during sync");
+    duringPush = null;
+    await syncNow({ uid: "alice" });
+    expect(stored("n1")?.title).toBe("Typed during sync");
   });
   it("keeps failed uploads locally for a later retry", async () => {
     await db.notes.put(note());
-    vi.mocked(reconcileNote).mockRejectedValue(new Error("Offline"));
+    offline = true;
     await expect(syncNotes({ uid: "alice" })).rejects.toThrow("Offline");
+    expect(getNotesSyncState().status).toBe("error");
     expect(await db.notes.get("n1")).toEqual(note());
+    expect(stored("n1")).toBeUndefined();
+    offline = false;
+    await syncNotes({ uid: "alice" });
+    expect(stored("n1")?.title).toBe("Approach");
   });
   it("supports recoverable deletion and deterministic simultaneous revisions", async () => {
     const saved = await saveNote(note());

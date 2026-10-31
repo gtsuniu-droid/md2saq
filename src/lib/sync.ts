@@ -1,10 +1,10 @@
 import { loadLibrary, readCatalogue } from "./library";
 import { syncFromBank } from "./bank";
 import { db, getSettings, withRemoteWrites } from "../data/db";
-import type { Attempt, Mark, Question, QuestionSet, QuestionRef, Session, Settings } from "../data/types";
+import type { Attempt, Mark, PresentationNote, Question, QuestionSet, QuestionRef, Session, Settings } from "../data/types";
 import { cloudConfigured, currentUser, idToken, type CloudUser } from "./firebase";
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
-import { syncNotes } from "./notes";
+import { noteIsNewer, validateNote } from "./noteModel";
 import { belongsToAccount } from "./progressAccount";
 import { publishWeeklyCount } from "./leaderboard";
 import { newerSocial } from "./social";
@@ -12,18 +12,20 @@ import { newerSocial } from "./social";
 /**
  * Offline-first sync of a signed-in person's own records: attempts (drafts
  * included, so a paper's answers are saved to the account as they are typed),
- * marks, settings and the paper in progress. The browser database stays the
- * working copy; records modified since the last push go up, records modified
- * in the account since the last pull come down, newest wins. The account lives
- * in the site's own store (/api/account, see netlify/lib/accountStore.ts), not
- * Firestore, so saving never waits on a read budget or a document size limit.
- * Questions and sets are not synced here; they come from the shared bank, and a
- * record carries a QuestionRef so it can find its question on a device whose
- * question ids differ.
+ * marks, private presentation notes, settings and the paper in progress. The
+ * browser database stays the working copy; records modified since the last push
+ * go up, records modified in the account since the last pull come down, newest
+ * wins. The account lives in the site's own store (/api/account, see
+ * netlify/lib/accountStore.ts), not Firestore, so saving never waits on a read
+ * budget or a document size limit, and a pull reads only what changed rather
+ * than every note. Questions and sets are not synced here; they come from the
+ * shared bank, and a record carries a QuestionRef so it can find its question
+ * on a device whose question ids differ.
  */
 
 type Rec = Record<string, unknown> & { id: string; _m?: number };
-type Table = "attempts" | "marks";
+type Table = "attempts" | "marks" | "notes";
+type DeletableTable = "attempts" | "marks";
 /** About what one call to the account store may carry; the store stops at 6 MB. */
 const BYTES_PER_CALL = 3_500_000;
 /** A record too big to send at all (pictures pasted by the dozen) stays on the device and is reported, not retried forever. */
@@ -41,13 +43,13 @@ async function account<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 /** Send a device's changes in calls that fit; settings, the paper and deletions travel with the first. Returns how many records were too big to send. */
-async function pushToAccount(parts: { attempts: Rec[]; marks: Rec[]; settings?: Rec; session?: Rec; deletes: { id: string; table: Table; at: number }[] }): Promise<number> {
+async function pushToAccount(parts: { attempts: Rec[]; marks: Rec[]; notes: Rec[]; settings?: Rec; session?: Rec; deletes: { id: string; table: DeletableTable; at: number }[] }): Promise<number> {
   const bytes = (r: Rec) => new TextEncoder().encode(JSON.stringify(r)).length;
-  const items = [...parts.attempts.map((r) => ({ table: "attempts" as Table, r, size: bytes(r) })), ...parts.marks.map((r) => ({ table: "marks" as Table, r, size: bytes(r) }))];
+  const items = [...parts.attempts.map((r) => ({ table: "attempts" as Table, r, size: bytes(r) })), ...parts.marks.map((r) => ({ table: "marks" as Table, r, size: bytes(r) })), ...parts.notes.map((r) => ({ table: "notes" as Table, r, size: bytes(r) }))];
   let skipped = 0; let first = true;
   const send = async (batch: typeof items) => {
     const body = {
-      attempts: batch.filter((i) => i.table === "attempts").map((i) => i.r), marks: batch.filter((i) => i.table === "marks").map((i) => i.r),
+      attempts: batch.filter((i) => i.table === "attempts").map((i) => i.r), marks: batch.filter((i) => i.table === "marks").map((i) => i.r), notes: batch.filter((i) => i.table === "notes").map((i) => i.r),
       ...(first ? { ...(parts.settings ? { settings: parts.settings } : {}), ...(parts.session ? { session: parts.session } : {}), deletes: parts.deletes } : {}),
     };
     first = false;
@@ -68,6 +70,8 @@ const CURSOR_PULL = "sync.pulledAt";
 const SESSION_PUSHED = "sync.sessionPushedM";
 /** Set once a device has uploaded everything it holds to the account store (which replaced Firestore). */
 const STORE_SEEDED = "sync.accountStoreSeeded";
+/** Set once a device has uploaded all its notes to the account store (they moved there after the rest). */
+const NOTES_SEEDED = "sync.notesSeeded";
 const SETTINGS_SYNCED: (keyof Settings)[] = [
   "minutesPerMark",
   "autoImportBank",
@@ -194,14 +198,11 @@ export async function syncNow(user?: CloudUser | null): Promise<SyncResult | nul
   const job = syncQueue.catch(() => undefined).then(async () => {
     reportSync({ uid: u.uid, status: "syncing" });
     try {
-      const notesResult = syncNotes(u).then(() => null, (error: unknown) => error);
       const pushed = await push(u.uid);
       const pulled = await pull(u.uid);
-      const notesError = await notesResult;
-      if (notesError) throw notesError;
       reportSync({ uid: u.uid, status: "synced", at: Date.now() });
-      // The board follows every push of answers, told once the sync is done so this device's figures are the account's.
-      if (pushed.count) void publishWeeklyCount(u.uid).catch(() => undefined);
+      // The board follows every sync that moved answers, told once the sync is done so this device's figures are the account's.
+      if (pushed.count || pulled.applied) void publishWeeklyCount(u.uid, { ifChanged: !pushed.count }).catch(() => undefined);
       return { pushed: pushed.count, pulled: pulled.applied, unresolved: pulled.unresolved + pushed.skipped };
     } catch (error) {
       reportSync({ uid: u.uid, status: "error", message: error instanceof Error ? error.message : "Could not sync history." });
@@ -217,16 +218,22 @@ async function push(uid: string): Promise<{ count: number; skipped: number }> {
   // The first push to the account store sends everything this device holds, whatever was pushed
   // to Firestore before: nothing a student has on any device is left behind by the move.
   const seeded = (await db.meta.get(`${STORE_SEEDED}:${uid}`))?.value === 1;
+  const notesSeeded = seeded && (await db.meta.get(`${NOTES_SEEDED}:${uid}`))?.value === 1;
   const since = seeded ? await cursor(uid, CURSOR_PUSH) : -1;
   const started = Date.now();
-  const [attempts, marks, settings, deletes] = await Promise.all([
+  // Device-only notes join the first account used to sync them; existing account notes never move.
+  await db.notes.where("ownerId").equals("").modify({ ownerId: uid });
+  const [attempts, marks, notes, settings, deletes] = await Promise.all([
     db.attempts.where("_m").above(since).filter((a) => belongsToAccount(a, uid)).toArray(),
     db.marks.where("_m").above(since).filter((m) => belongsToAccount(m, uid)).toArray(),
+    db.notes.where("_m").above(notesSeeded ? since : -1).filter((n) => n.ownerId === uid).toArray(),
     db.settings.get("settings"),
     db.syncDeletes.filter((d) => belongsToAccount(d, uid)).toArray(),
   ]);
   const attemptDocs = attempts.map((a) => stripUndefined(a) as unknown as Rec);
   const markDocs = marks.map((m) => stripUndefined(m) as unknown as Rec);
+  notes.forEach((n) => validateNote(n));
+  const noteDocs = notes.map((n) => stripUndefined(n) as unknown as Rec);
   const settingsDoc = settings?.cloudUser?.uid === uid && (settings._m ?? 0) > since ? (stripUndefined(settingsForCloud(settings)) as unknown as Rec) : undefined;
   const env = loadSessionEnvelope(uid);
   let sessionDoc: Rec | undefined;
@@ -242,26 +249,34 @@ async function push(uid: string): Promise<{ count: number; skipped: number }> {
     const doc: CloudSession = { id: "session", _m: env._m, session: env.session, qrefs };
     sessionDoc = stripUndefined(doc) as unknown as Rec;
   }
-  const deleteDocs = deletes.map((d) => ({ id: d.id, table: d.table as Table, at: d.at }));
-  const skipped = attemptDocs.length || markDocs.length || settingsDoc || sessionDoc || deleteDocs.length
-    ? await pushToAccount({ attempts: attemptDocs, marks: markDocs, settings: settingsDoc, session: sessionDoc, deletes: deleteDocs })
+  const deleteDocs = deletes.map((d) => ({ id: d.id, table: d.table as DeletableTable, at: d.at }));
+  const skipped = attemptDocs.length || markDocs.length || noteDocs.length || settingsDoc || sessionDoc || deleteDocs.length
+    ? await pushToAccount({ attempts: attemptDocs, marks: markDocs, notes: noteDocs, settings: settingsDoc, session: sessionDoc, deletes: deleteDocs })
     : 0;
   if (sessionDoc) await setCursor(uid, SESSION_PUSHED, env._m);
   if (deletes.length) await db.syncDeletes.bulkDelete(deletes.map((d) => d.id));
   // A record stamped in the same millisecond the push began is caught next time.
   await setCursor(uid, CURSOR_PUSH, started - 1);
   if (!seeded) await db.meta.put({ id: `${STORE_SEEDED}:${uid}`, value: 1 });
+  if (!notesSeeded) await db.meta.put({ id: `${NOTES_SEEDED}:${uid}`, value: 1 });
   return { count: attemptDocs.length + markDocs.length - skipped, skipped };
 }
 
 async function pull(uid: string): Promise<{ applied: number; unresolved: number }> {
   const since = await cursor(uid, CURSOR_PULL);
   // The store says what arrived since the last pull, by its own clock, and gives the cursor for the next one.
-  const changed = await account<{ at: number; next: number; entries: { id: string; table: Table; _m: number; deleted?: true }[]; settings?: Rec; session?: Rec }>(`changes?since=${since}`);
+  const changed = await account<{ at: number; next: number; entries: { id: string; table: Table; _m: number; deleted?: true; rev?: string }[]; settings?: Rec; session?: Rec }>(`changes?since=${since}`);
   const started = changed.next;
+  // A note this device already holds in that very version (its own push, echoed back) is not fetched.
+  const held = async (e: { table: Table; id: string; _m: number; rev?: string }) => {
+    if (e.table !== "notes") return false;
+    const local = await db.notes.get(e.id);
+    return !!local && local.ownerId === uid && !noteIsNewer({ _m: e._m, revision: e.rev ?? "" } as PresentationNote, local);
+  };
   // The records that changed, a bounded page per call; whatever did not fit comes back as remaining.
   const fetched: { table: Table; record: Rec }[] = [];
-  let keys = changed.entries.filter((e) => !e.deleted).map((e) => ({ table: e.table, id: e.id }));
+  let keys: { table: Table; id: string }[] = [];
+  for (const e of changed.entries) if (!e.deleted && !await held(e)) keys.push({ table: e.table, id: e.id });
   while (keys.length) {
     const page = await account<{ records: { table: Table; record: Rec }[]; remaining: { table: Table; id: string }[] }>("fetch", { method: "POST", body: JSON.stringify({ keys: keys.slice(0, 400) }) });
     fetched.push(...page.records);
@@ -271,8 +286,30 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
   }
   const attempts = fetched.filter((f) => f.table === "attempts").map((f) => f.record);
   const marks = fetched.filter((f) => f.table === "marks").map((f) => f.record);
+  const notes = fetched.filter((f) => f.table === "notes").map((f) => f.record as unknown as PresentationNote);
   const settingsDocs = [changed.settings, changed.session].filter((d): d is Rec => !!d);
   const deleted = changed.entries.filter((e) => e.deleted).map((e) => ({ id: e.id, table: e.table }));
+  // Nothing arrived: the usual case, over in one request, without reading the library.
+  if (!fetched.length && !settingsDocs.length && !deleted.length) {
+    await setCursor(uid, CURSOR_PULL, started);
+    return { applied: 0, unresolved: 0 };
+  }
+  let applied = 0;
+  let unresolved = 0;
+  if (notes.length) {
+    await db.transaction("rw", db.notes, async () => {
+      for (const note of notes) {
+        try { validateNote(note); } catch (e) { console.warn(`sync: note ${note.id} in the account could not be read:`, e); continue; }
+        if (note.ownerId !== uid) continue;
+        const latest = await db.notes.get(note.id);
+        if (!latest || (latest.ownerId === uid && noteIsNewer(note, latest))) { await db.notes.put(note); applied++; }
+      }
+    });
+  }
+  if (!attempts.length && !marks.length && !settingsDocs.length && !deleted.length) {
+    await setCursor(uid, CURSOR_PULL, started);
+    return { applied, unresolved };
+  }
   if (!await readCatalogue()) await syncFromBank().catch(() => undefined);
   const { questions, sets } = await loadLibrary();
   const byId = new Map(questions.map((q) => [q.id, q]));
@@ -283,8 +320,6 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
     if (bankId) byBankAndOrder.set(`${bankId}#${q.order}`, q);
   }
 
-  let applied = 0;
-  let unresolved = 0;
   await withRemoteWrites(async () => {
     await db.transaction("rw", db.attempts, db.marks, db.settings, async () => {
       for (const raw of attempts as unknown as Attempt[]) {
@@ -318,7 +353,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
           applied++;
         }
       }
-      for (const d of deleted as { id: string; table: "attempts" | "marks" }[]) {
+      for (const d of deleted as { id: string; table: Table }[]) {
         const table = d.table === "attempts" ? db.attempts : d.table === "marks" ? db.marks : null;
         const local = await table?.get(d.id);
         if (local && belongsToAccount(local, uid)) await table?.delete(d.id);
@@ -344,7 +379,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
 /** Forget the cursors, so the next sync compares everything again (used after sign-in on a device with history). */
 export async function resetCursors(): Promise<void> {
   const uid = (await getSettings()).cloudUser?.uid;
-  if (uid) await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED, STORE_SEEDED].map((key) => `${key}:${uid}`));
+  if (uid) await db.meta.bulkDelete([CURSOR_PUSH, CURSOR_PULL, SESSION_PUSHED, STORE_SEEDED, NOTES_SEEDED].map((key) => `${key}:${uid}`));
 }
 
 let requested: number | undefined;

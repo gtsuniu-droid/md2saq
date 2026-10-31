@@ -28,6 +28,27 @@ describe("answer recovery", () => {
     clearAnswerDraft("a", answers);
     expect(Object.keys(localStorage)).toHaveLength(0);
   });
+  it("keeps pictures out of the recovery copy and puts back the ones already saved", async () => {
+    const picture = (n: number) => "data:image/png;base64," + String(n).repeat(40_000);
+    const image = (src: string) => ({ type: "image", attrs: { src, alt: "ECG" } });
+    const doc = (...nodes: unknown[]) => ({ type: "doc", content: [{ type: "paragraph", content: nodes }] });
+    const saved = [{ label: "a", doc: doc({ type: "text", text: "Seen" }, image(picture(1))), text: "Seen" }];
+    await db.attempts.update("a", { answers: saved });
+    // Typed on, with a second picture pasted, just before the tab closed: the draft is written but the save is not.
+    const typed = [{ label: "a", doc: doc({ type: "text", text: "Seen, typed on" }, image(picture(1)), image(picture(2))), text: "Seen, typed on" }];
+    writeAnswerDraft("s", "a", typed);
+    expect(localStorage.getItem("saq-answer-draft:a")!.length).toBeLessThan(600);
+    await recoverAnswerDrafts("s");
+    const recovered = (await db.attempts.get("a"))!.answers[0];
+    expect(recovered.text).toBe("Seen, typed on");
+    expect(recovered.doc).toEqual(doc({ type: "text", text: "Seen, typed on" }, image(picture(1))));
+    // A save that has caught up clears the draft, pictures and all.
+    writeAnswerDraft("s", "a", typed);
+    clearAnswerDraft("a", saved);
+    expect(Object.keys(localStorage)).toHaveLength(1);
+    clearAnswerDraft("a", typed);
+    expect(Object.keys(localStorage)).toHaveLength(0);
+  });
   it("does not restore over a submitted answer or another session", async () => {
     writeAnswerDraft("s", "a", answers);
     await recoverAnswerDrafts("other");

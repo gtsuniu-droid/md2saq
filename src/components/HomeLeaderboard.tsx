@@ -2,10 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 import type { Settings } from "../data/types";
 import { cloudConfigured } from "../lib/firebase";
-import { boardName, firstSentence, questionsInWeek, sortRows, standing, weekStart } from "../lib/leaderboard";
+import { boardName, firstSentence, questionsInWeek, sortRows, standing, weekAttempts, weekStart } from "../lib/leaderboard";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "../data/db";
-import { belongsToAccount } from "../lib/progressAccount";
 import { joinLeaderboard } from "../lib/social";
 import { useLeaderboard } from "../lib/useLeaderboard";
 import { useSubmittedCount } from "../lib/useSubmittedCount";
@@ -23,7 +21,7 @@ export default function HomeLeaderboard({ settings }: { settings: Settings }) {
   const submitted = useSubmittedCount(user?.uid);
   const { rows, error } = useLeaderboard(user?.uid, [joined, settings.social?.username, submitted], 60_000);
   // This device's own figure for the week: shown whenever the board cannot be read, so it is never stale for you.
-  const mine = useLiveQuery(async () => user ? questionsInWeek(await db.attempts.filter((a) => belongsToAccount(a, user.uid) && a.submittedAt !== undefined).toArray(), user.uid, weekStart(Date.now())) : 0, [user?.uid, submitted]) ?? 0;
+  const mine = useLiveQuery(async () => { const start = weekStart(Date.now()); return user ? questionsInWeek(await weekAttempts(user.uid, start), user.uid, start) : 0; }, [user?.uid, submitted]) ?? 0;
 
   if (!cloudConfigured() || (error && !user)) return null;
   const sorted = rows ? sortRows(rows, "questions") : [];

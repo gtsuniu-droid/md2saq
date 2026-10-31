@@ -1,3 +1,4 @@
+import Dexie from "dexie";
 import { NICKNAME_JOINED_UNTIL } from "../../netlify/lib/progress";
 import { db, getSettings, patchSettings } from "../data/db";
 import type { Attempt, Question, SocialSettings } from "../data/types";
@@ -5,7 +6,7 @@ import { cloudConfigured, communityServices, idToken, services } from "./firebas
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
 import { isBlankAttempt } from "./blankAttempt";
-import { getProgressSyncState, syncNow } from "./sync";
+import { getProgressSyncState } from "./sync";
 
 /**
  * A weekly leaderboard, Monday to Sunday in the student's local time, counted by questions
@@ -106,6 +107,29 @@ export function setsInWeek(attempts: Attempt[], questions: Pick<Question, "id" |
   return completedSets(inWeek(attempts, ownerId, start), questions);
 }
 
+/** This account's submitted attempts with `from <= submittedAt < to`, from the owner-and-date index: no drafts, nobody else's. */
+export function submittedBetween(uid: string, from: number, to: number): Promise<Attempt[]> {
+  return db.attempts.where("[ownerId+submittedAt]").between([uid, from], [uid, to], true, false).toArray();
+}
+
+/** The account's submitted attempts in the week starting at `start`. */
+export const weekAttempts = (uid: string, start: number): Promise<Attempt[]> => submittedBetween(uid, start, start + 7 * DAY);
+
+/** What the figures depend on, read from the index alone without any answer: how many are submitted and when the last was. */
+export async function submittedSignature(uid: string): Promise<string> {
+  const range = () => db.attempts.where("[ownerId+submittedAt]").between([uid, Dexie.minKey], [uid, Dexie.maxKey]);
+  const [count, last] = await Promise.all([range().count(), range().reverse().limit(1).keys()]);
+  return `${count}@${(last[0] as unknown as [string, number] | undefined)?.[1] ?? 0}`;
+}
+
+/** All-time figures are the dear part (every submitted answer read); kept while nothing they depend on has changed. */
+let allTimeCache: { key: string; figures: { total: number; totalSets: number } } | null = null;
+async function allTime(uid: string, questions: Pick<Question, "id" | "setId">[], submitted: string): Promise<{ total: number; totalSets: number }> {
+  const key = `${uid}:${submitted}:${questions.length}`;
+  if (allTimeCache?.key !== key) allTimeCache = { key, figures: allTimeFigures(await submittedBetween(uid, Dexie.minKey as unknown as number, Dexie.maxKey as unknown as number), questions, uid) };
+  return allTimeCache.figures;
+}
+
 export function weekLabel(start: number): string {
   const fmt = (t: number) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
   return `${fmt(start)} to ${fmt(start + 6 * DAY)}`;
@@ -115,40 +139,44 @@ export function weekLabel(start: number): string {
  * Publish this week's figures for the signed-in person. Always kept; shown to others only once
  * they opt in. Resolves with the board as it stands with these figures in it, when the site
  * could hand it back, so opening the board takes one request; null means read it yourself.
- * With `ifChanged`, nothing is sent when the same figures went up in the last quarter hour.
- * Every board that comes back is passed to the views listening with `onBoard`.
+ * With `ifChanged`, nothing is sent when the same figures went up in the last quarter hour,
+ * decided from the indexes before any answer is read. Every board that comes back is passed
+ * to the views listening with `onBoard`.
  */
 export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolean } = {}): Promise<BoardRead | null> {
   if (!cloudConfigured()) return null;
   let settings = await getSettings();
   if (settings.cloudUser?.uid !== uid) return null;
-  // Count from the account's answers, not just this device's: pull first unless a sync just
-  // ran or is running now (sync itself publishes after pushing), waiting a few seconds at most
-  // so a stalled sync cannot hold the board. A device whose pull is fresh speaks for the
-  // account; one whose is not can only raise the week's figures.
-  const synced = (state = getProgressSyncState()) => state.uid === uid && state.status === "synced" && Date.now() - (state.at ?? 0) < FRESH_MS;
-  if (!synced() && getProgressSyncState().status !== "syncing") await Promise.race([syncNow(settings.cloudUser).catch(() => null), new Promise((r) => setTimeout(r, 4000))]);
-  const complete = synced();
+  // A device whose pull is fresh speaks for the account; one whose is not can only raise the
+  // week's figures. No sync is started from here: the sync loop publishes once it has moved answers.
+  const state = getProgressSyncState();
+  const complete = state.uid === uid && state.status === "synced" && Date.now() - (state.at ?? 0) < FRESH_MS;
   if (settings.social && nicknameMeantJoin(settings.social)) {
     const social = { ...settings.social, leaderboard: true, chosenAt: Date.now() };
     await patchSettings({ social });
     settings = { ...settings, social };
   }
-  const [attempts, library] = await Promise.all([db.attempts.filter((a) => belongsToAccount(a, uid) && a.submittedAt !== undefined).toArray(), loadLibrary()]);
-  const start = weekStart(Date.now());
+  const now = Date.now();
+  const start = weekStart(now);
   const photo = settings.cloudUser?.photo && /^https:\/\//.test(settings.cloudUser.photo) ? settings.cloudUser.photo.slice(0, 2000) : undefined;
   // Whether to be on the board is said only by a device that has seen the student choose.
   const social = settings.social;
+  const choice = social ? { visible: social.leaderboard === true } : null;
+  const head = { uid, name: boardName(settings), week: weekKey(now), ...(photo ? { photo } : {}) };
+  // Nothing the figures depend on has changed since the last post: nothing to send, and no answer read.
+  const submitted = await submittedSignature(uid);
+  const signature = JSON.stringify([head, complete, choice, social?.chosenAt ?? 0, submitted]);
+  if (opts.ifChanged && lastPost?.uid === uid && lastPost.signature === signature && now - lastPost.at < 15 * 60_000) return null;
+  const [thisWeek, lastWeek, library] = await Promise.all([weekAttempts(uid, start), weekAttempts(uid, start - 7 * DAY), loadLibrary()]);
   const row = {
-    uid, name: boardName(settings), week: weekKey(Date.now()), ...(photo ? { photo } : {}),
-    count: questionsInWeek(attempts, uid, start), sets: setsInWeek(attempts, library.questions, uid, start),
-    prevCount: questionsInWeek(attempts, uid, start - 7 * DAY), prevSets: setsInWeek(attempts, library.questions, uid, start - 7 * DAY),
-    ...allTimeFigures(attempts, library.questions, uid),
+    ...head,
+    count: questionsInWeek(thisWeek, uid, start), sets: setsInWeek(thisWeek, library.questions, uid, start),
+    prevCount: questionsInWeek(lastWeek, uid, start - 7 * DAY), prevSets: setsInWeek(lastWeek, library.questions, uid, start - 7 * DAY),
+    ...(await allTime(uid, library.questions, submitted)),
   };
   // Two copies: the site's own store, which the board is served from and which has no daily
   // read budget, and Firestore, kept for the Admin page and as a fallback. Only the first is
   // waited for, and Firestore is written only when the figures changed or every few hours.
-  const choice = social ? { visible: social.leaderboard === true } : null;
   const cloud = (async () => {
     if (!choice) return;
     const doc_ = { ...row, ...choice };
@@ -162,7 +190,7 @@ export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolea
   cloud.catch(() => undefined); // finishes in the background; only matters below if the post fails
   const body = JSON.stringify({ ...row, ...(complete ? { complete } : {}), ...(choice ? { ...choice, choiceAt: social?.chosenAt ?? 0 } : {}) });
   if (opts.ifChanged && lastPost?.uid === uid && lastPost.body === body && Date.now() - lastPost.at < 15 * 60_000) return null;
-  lastPost = { uid, body, at: Date.now() };
+  lastPost = { uid, body, signature, at: Date.now() };
   try {
     const token = await idToken();
     if (!token) throw new Error("Sign in first.");
@@ -178,8 +206,8 @@ export async function publishWeeklyCount(uid: string, opts: { ifChanged?: boolea
   }
 }
 
-/** The last figures sent, so moving between pages only posts when they changed. */
-let lastPost: { uid: string; body: string; at: number } | null = null;
+/** The last figures sent and what they were counted from, so moving between pages only posts when they changed. */
+let lastPost: { uid: string; body: string; signature: string; at: number } | null = null;
 
 function withMine(board: BoardRead): BoardRead {
   if (!lastPost) return board;

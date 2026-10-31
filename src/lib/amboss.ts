@@ -150,6 +150,15 @@ export async function restoreAmbossSession(): Promise<void> {
   if (!(await getSettings()).ambossToken && await db.deviceLogins.get("amboss")) await reconnect();
 }
 
+/** Drop cached terms and definitions past their time to live, so the cache never holds more than a month's use. */
+export async function sweepAmbossCache(now = Date.now()): Promise<number> {
+  const [phrases, groups] = await Promise.all([
+    db.ambossPhrases.where("fetchedAt").below(now - PHRASES_TTL).delete(),
+    db.ambossGroups.where("fetchedAt").below(now - GROUP_TTL).delete(),
+  ]);
+  return phrases + groups;
+}
+
 export async function ambossCheck(): Promise<boolean> {
   try {
     const r = await authenticatedCall<GraphQLResponse<{ currentUser: { eid: string } | null }>>({ action: "check" });

@@ -23,6 +23,7 @@ const firestore: Record<string, { name: string; fields: Record<string, unknown> 
     { name: "p/users/u1/settings/session", fields: { id: { stringValue: "session" }, _m: { integerValue: "95" }, session: { mapValue: { fields: { id: { stringValue: "s1" }, index: { integerValue: "0" } } } } } },
   ],
   deleted: [{ name: "p/users/u1/deleted/a2", fields: { id: { stringValue: "a2" }, table: { stringValue: "attempts" }, _m: { integerValue: "70" } } }],
+  notes: [{ name: "p/users/u1/notes/n1", fields: { id: { stringValue: "n1" }, _m: { integerValue: "80" }, revision: { stringValue: "r1" }, title: { stringValue: "Approach" }, presentationId: { stringValue: "abdominal-pain" }, deleted: { booleanValue: false } } }],
 };
 let failing = false;
 const pages: string[] = [];
@@ -53,13 +54,16 @@ it("folds an account's Firestore records in, newest wins against what devices pu
   // A device already pushed a newer copy of a1 to the new store before the import ran.
   await push("u1", { attempts: [{ id: "a1", _m: 200, questionId: "q1", answers: [], submittedAt: 200, elapsedSec: 9 }], marks: [], deletes: [] }, 1000);
   // Plenty of budget: everything in one go.
-  expect(await importFromFirestore("u1", 2000, undefined, 60_000, () => 2000)).toEqual({ done: true, imported: 3 });
-  expect(pages).toEqual(["attempts:", "attempts:1", "marks:", "settings:", "deleted:"]);
+  expect(await importFromFirestore("u1", 2000, undefined, 60_000, () => 2000)).toEqual({ done: true, imported: 4 });
+  expect(pages).toEqual(["attempts:", "attempts:1", "marks:", "settings:", "deleted:", "notes:"]);
   const index = await readIndex("u1");
   expect(index?.imported).toBe(2000);
+  expect(index?.importedNotes).toBe(2000);
   expect(index?.importState).toBeUndefined();
   const ch = await changes("u1", 0, 2001);
-  expect(ch.entries.map((e) => `${e.id}@${e._m}${e.deleted ? "-" : ""}`).sort()).toEqual(["a1@200", "a2@70-", "m1@110"]);
+  expect(ch.entries.map((e) => `${e.id}@${e._m}${e.deleted ? "-" : ""}`).sort()).toEqual(["a1@200", "a2@70-", "m1@110", "n1@80"]);
+  expect(ch.entries.find((e) => e.id === "n1")).toMatchObject({ table: "notes", rev: "r1" });
+  expect((await fetchRecords("u1", [{ table: "notes", id: "n1" }])).records[0].record).toMatchObject({ title: "Approach" });
   expect(ch.settings).toMatchObject({ minutesPerMark: 1.5 });
   expect(ch.session).toMatchObject({ session: { id: "s1", index: 0 } });
   expect((await fetchRecords("u1", [{ table: "attempts", id: "a1" }])).records[0].record.elapsedSec).toBe(9);
@@ -83,8 +87,19 @@ it("an import that runs out of time carries on where it left off at the next pul
   let now = 10_000;
   let last: { done: boolean } | null = null;
   for (let i = 0; i < 6 && !last?.done; i++) { now += 60_000; last = await importFromFirestore("u2", now, undefined, 0, clock); }
-  expect(last).toEqual({ done: true, imported: 0 });
-  expect((await changes("u2", 0, 99_999_999)).entries.map((e) => e.id).sort()).toEqual(["a1", "a2", "m1"]);
+  expect(last).toEqual({ done: true, imported: 1 });
+  expect((await changes("u2", 0, 99_999_999)).entries.map((e) => e.id).sort()).toEqual(["a1", "a2", "m1", "n1"]);
+});
+
+it("an account imported before notes moved picks up at the notes stage alone", async () => {
+  blobs.clear(); pages.length = 0;
+  await push("u4", { attempts: [], marks: [], deletes: [] }, 1000);
+  await (await import("../../netlify/lib/accountStore")).accounts().update<Record<string, unknown>>("u4/index", (cur) => ({ ...(cur ?? { v: 1, _m: 0, entries: {} }), imported: 500 }));
+  expect(importDue(await readIndex("u4"), 2000)).toBe(true);
+  expect(await importFromFirestore("u4", 2000, undefined, 60_000, () => 2000)).toEqual({ done: true, imported: 1 });
+  expect(pages).toEqual(["notes:"]);
+  expect(await readIndex("u4")).toMatchObject({ imported: 500, importedNotes: 2000 });
+  expect(importDue(await readIndex("u4"), 3000)).toBe(false);
 });
 
 it("a refused import is tried again later, not on every pull", async () => {
@@ -95,5 +110,5 @@ it("a refused import is tried again later, not on every pull", async () => {
   expect(importDue(await readIndex("u3"), 5000 + IMPORT_RETRY_MS)).toBe(true);
   expect(await importFromFirestore("u3", 5000 + 60_000)).toBeNull();
   failing = false;
-  expect(await importFromFirestore("u3", 5000 + IMPORT_RETRY_MS, undefined, 60_000, () => 1)).toEqual({ done: true, imported: 3 });
+  expect(await importFromFirestore("u3", 5000 + IMPORT_RETRY_MS, undefined, 60_000, () => 1)).toEqual({ done: true, imported: 4 });
 });

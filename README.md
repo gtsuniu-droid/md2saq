@@ -39,8 +39,8 @@ page shows "not reachable", which is expected.
 
 ## Google sign-in and cloud sync
 
-Optional. With it, a person's attempts, marks, stem highlights and settings follow them
-between devices; without it, everything stays on the device as before. Questions and
+Optional. With it, a person's attempts, marks, stem highlights, private notes and settings
+follow them between devices; without it, everything stays on the device as before. Questions and
 sets are not part of this; they still come from the shared bank.
 
 Setup, once, about ten minutes:
@@ -80,8 +80,8 @@ records in, and otherwise stands as an archive. Layout, in the `accounts` store:
 
 | Key | Holds |
 | --- | --- |
-| `{uid}/index` | One small JSON per account: every record's id, table, change stamp `_m`, arrival time `a`, a tombstone flag for deletions, and for attempts a summary (submitted at, question, bank set and position, blank or not) so the leaderboard counts from the index alone. Also settings, the paper in progress, and the Firestore import's progress. |
-| `{uid}/attempts/{id}`, `{uid}/marks/{id}` | One blob per record, stored whole: answers, pictures, comments and replies, revisions, highlights, marks with notes. |
+| `{uid}/index` | One small JSON per account: every record's id, table, change stamp `_m`, arrival time `a`, a tombstone flag for deletions, for attempts a summary (submitted at, question, bank set and position, blank or not) so the leaderboard counts from the index alone, and for notes the revision. Also settings, the paper in progress, and the Firestore import's progress. |
+| `{uid}/attempts/{id}`, `{uid}/marks/{id}`, `{uid}/notes/{id}` | One blob per record, stored whole: answers, pictures, comments and replies, revisions, highlights, marks with notes, private presentation notes. |
 
 How a sync goes: a device pushes the records changed since its last push (the first time,
 everything it holds) in calls of about 3.5 MB; the function writes the blobs, then updates
@@ -89,15 +89,55 @@ the index once with an etag retry, keeping the newer of each record by `_m`. A p
 `changes?since=<cursor>`; the index answers by arrival time and hands back the next cursor
 (five seconds before now, so a version landing while the reply is made is seen next time),
 and the device fetches the records named, at most 400 per call and about 3.5 MB per reply.
-Deletions are tombstones; a record edited after its deletion comes back. A record over 5 MB
-stays on its device and is counted, never retried forever. The old Firestore records are
-imported a page at a time behind pulls, with the position saved between pages, and left
-alone for ten minutes after a refusal.
+Deletions are tombstones; a record edited after its deletion comes back, and a tombstone
+older than ninety days is dropped the next time the index is rewritten. A push that brings
+nothing newer (the same versions again, a deletion already applied) writes nothing and
+leaves the index alone. A pull that finds nothing new ends after that one request, without
+touching the library. A record over 5 MB stays on its device and is counted, never retried
+forever. The old Firestore records are imported a page at a time behind pulls, with the
+position saved between pages, and left alone for ten minutes after a refusal; notes were
+added to the import later, so an account imported before that picks up at the notes stage.
 
 Other named stores: `bank` (the question bank, catalogue, leaderboard table and board
 records), `board` (per-device board posts), `answers` (sets kept for marking through the
 connector), `study` (study codes), `community`, `mcp-tokens` (hashes only) and
 `presentation-notes`. Locally, each is a JSON file under `.netlify/dev-<name>.json`.
+
+### Keeping data and network use down
+
+What each part does to stay cheap, and what it saved when measured (`npx vite build` on
+this tree against the one before; request counts from the code paths):
+
+- **Notes sync through the account store**, not a full read of the Firestore notes
+  collection on every sync (every fifteen minutes before). A push sends only the notes
+  changed since the last one; a pull reads only what changed, and a note this device holds
+  in that very version (its own push echoed back, told apart by the revision in the index)
+  is not fetched. An unchanged account syncs in one request. Chosen over a Firestore
+  cursor so notes get the same arrival-time cursor as the rest and Firestore is read for
+  them only once, by the import.
+- **Publishing the week's count** starts from the indexes: the week key, nickname,
+  picture, join choice and the count and date of the last submitted answer (from the
+  `[ownerId+submittedAt]` index, with no answer read). If none of that changed since the
+  last post within the quarter hour, nothing more happens. Otherwise this week's and last
+  week's answers come from that index by date range rather than a scan of every attempt,
+  and the all-time figures are kept while nothing they depend on changes. It never starts
+  a sync of its own; the sync loop publishes after any sync that moved answers.
+- **Home** reads this account's submitted attempts and its marks through the owner indexes
+  instead of both tables whole, and keeps every picture's data out of what it holds (a
+  picture node stays, empty, so a picture-only answer still counts as answered).
+- **The account index** prunes old tombstones and is not rewritten by a push with nothing
+  new; a pull with nothing new returns before the library is loaded.
+- **Bundle**: gsap is imported on demand by the board's entrance animation, so the entry no
+  longer preloads it: 69.7 kB (27.1 kB gzipped) off every app page's first load. The
+  startup work in `App.tsx` (sign-in state, sync, the bank catalogue, the orphan scan, the
+  AMBOSS session, the board) waits until the visitor comes into the app, so `/` and
+  `/welcome` no longer download Firebase: 716 kB (207 kB gzipped) of app, auth and
+  Firestore code, plus the sign-in and sync requests, for a visitor who only reads the
+  front page.
+- **On the device**, AMBOSS terms past their month and definitions past their week are
+  swept on startup, and the answer drafts kept in localStorage for recovery hold pictures
+  as a short fingerprint rather than their data: a draft with two pictures is well under a
+  kilobyte, and recovery puts back the pictures the saved copy already has.
 
 ## AMBOSS
 
@@ -303,14 +343,15 @@ accepts formatted text, nested lists and tables; pictures can be pasted or attac
 writes to this browser immediately. Unfinished drafts are kept on this device. Deleted
 notes remain in Deleted notes and can be restored.
 
-Signing in syncs saved notes to `users/{uid}/notes` in Firestore using the existing private
-user rules. Notes created before sign-in join the first account that syncs them. Notes
-already owned by another account stay separate. Reconciliation checks the remote document
-in a transaction before writing, uses modification time plus revision to resolve ties,
-and keeps deletion records so old devices cannot restore deleted notes accidentally.
-Whole-note conflicts use the newest version; an editor with a stale revision asks you to
-retain your edits before reopening. Notes over 750 KB must be split or their pictures made
-smaller to stay below Firestore's document limit. Local drafts are not cloud synced.
+Signing in syncs saved notes with the rest of the account, in the site's own store (see
+"Where account data lives"): the notes changed since the last push go up, the notes changed
+in the account since the last pull come down, newest wins by modification time plus
+revision. Notes created before sign-in join the first account that syncs them. Notes
+already owned by another account stay separate. A deleted note is a note marked deleted,
+so old devices cannot restore it accidentally. Whole-note conflicts use the newest version;
+an editor with a stale revision asks you to retain your edits before reopening. Notes over
+750 KB must be split or their pictures made smaller. Notes saved to Firestore before the
+move are folded in once by the account import. Local drafts are not cloud synced.
 
 On question, set, paper and marking screens, **Reference notes** opens a panel beside your
 work. It follows the question's presentation unless you choose another. **Open in separate

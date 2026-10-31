@@ -12,3 +12,8 @@ export function hasEntered(): boolean {
 export function markEntered(): void {
   try { localStorage.setItem(KEY, "1"); } catch { /* private mode */ }
 }
+
+/** The public front page, at / or /welcome: the one place the app's startup work does not run. */
+export function isLandingPath(pathname: string): boolean {
+  return pathname === "/" || pathname === "/welcome";
+}

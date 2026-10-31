@@ -5,7 +5,7 @@ import { ensureQuestionContent, ensureSetContent } from "../lib/bank";
 import { buildExamPaper, examPresentationPool, examTiming, EXAM_MAX_STEMS, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
 import { hasAnswerContent } from "../lib/answerContent";
 import AttemptHistory from "../components/AttemptHistory";
-import { belongsToAccount } from "../lib/progressAccount";
+import { homeAttempts, homeMarks } from "../lib/homeData";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
@@ -63,14 +63,11 @@ export default function HomePage() {
   }, [session?.id]);
 
   const data = useLiveQuery(async () => {
-    const [{ questions, sets }, attempts, marks, settings] = await Promise.all([
-      loadLibrary(),
-      db.attempts.toArray(),
-      db.marks.toArray(),
-      getSettings(),
-    ]);
+    const settings = await getSettings();
     const ownerId = settings.cloudUser?.uid ?? "";
-    return { questions, attempts: attempts.filter((a) => belongsToAccount(a, ownerId)), marks: marks.filter((m) => belongsToAccount(m, ownerId)), settings, sets };
+    // Only this account's submitted work, through the owner indexes, and without any picture's data.
+    const [{ questions, sets }, attempts, marks] = await Promise.all([loadLibrary(), homeAttempts(ownerId), homeMarks(ownerId)]);
+    return { questions, attempts, marks, settings, sets };
   }, []);
 
   const stats = useMemo(() => {

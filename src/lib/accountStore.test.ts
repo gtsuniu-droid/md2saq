@@ -14,7 +14,7 @@ function memoryStore(): JsonStore & { blobs: Map<string, unknown> } {
   };
 }
 vi.mock("../../netlify/lib/store", () => ({ openNamedStore: () => memoryStore(), hosted: () => false }));
-const { push, changes, fetchRecords, attemptRows, validPush, summarise, readIndex } = await import("../../netlify/lib/accountStore");
+const { push, changes, fetchRecords, attemptRows, validPush, summarise, readIndex, TOMBSTONE_MS } = await import("../../netlify/lib/accountStore");
 
 const attempt = (id: string, _m: number, extra: Record<string, unknown> = {}) => ({ id, _m, questionId: `q-${id}`, qref: { setId: "s", bankId: "bank-1", order: 2 }, answers: [{ label: "", text: "Aspirin", doc: null }], startedAt: 1, submittedAt: _m, elapsedSec: 5, mode: "practice", ...extra });
 
@@ -117,6 +117,8 @@ it("refuses bodies that are not records", () => {
   // Ids minted by older versions of the app pass whatever they look like, short of the key separator.
   expect(validPush({ marks: [{ id: "mark-2024:bank:x.y", _m: 1 }] })?.marks).toHaveLength(1);
   expect(validPush({ deletes: [{ id: "x", table: "notes", at: 1 }] })).toBeNull();
+  expect(validPush({ notes: [{ id: "n1", _m: 1, title: "T" }] })).toEqual({ attempts: [], marks: [], notes: [{ id: "n1", _m: 1, title: "T" }], deletes: [] });
+  expect(validPush({ notes: [{ _m: 1 }] })).toBeNull();
   expect(validPush({ attempts: [{ id: "a1", _m: 1 }], deletes: [{ id: "m1", table: "marks", at: 2 }] })).toEqual({ attempts: [{ id: "a1", _m: 1 }], marks: [], deletes: [{ id: "m1", table: "marks", at: 2 }] });
   expect(validPush({})).toEqual({ attempts: [], marks: [], deletes: [] });
 });
@@ -140,4 +142,35 @@ it("keeps a record whole: comments, replies, revisions, highlights and marks com
   expect(got.records.find((r) => r.table === "marks")?.record).toEqual(mark);
   // Nothing is ever dropped without a deletion being pushed: the index lists both, neither as deleted.
   expect((await changes("u1", 0, 1001, store)).entries.map((e) => [e.id, e.deleted])).toEqual([["a9", undefined], ["m9", undefined]]);
+});
+
+it("private notes are a third table: pushed, listed with their revision, fetched whole, newest wins", async () => {
+  const store = memoryStore();
+  const n = (rev: string, _m: number, title: string) => ({ id: "n1", _m, revision: rev, title, ownerId: "u1", presentationId: "abdominal-pain", deleted: false });
+  await push("u1", { attempts: [], marks: [], notes: [n("a", 100, "First")], deletes: [] }, 1000, store);
+  await push("u1", { attempts: [], marks: [], notes: [n("b", 90, "Stale")], deletes: [] }, 1001, store);
+  const ch = await changes("u1", 0, 1002, store);
+  expect(ch.entries).toEqual([{ id: "n1", table: "notes", _m: 100, rev: "a" }]);
+  expect((await fetchRecords("u1", [{ table: "notes", id: "n1" }], undefined, store)).records[0].record).toEqual(n("a", 100, "First"));
+  expect(summarise("notes", n("a", 100, "First"))).toEqual({ r: "a" });
+  expect(await attemptRows("u1", 0, store)).toMatchObject({ rows: [] });
+});
+
+it("a push that brings nothing newer leaves the index alone; tombstones older than ninety days go when it is next rewritten", async () => {
+  const store = memoryStore();
+  const updates = vi.spyOn(store, "update");
+  await push("u1", { attempts: [attempt("a1", 100), attempt("a2", 100)], marks: [], settings: { id: "settings", _m: 50 }, deletes: [] }, 1000, store);
+  await push("u1", { attempts: [], marks: [], deletes: [{ id: "a2", table: "attempts", at: 120 }] }, 1001, store);
+  expect(updates).toHaveBeenCalledTimes(2);
+  // The same records and settings again, and a deletion already applied: nothing to write, nothing to rewrite.
+  await push("u1", { attempts: [attempt("a1", 100)], marks: [], settings: { id: "settings", _m: 50 }, deletes: [{ id: "a2", table: "attempts", at: 120 }] }, 1002, store);
+  expect(updates).toHaveBeenCalledTimes(2);
+  expect((await readIndex("u1", store))?.entries.a2).toMatchObject({ del: true });
+  // Long after, a rewrite for any reason drops the old tombstone; a recent one stays.
+  const later = 1001 + TOMBSTONE_MS + 1;
+  await push("u1", { attempts: [], marks: [], deletes: [{ id: "a1", table: "attempts", at: later - 10 }] }, later, store);
+  const index = await readIndex("u1", store);
+  expect(index?.entries.a2).toBeUndefined();
+  expect(index?.entries.a1).toMatchObject({ del: true });
+  expect((await changes("u1", 0, later + 1, store)).entries.map((e) => e.id)).toEqual(["a1"]);
 });

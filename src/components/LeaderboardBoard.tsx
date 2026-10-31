@@ -1,10 +1,14 @@
-import gsap from "gsap";
+import type { gsap as Gsap } from "gsap";
 import { useLayoutEffect, useState, type RefObject } from "react";
 import { cloudConfigured, signInWithGoogle } from "../lib/firebase";
 import { score, trend, type LeaderboardPeriod, type LeaderboardRow, type LeaderboardUnit } from "../lib/leaderboard";
 import { setProgressAccount } from "../lib/progressAccount";
 
 const MEDAL = ["gold", "silver", "bronze"];
+
+/** gsap arrives on demand, once, so Home (which shares this file's avatar and button) and the landing page never download it. */
+let gsapLoading: Promise<typeof Gsap> | undefined;
+const loadGsap = () => (gsapLoading ??= import("gsap").then((m) => m.default));
 
 export function Avatar({ name, rank, photo }: { name: string; rank: number; photo?: string }) {
   return <span className={`lb-avatar ${MEDAL[rank - 1] ?? "plain"}`} aria-hidden="true">{photo ? <img src={photo} alt="" referrerPolicy="no-referrer" /> : name.charAt(0).toUpperCase()}</span>;
@@ -99,23 +103,35 @@ export function useBoardEntrance(root: RefObject<HTMLElement | null>, deps: unkn
     const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!podium.length || reduced) return;
     const order = [2, 3, 1].flatMap((n) => podium.filter((p) => p.dataset.podium === String(n)));
-    const tl = gsap.timeline();
-    tl.from(order, { y: 42, opacity: 0, scale: 0.94, duration: 0.55, ease: "power3.out", stagger: 0.14 }, 0.1);
-    for (const c of counts) {
-      const target = Number(c.dataset.count ?? 0);
-      const o = { v: 0 };
-      c.textContent = "0";
-      tl.to(o, { v: target, duration: 1.2, ease: "power3.out", onUpdate: () => { c.textContent = String(Math.round(o.v)); } }, 0.4);
-    }
-    if (crown) tl.from(crown, { y: -30, opacity: 0, rotation: -14, duration: 0.6, ease: "back.out(2)" }, 0.9);
-    if (rows.length) tl.from(rows, { x: -18, opacity: 0, duration: 0.4, ease: "power2.out", stagger: 0.06 }, 0.7);
-    if (arrows.length) tl.to(arrows, { scale: 1.4, duration: 0.25, yoyo: true, repeat: 1, ease: "power1.inOut", stagger: 0.06, transformOrigin: "50% 50%" }, 1.5);
-    if (crow) {
-      tl.from(crow, { scale: 0, opacity: 0, duration: 0.5, ease: "back.out(2.4)", transformOrigin: "50% 0%" }, 1.55);
-      tl.to(crow, { rotation: 2.5, duration: 0.09, yoyo: true, repeat: 5, ease: "sine.inOut", transformOrigin: "50% 0%" }, 2.0);
-      tl.set(crow, { rotation: 0 });
-    }
-    return () => { tl.kill(); gsap.set([...order, ...rows, ...arrows, ...(crown ? [crown] : []), ...(crow ? [crow] : [])], { clearProps: "all" }); for (const c of counts) c.textContent = c.dataset.count ?? ""; };
+    let cancelled = false;
+    let playing: { gsap: typeof Gsap; tl: ReturnType<typeof Gsap.timeline> } | undefined;
+    void loadGsap().then((gsap) => {
+      if (cancelled) return;
+      const tl = gsap.timeline();
+      playing = { gsap, tl };
+      tl.from(order, { y: 42, opacity: 0, scale: 0.94, duration: 0.55, ease: "power3.out", stagger: 0.14 }, 0.1);
+      for (const c of counts) {
+        const target = Number(c.dataset.count ?? 0);
+        const o = { v: 0 };
+        c.textContent = "0";
+        tl.to(o, { v: target, duration: 1.2, ease: "power3.out", onUpdate: () => { c.textContent = String(Math.round(o.v)); } }, 0.4);
+      }
+      if (crown) tl.from(crown, { y: -30, opacity: 0, rotation: -14, duration: 0.6, ease: "back.out(2)" }, 0.9);
+      if (rows.length) tl.from(rows, { x: -18, opacity: 0, duration: 0.4, ease: "power2.out", stagger: 0.06 }, 0.7);
+      if (arrows.length) tl.to(arrows, { scale: 1.4, duration: 0.25, yoyo: true, repeat: 1, ease: "power1.inOut", stagger: 0.06, transformOrigin: "50% 50%" }, 1.5);
+      if (crow) {
+        tl.from(crow, { scale: 0, opacity: 0, duration: 0.5, ease: "back.out(2.4)", transformOrigin: "50% 0%" }, 1.55);
+        tl.to(crow, { rotation: 2.5, duration: 0.09, yoyo: true, repeat: 5, ease: "sine.inOut", transformOrigin: "50% 0%" }, 2.0);
+        tl.set(crow, { rotation: 0 });
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (!playing) return;
+      playing.tl.kill();
+      playing.gsap.set([...order, ...rows, ...arrows, ...(crown ? [crown] : []), ...(crow ? [crow] : [])], { clearProps: "all" });
+      for (const c of counts) c.textContent = c.dataset.count ?? "";
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }

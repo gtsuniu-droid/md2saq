@@ -14,7 +14,7 @@ import { BrandMark } from "./components/BrandMark";
 import AmbossPanel from "./components/AmbossPanel";
 import AmbossHover from "./components/AmbossHover";
 import ImageViewer from "./components/ImageViewer";
-import { restoreAmbossSession } from "./lib/amboss";
+import { restoreAmbossSession, sweepAmbossCache } from "./lib/amboss";
 import { authErrorMessage, cloudConfigured, onCloudUser, refreshVerification, resendVerification, signOutCloud, type CloudUser } from "./lib/firebase";
 import SignInPanel from "./components/SignInPanel";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -24,7 +24,7 @@ import { touchMember } from "./lib/members";
 import { publishWeeklyCount } from "./lib/leaderboard";
 import { useSubmittedCount } from "./lib/useSubmittedCount";
 import { setAdminRole } from "./lib/adminRole";
-import { hasEntered, markEntered } from "./lib/entered";
+import { hasEntered, isLandingPath, markEntered } from "./lib/entered";
 import { patchSettings } from "./data/db";
 
 // Pages load when first visited, so the app opens quickly and the editor, marking and admin code arrive only where needed.
@@ -149,6 +149,10 @@ export default function App() {
   const [notesOpen, setNotesOpen] = useState(false);
   const studying = /^\/(mark|paper|question|set|session|history)(\/|$)/.test(pathname);
   useEffect(() => { document.querySelector("main")?.scrollTo(0, 0); }, [pathname]);
+  // The front page is a plain page: nothing below starts (sign-in, sync, the bank, AMBOSS, the
+  // board) until the visitor comes into the app, so / and /welcome download none of it.
+  const [entered, setEntered] = useState(!isLandingPath(pathname));
+  useEffect(() => { if (!isLandingPath(pathname)) setEntered(true); }, [pathname]);
 
   // An email address confirmed in another tab shows as confirmed here on the next return.
   useEffect(() => {
@@ -159,14 +163,18 @@ export default function App() {
   }, [account?.cloudUser?.verified]);
 
   useEffect(() => {
+    if (!entered) return;
     const reconnect = () => { if (navigator.onLine) void restoreAmbossSession().catch(() => undefined); };
     reconnect();
+    // Cached terms and definitions past their month or week go, so the cache never outgrows a month's use.
+    void sweepAmbossCache().catch(() => undefined);
     window.addEventListener("online", reconnect);
     return () => window.removeEventListener("online", reconnect);
-  }, []);
+  }, [entered]);
 
   // Cloud sync: follow sign-in state, sync on arrival and in the background.
   useEffect(() => {
+    if (!entered) return;
     let user: CloudUser | null = null;
     const stopLoop = startSyncLoop(() => user);
     // The paper in progress follows the account: every change to it syncs soon after.
@@ -191,7 +199,7 @@ export default function App() {
       stopSession();
       unsub?.();
     };
-  }, []);
+  }, [entered]);
 
   // The board follows the student round the site: every answer submitted, on any page, and
   // each page they move to publishes this week's count straight to the board, once things
@@ -200,15 +208,16 @@ export default function App() {
   const boardUid = account?.cloudUser?.uid;
   const submitted = useSubmittedCount(boardUid);
   useEffect(() => {
-    if (!boardUid) return;
+    if (!boardUid || !entered) return;
     const t = setTimeout(() => void publishWeeklyCount(boardUid, { ifChanged: true }).catch(() => undefined), 1500);
     return () => clearTimeout(t);
-  }, [pathname, boardUid, submitted]);
+  }, [pathname, boardUid, submitted, entered]);
 
   // Sets are published, edited and deleted from several places (Admin, Browse, Create, the
   // AI connector), so an open tab re-reads the catalogue when it comes back into view and
   // every ten minutes, not only when the app opens.
   useEffect(() => {
+    if (!entered) return;
     let last = Date.now();
     const refresh = async (force = false) => {
       if (document.visibilityState !== "visible" || (!force && Date.now() - last < 2 * 60_000)) return;
@@ -222,10 +231,11 @@ export default function App() {
     window.addEventListener("online", onVisible);
     const timer = setInterval(() => void refresh(true), 10 * 60_000);
     return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); window.removeEventListener("online", onVisible); clearInterval(timer); };
-  }, []);
+  }, [entered]);
 
   // Drop unsubmitted attempts left behind by abandoned papers.
   useEffect(() => {
+    if (!entered) return;
     const current = loadSession()?.id;
     void (async () => {
       const ownerId = (await getSettings()).cloudUser?.uid ?? "";
@@ -246,14 +256,14 @@ export default function App() {
         /* offline or local dev */
       }
     })();
-  }, []);
+  }, [entered]);
 
   // An exam cannot be left: no bar, no other page, until the paper is submitted and reviewed.
   const examLocked = session?.mode === "exam" && !session.submittedAt && !pathname.startsWith("/session/");
   if (examLocked && pathname !== "/paper") return <Navigate to="/paper" replace />;
 
   // The front page is for newcomers; anyone signed in or who has practised before goes straight in.
-  if (pathname === "/" || pathname === "/welcome") return <Suspense fallback={null}><LandingPage autoEnter={pathname === "/"} /></Suspense>;
+  if (isLandingPath(pathname)) return <Suspense fallback={null}><LandingPage autoEnter={pathname === "/"} /></Suspense>;
   // A newcomer who arrives at any app page sees the welcome page first. Shared links still open directly.
   const sharedLink = /^\/(s|shared)\//.test(pathname);
   if (!hasEntered() && !sharedLink && !session) {

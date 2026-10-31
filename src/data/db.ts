@@ -50,6 +50,8 @@ export class SaqDatabase extends Dexie {
       }
     });
     this.version(7).stores({ setAdditions: "id, ownerId, createdAt" });
+    // An account's submitted answers by date, so the board, Home and the submitted count never read drafts or other accounts' records.
+    this.version(8).stores({ attempts: "id, questionId, submittedAt, sessionId, _m, ownerId, [ownerId+submittedAt]" });
     this.use({ stack: "dbcore", name: "modifiedStamp", create: stampModified });
   }
 }

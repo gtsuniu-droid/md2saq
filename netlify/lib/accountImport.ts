@@ -1,11 +1,13 @@
-import { accounts, push, readIndex, type AccountIndex, type Rec, type Table } from "./accountStore";
+import { accounts, push, readIndex, type AccountIndex, type DeletableTable, type Rec } from "./accountStore";
 import { accessToken, listPage, serviceAccount, type FsValue } from "./recount";
 import { firebaseEnv } from "../functions/mcp-token";
 import type { JsonStore } from "./store";
 
 /**
  * Records an account kept in Firestore before the site's own store existed, folded into it
- * once: attempts, marks, settings, the paper in progress and the deletions recorded there.
+ * once: attempts, marks, settings, the paper in progress, the deletions recorded there, and
+ * (a later addition, so an account imported before it starts again from that stage) its
+ * private presentation notes.
  * Newest wins against anything a device has pushed since, so a student who has been using
  * the new store loses nothing to the old copy.
  *
@@ -17,7 +19,8 @@ import type { JsonStore } from "./store";
 export const IMPORT_RETRY_MS = 10 * 60_000;
 /** Two pulls in quick succession do not both import. */
 const CLAIM_MS = 30_000;
-const STAGES = ["attempts", "marks", "settings", "deleted"] as const;
+const STAGES = ["attempts", "marks", "settings", "deleted", "notes"] as const;
+const NOTES_STAGE = STAGES.indexOf("notes");
 const PAGE = 200;
 
 /** A Firestore REST value as plain JSON. */
@@ -35,8 +38,8 @@ export function decode(v: FsValue | undefined): unknown {
 }
 
 /** Whether the account's Firestore records still need folding in, and the attempt may be made now. */
-export function importDue(index: Pick<AccountIndex, "imported" | "importTried" | "importFailedAt"> | null, now: number): boolean {
-  if (index?.imported) return false;
+export function importDue(index: Pick<AccountIndex, "imported" | "importedNotes" | "importTried" | "importFailedAt"> | null, now: number): boolean {
+  if (index?.imported && index.importedNotes) return false;
   if (index?.importFailedAt && now - index.importFailedAt < IMPORT_RETRY_MS) return false;
   return !index?.importTried || now - index.importTried >= CLAIM_MS;
 }
@@ -54,7 +57,8 @@ export async function importFromFirestore(uid: string, now = Date.now(), store: 
   if (claimed === null) return null;
   const { projectId } = firebaseEnv();
   const base = `https://firestore.googleapis.com/v1/projects/${projectId ?? sa.project_id}/databases/(default)/documents/users/${uid}`;
-  let state = claimed.importState ?? { stage: 0 };
+  // An account whose records came over before notes moved picks up at the notes stage.
+  let state = claimed.importState ?? { stage: claimed.imported ? NOTES_STAGE : 0 };
   let imported = 0;
   const started = clock();
   try {
@@ -73,8 +77,10 @@ export async function importFromFirestore(uid: string, now = Date.now(), store: 
       else if (collection === "settings") {
         const settings = recs.find((d) => d.id === "settings"); const session = recs.find((d) => d.id === "session");
         if (settings || session) await push(uid, { attempts: [], marks: [], ...(settings ? { settings } : {}), ...(session ? { session } : {}), deletes: [] }, clock(), store);
+      } else if (collection === "notes") {
+        if (recs.length) await push(uid, { attempts: [], marks: [], notes: recs, deletes: [] }, clock(), store);
       } else {
-        const deletes = recs.flatMap((d) => (d.table === "attempts" || d.table === "marks") && typeof d._m === "number" ? [{ id: d.id, table: d.table as Table, at: d._m }] : []);
+        const deletes = recs.flatMap((d) => (d.table === "attempts" || d.table === "marks") && typeof d._m === "number" ? [{ id: d.id, table: d.table as DeletableTable, at: d._m }] : []);
         if (deletes.length) await push(uid, { attempts: [], marks: [], deletes }, clock(), store);
       }
       imported += collection === "settings" || collection === "deleted" ? 0 : recs.length;
@@ -82,7 +88,7 @@ export async function importFromFirestore(uid: string, now = Date.now(), store: 
       await store.update<AccountIndex>(indexKey, (cur) => ({ ...(cur ?? blank()), importState: state }));
       if (state.stage < STAGES.length && clock() - started > budgetMs) return { done: false, imported };
     }
-    await store.update<AccountIndex>(indexKey, (cur) => { const { importState: _s, importFailedAt: _f, ...rest } = cur ?? blank(); void _s; void _f; return { ...rest, imported: now }; });
+    await store.update<AccountIndex>(indexKey, (cur) => { const { importState: _s, importFailedAt: _f, ...rest } = cur ?? blank(); void _s; void _f; return { ...rest, imported: rest.imported ?? now, importedNotes: now }; });
     return { done: true, imported };
   } catch (e) {
     await store.update<AccountIndex>(indexKey, (cur) => ({ ...(cur ?? blank()), importFailedAt: now })).catch(() => undefined);

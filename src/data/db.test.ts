@@ -54,10 +54,13 @@ it("upgrades the existing app database to notes without losing questions, answer
   old.close();
   const upgraded = new SaqDatabase(name);
   await upgraded.open();
-  expect(upgraded.verno).toBe(7);
+  expect(upgraded.verno).toBe(8);
   expect((await upgraded.questions.get("q"))?.text).toBe("Keep my question");
   expect((await upgraded.attempts.get("a"))?.answers[0].text).toBe("Keep my answer");
   expect((await upgraded.attempts.get("a"))?.ownerId).toBe("");
+  // The owner-and-date index covers what was there before: a submitted answer of the account is found through it.
+  await upgraded.attempts.put({ id: "s", ownerId: "", questionId: "q", answers: [], startedAt: 1, submittedAt: 5, elapsedSec: 0, mode: "practice" });
+  expect(await upgraded.attempts.where("[ownerId+submittedAt]").between(["", 0], ["", 10]).count()).toBe(1);
   expect((await upgraded.settings.get("settings"))?.minutesPerMark).toBe(2);
   expect(await upgraded.notes.count()).toBe(0);
   expect(await upgraded.deviceLogins.count()).toBe(0);
