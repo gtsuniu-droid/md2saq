@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AssistantMenu from "./AssistantMenu";
 import type { SetForMarking } from "../lib/setForMarking";
 import { markPrompt, setText } from "../lib/setForMarking";
@@ -12,6 +12,9 @@ interface Props { exam: SetForMarking; admin: boolean; signedIn: boolean }
  */
 export default function ExamMarking({ exam, admin, signedIn }: Props) {
   const [copied, setCopied] = useState(false);
+  // Kept in the account's store as soon as the paper shows, so "mark the exam I just did" finds it without any prompt.
+  const json = JSON.stringify(exam);
+  useEffect(() => { if (signedIn) void keepForMarking(exam).catch(() => undefined); }, [signedIn, json]);
   const copy = () => { void navigator.clipboard.writeText(setText(exam)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
   return <>
     <button type="button" className="small hl-btn" title="Copy the whole exam paper: every set, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy exam"}</button>

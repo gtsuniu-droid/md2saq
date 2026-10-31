@@ -1,4 +1,4 @@
-import type { Attempt, Question, QuestionSet } from "../data/types";
+import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 import { buildSetForMarking, type MarkingQuestion, type SetForMarking } from "./setForMarking";
 import { setHeadline } from "./sets";
 
@@ -37,6 +37,16 @@ export function examSets(attempts: Attempt[], questions: Question[], sets: Quest
     groups.set(setId, group);
   }
   return [...groups.values()].map((g) => ({ ...g, rows: [...g.rows].sort((a, b) => a.order - b.order) }));
+}
+
+/** The paper's score so far: the newest saved mark on each of its attempts, over those that have one. */
+export function paperScore(attempts: Attempt[], marks: Mark[]): { score: number; maxScore: number; marked: number; total: number } {
+  const ids = new Set(attempts.map((a) => a.id));
+  const latest = new Map<string, Mark>();
+  for (const m of marks) if (ids.has(m.attemptId) && (latest.get(m.attemptId)?.markedAt ?? -1) <= m.markedAt) latest.set(m.attemptId, m);
+  let score = 0, maxScore = 0;
+  for (const m of latest.values()) { score += m.score; maxScore += m.maxScore; }
+  return { score, maxScore, marked: latest.size, total: attempts.length };
 }
 
 /** The paper as one set for marking: only submitted questions, numbered 1 onwards across the sets. */

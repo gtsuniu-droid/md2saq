@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Attempt, Question, QuestionSet } from "../data/types";
-import { buildExamForMarking, examKey, examSets } from "./examMarking";
+import type { Mark } from "../data/types";
+import { buildExamForMarking, examKey, examSets, paperScore } from "./examMarking";
 import { checkSuggested, markPrompt, setText } from "./setForMarking";
 
 const sets: QuestionSet[] = [
@@ -55,6 +56,12 @@ describe("whole exam marking", () => {
     const empty = buildExamForMarking(examKey("empty"), examSets(rows.map((a) => ({ ...a, submittedAt: undefined })), questions, sets));
     expect(empty.questions).toEqual([]);
     expect(empty.notes).toBeUndefined();
+  });
+
+  it("adds up the paper's newest saved marks, and says how much of it is marked", () => {
+    const mark = (attemptId: string, score: number, markedAt: number): Mark => ({ id: `${attemptId}-${markedAt}`, attemptId, questionId: "q", markedAt, score, maxScore: 2, parts: [], errorTags: [] });
+    expect(paperScore(attempts, [mark("a1", 1, 5), mark("a1", 2, 9), mark("a3", 0, 5), mark("elsewhere", 2, 5)])).toEqual({ score: 2, maxScore: 4, marked: 2, total: 3 });
+    expect(paperScore(attempts, [])).toEqual({ score: 0, maxScore: 0, marked: 0, total: 3 });
   });
 
   it("uses cloud set references when metadata has not downloaded", () => {

@@ -26,6 +26,10 @@ it("lays a set out for marking, the shared case once, every part with its marks 
   // Marked strictly, with a pearl per part, whoever the text is pasted to.
   for (const rule of MARKING_RULES) expect(text).toContain(rule);
   expect(MARKING_RULES.join(" ")).toMatch(/strictly[\s\S]*benefit of the doubt[\s\S]*only the first that many[\s\S]*pearl[\s\S]*no label/);
+  // A consultant's judgement, not a blind reading of the guide, and still strict.
+  expect(MARKING_RULES[0]).toMatch(/expert consultant doctor[\s\S]*clinical reasoning[\s\S]*evidence-based[\s\S]*not a script[\s\S]*clinical equivalent/);
+  expect(MARKING_RULES[1]).toMatch(/clinically wrong for this patient[\s\S]*Never give the benefit of the doubt/);
+  expect(markPrompt(built)).toMatch(/consultant doctor[\s\S]*clinical reasoning[\s\S]*no benefit of the doubt/);
 });
 
 it("keeps what a marker sent that fits the set, and says what did not", () => {

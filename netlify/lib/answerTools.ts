@@ -11,12 +11,12 @@ import { findSet, mySets, suggest } from "./answers";
  */
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const setRef = z.string().optional().describe("The set's id (the marking page's prompt gives it), or part of its name or number; leave out for the set most recently opened for marking.");
+const setRef = z.string().optional().describe("The set's id (the marking page's prompt gives it), or part of its name or number; \"exam\" for the student's most recent whole exam paper (every set of it, numbered right through); leave out for the set most recently opened for marking.");
 
 export function registerAnswerTools(server: McpServer, uid: string): void {
   server.registerTool("getMyAnswers", {
     title: "Get my answers",
-    description: "The connected student's own answers to a set they have submitted, with the case, each question and part with its marks, and the model answers and marking notes. Sets appear here once the student opens their marking page. Use it when asked to mark their answers, strictly as its howToMark sets out, then send the marks with markMyAnswers.",
+    description: "The connected student's own answers to a set they have submitted, with the case, each question and part with its marks, and the model answers and marking notes. Sets appear here once the student opens their marking page, and a submitted exam appears whole as well, so \"mark the exam I just did\" means set \"exam\". Use it when asked to mark their answers, as its howToMark sets out (strictly, as an expert, evidence-based consultant examining finals, with clinical reasoning rather than a blind reading of the guide), then send the marks with markMyAnswers.",
     inputSchema: { set: setRef },
     annotations: READ,
   }, async ({ set }) => {
@@ -25,10 +25,10 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
       const s = findSet(sets, set);
       if (!s) return fail(new Error(sets.length ? `No recent set matches "${set}".` : "No sets yet."), { hint: "Sets appear once the student opens a set's marking page on the site.", recent: sets.map((x) => ({ id: x.key, name: x.name })) });
       return ok({
-        success: true, id: s.key, set: s.name, submitted: new Date(s.at).toISOString(),
+        success: true, id: s.key, set: s.name, ...(s.exam ? { exam: true } : {}), submitted: new Date(s.at).toISOString(),
         parts: s.questions.flatMap((q) => q.parts.map((p) => ({ part: p.id, marks: p.marks }))),
         ...(s.suggested ? { alreadySuggested: `Marks were suggested ${new Date(s.suggested.at).toISOString()}; sending again replaces them.` } : {}),
-        otherRecentSets: sets.filter((x) => x !== s).map((x) => ({ id: x.key, name: x.name })),
+        otherRecentSets: sets.filter((x) => x !== s).map((x) => ({ id: x.key, name: x.name, ...(x.exam ? { exam: true } : {}) })),
         howToMark: [...MARKING_RULES, `Point at specific passages by quoting them word for word from the answer, with a short comment on each. Then call markMyAnswers with set "${s.key}".`].join(" "),
         text: setText(s),
       });
@@ -42,7 +42,7 @@ export function registerAnswerTools(server: McpServer, uid: string): void {
       set: setRef,
       marks: z.array(z.object({
         part: z.string().describe('The part as getMyAnswers names it, e.g. "1(a)", or "2" for a question without parts.'),
-        score: z.number().min(0).describe("Marked strictly: only points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked."),
+        score: z.number().min(0).describe("Marked strictly, as an expert, evidence-based consultant would: points the model answer credits, or their clinical equivalent such a consultant would accept on current evidence, stated specifically; nothing for vague points, for items beyond the number asked, or for points wrong for this patient."),
         feedback: z.string().max(2000).describe("Which points earned marks and which were missed, ending with one high-yield clinical pearl as a plain closing sentence, with no label."),
         comments: z.array(z.object({
           quote: z.string().min(1).max(500).describe("A passage copied word for word from the student's answer to this part."),

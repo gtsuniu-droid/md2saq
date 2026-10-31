@@ -23,6 +23,7 @@ import { suggestedSessionMinutes } from "../lib/sessionBuilder";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
 import SetMarking from "../components/SetMarking";
+import { paperScore } from "../lib/examMarking";
 import AccountGate from "../components/AccountGate";
 import FixWithClaude from "../components/FixWithClaude";
 import { useAccountGate } from "../lib/accountGate";
@@ -481,6 +482,7 @@ export default function PaperPage() {
   const setIndex = setGroups.findIndex((group) => group.indices.includes(index));
   const openedGroups = setGroups.slice(0, openedSetCount(session, setGroups));
   const marked = new Set(data.marks.map((m) => m.attemptId));
+  const paper = paperScore(data.attempts, data.marks);
   const currentSet = setGroups[setIndex];
   const lastInSet = currentSet.indices[currentSet.indices.length - 1];
   const setSubmitted = currentSet.indices.every((i) => data.attempts[i].submittedAt !== undefined);
@@ -568,6 +570,7 @@ export default function PaperPage() {
         <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} sets={data.sets} marks={data.marks} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
         {summaryOpen ? <section className="paper-summary" aria-label="Session summary">
           <h1>Session summary</h1><p className="muted">{data.attempts.length - unsubmitted} of {data.questions.length} questions submitted. {data.marks.length} marked.</p>
+          {session.mode === "exam" && paper.marked > 0 && <p className="paper-summary-total"><strong>Exam {paper.score} / {paper.maxScore}</strong>{paper.marked < paper.total ? <span className="muted">, {paper.marked}/{paper.total} marked</span> : null}</p>}
           {(setMode ? openedGroups : setGroups).map((group, number) => {
             const set = data.sets.find((s) => s.id === group.setId);
             const submitted = group.indices.filter((i) => data.attempts[i].submittedAt !== undefined);

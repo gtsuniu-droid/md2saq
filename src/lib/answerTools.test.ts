@@ -102,3 +102,17 @@ it("carries a whole exam through the answers store and connector with continuous
   const response = await answers(new Request(`http://x/api/answers?key=${encodeURIComponent(exam.key)}`, { headers: { authorization: "Bearer exam-student" } }));
   expect((await response.json()).suggested.parts[0]).toMatchObject({ attemptId: "exam-a59", label: "a", score: 1 });
 });
+
+it('finds the most recent exam paper when the student speaks of "the exam", however the sets are named', async () => {
+  const post = (uid: string, body: unknown) => answers(new Request("http://x/api/answers", { method: "POST", headers: { authorization: `Bearer ${uid}`, "content-type": "application/json" }, body: JSON.stringify(body) }));
+  const exam: SetForMarking = { ...set, key: "exam:p1", name: "Paper, 31 Oct 2026", exam: true, at: 300, questions: [{ ...set.questions[0], attemptId: "x1" }] };
+  await post("finn", set);
+  await post("finn", exam);
+  await post("finn", { ...set, key: "t3", at: 400, questions: [{ ...set.questions[0], attemptId: "t3" }] });
+  const tool = await connect("finn");
+  expect((await tool("getMyAnswers", {})).body.id).toBe("t3"); // the most recently kept set
+  expect((await tool("getMyAnswers", { set: "exam" })).body).toMatchObject({ id: "exam:p1", exam: true, otherRecentSets: [{ id: "t3" }, { id: "t1" }] });
+  expect((await tool("getMyAnswers", { set: "the exam I just did" })).body.id).toBe("exam:p1");
+  expect((await tool("markMyAnswers", { set: "exam", marks: [{ part: "1(a)", score: 2, feedback: "Both credited." }] })).body).toMatchObject({ success: true, id: "exam:p1" });
+  expect((await tool("getMyAnswers", { set: "exam" })).body.howToMark).toMatch(/consultant[\s\S]*clinical reasoning[\s\S]*not a script/);
+});

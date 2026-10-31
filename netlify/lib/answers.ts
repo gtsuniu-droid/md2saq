@@ -33,11 +33,17 @@ export async function suggest(uid: string, setKey: string, marks: SuggestedMarks
     : null);
 }
 
-/** A set by its id, else by name or number (any part of it, any case), else the most recent. */
+/**
+ * A set by its id; for a query that speaks of an exam ("exam", "the exam I just did"), the most
+ * recent whole exam paper; else by name or number (any part of it, any case); else the most recent.
+ */
 export function findSet(sets: StoredSet[], query?: string): StoredSet | undefined {
   const q = query?.trim();
   if (!q) return sets[0];
-  return sets.find((s) => s.key === q) ?? sets.find((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  const byKey = sets.find((s) => s.key === q);
+  if (byKey) return byKey;
+  if (/\bexams?\b/i.test(q)) { const exam = sets.find((s) => s.exam); if (exam) return exam; }
+  return sets.find((s) => s.name.toLowerCase().includes(q.toLowerCase()));
 }
 
 /** A posted set, checked for shape and size before it is kept. */

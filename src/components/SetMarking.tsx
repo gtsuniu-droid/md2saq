@@ -27,7 +27,7 @@ import { sessionAtQuestion } from "../lib/sessionNavigation";
 import { questionRef, requestSync } from "../lib/sync";
 import { clearMarkingDraft, loadMarkingDraft, writeMarkingDraft } from "../lib/markingDrafts";
 import { buildSetForMarking, markPrompt, setText, type SetForMarking, type SuggestedMarks } from "../lib/setForMarking";
-import { buildExamForMarking, examKey, examSets } from "../lib/examMarking";
+import { buildExamForMarking, examKey, examSets, paperScore } from "../lib/examMarking";
 import { keepForMarking, markFilled, newSuggestions, placeSuggestedComments } from "../lib/suggestedMarks";
 import { isGeneralComment } from "../lib/answerComments";
 import { tickList, tickedScore } from "../lib/markingTicks";
@@ -160,8 +160,6 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     const built = buildExamForMarking(examKey(data.anchor.sessionId), examSets(data.sitting, data.sittingQuestions, data.paperSets, data.inSession?.attemptIds));
     return built.questions.length ? built : null;
   }, [data]);
-  const examJson = useMemo(() => exam ? JSON.stringify(exam) : "", [exam]);
-  useEffect(() => { if (exam && data?.ownerId) void keepForMarking(exam).catch(() => undefined); }, [examJson]);
   const wholeKey = exam?.key ?? "";
   // Parts given a suggested score, per attempt, so their score boxes show it.
   const [suggested, setSuggested] = useState<Record<string, Set<string>>>({});
@@ -213,6 +211,8 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const allParts = readyRows.flatMap((r) => drafts[r.attempt!.id]?.parts ?? []);
   const total = allParts.reduce((sum, p) => sum + p.score, 0);
   const maximum = allParts.reduce((sum, p) => sum + p.maxScore, 0);
+  // The whole paper so far: what is saved on the other sets, plus this set as it stands here.
+  const paper = exam ? paperScore(data.sitting.filter((a) => !readyRows.some((r) => r.attempt?.id === a.id)), data.marks) : null;
   const firstQuestion = rows.find((r) => r.question)?.question;
   const stems = firstQuestion ? stemsOf(firstQuestion) : [];
   const stemTexts = [...stems, ...rows.flatMap((r) => r.question ? [r.question.text, ...r.question.parts.map((p) => p.text)] : [])];
@@ -312,7 +312,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         {set?.markingNotes && <details className="mark-guide-notes"><summary>Set marking notes</summary><p className="pre">{set.markingNotes}</p></details>}
       </div>
       <div className="paper-answers mark-answers">
-        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPromptText} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}{exam ? <ExamMarking exam={exam} admin={data.admin} signedIn={!!data.ownerId} /> : null}<span className="col-head-total">{total} / {maximum}</span></div>
+        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPromptText} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}{exam ? <ExamMarking exam={exam} admin={data.admin} signedIn={!!data.ownerId} /> : null}<span className="col-head-total">{total} / {maximum}</span>{paper ? <span className="col-head-total" title="The whole exam so far, this set as it stands here">Exam {paper.score + total} / {paper.maxScore + maximum}</span> : null}</div>
         <fieldset className="mark-set-fields" disabled={saving}>
           {rows.map(({ question, attempt, mark, order }) => {
             const draft = attempt ? drafts[attempt.id] : undefined;
