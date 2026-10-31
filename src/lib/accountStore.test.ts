@@ -141,3 +141,15 @@ it("keeps a record whole: comments, replies, revisions, highlights and marks com
   // Nothing is ever dropped without a deletion being pushed: the index lists both, neither as deleted.
   expect((await changes("u1", 0, 1001, store)).entries.map((e) => [e.id, e.deleted])).toEqual([["a9", undefined], ["m9", undefined]]);
 });
+
+it("a record and its own older deletion in one push: the record is kept, blob and index alike", async () => {
+  const store = memoryStore();
+  await push("u1", { attempts: [attempt("x", 100)], marks: [], deletes: [{ id: "x", table: "attempts", at: 50 }] }, 1000, store);
+  expect(store.blobs.has("u1/attempts/x")).toBe(true);
+  expect((await changes("u1", 0, 1001, store)).entries).toEqual([{ id: "x", table: "attempts", _m: 100 }]);
+  expect((await fetchRecords("u1", [{ table: "attempts", id: "x" }], undefined, store)).records).toHaveLength(1);
+  // The other way round, the deletion is the later word and wins.
+  await push("u1", { attempts: [attempt("y", 40)], marks: [], deletes: [{ id: "y", table: "attempts", at: 60 }] }, 1002, store);
+  expect(store.blobs.has("u1/attempts/y")).toBe(false);
+  expect((await changes("u1", 1001, 1003, store)).entries).toEqual([{ id: "y", table: "attempts", _m: 60, deleted: true }]);
+});

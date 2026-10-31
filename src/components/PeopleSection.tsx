@@ -24,7 +24,7 @@ export default function PeopleSection() {
   const load = async () => {
     setLoading(true); setError("");
     try { setMembers(await listMembers()); }
-    catch (e) { setError(/permission|insufficient/i.test(String(e)) ? "Firestore refused the list. Deploy the latest firestore.rules to the Firebase project, then try again." : e instanceof Error ? e.message : "Could not load the list."); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not load the list."); }
     finally { setLoading(false); }
   };
 

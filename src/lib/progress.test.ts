@@ -153,3 +153,15 @@ it("a device synced since the last full count speaks for the account, a lowered 
   const raised = merge(complete, { ...base, count: 2, at: now + 120_000 });
   expect(raised).toMatchObject({ count: 2, completeAt: base.at });
 });
+
+it("turns the week over at midnight on Monday where the students are, whatever the function's clock", async () => {
+  const { weekStart, weekKey } = await import("../../netlify/lib/progress");
+  // 07:00 on Monday 2 November 2026 in Melbourne (AEDT, UTC+11) is still Sunday evening in UTC.
+  const mondayMorning = Date.UTC(2026, 10, 1, 20, 0, 0);
+  expect(new Date(weekStart(mondayMorning)).toISOString()).toBe("2026-11-01T13:00:00.000Z");
+  expect(weekKey(mondayMorning)).toBe("2026-W45");
+  // A minute before that midnight belongs to the week before.
+  expect(weekKey(Date.UTC(2026, 10, 1, 12, 59, 0))).toBe("2026-W44");
+  // Across the daylight-saving change in April the Monday is still at local midnight.
+  expect(new Date(weekStart(Date.UTC(2026, 3, 8, 0, 0, 0))).toISOString()).toBe("2026-04-05T14:00:00.000Z");
+});

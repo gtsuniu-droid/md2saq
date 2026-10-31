@@ -55,7 +55,9 @@ export default function SetPage() {
   const presentation = primaryPresentation(set, questions);
 
   const begin = (mode: "practice" | "exam") => {
-    const mins = minutes.trim() === "" ? suggested : Number(minutes);
+    const typed = minutes.trim() === "" ? suggested : Number(minutes);
+    // An exam without a clock would never end, so it takes the suggested time when none is given.
+    const mins = mode === "exam" && !(typed > 0) ? (suggested > 0 ? suggested : 20) : typed;
     startSet(summary, mode, mins);
     nav("/paper");
   };
@@ -193,7 +195,7 @@ export default function SetPage() {
                   <td>{formatDate(s.submittedAt)}</td>
                   <td className="muted">{s.mode}</td>
                   <td className="muted">{formatDuration(Math.max(0, (s.submittedAt - s.startedAt) / 1000))}</td>
-                  <td>{s.answered} of {questions.length} answered, {s.marked} marked</td>
+                  <td>{s.answered}/{questions.length} answered, {s.marked} marked</td>
                   <td>
                     {s.maxScore > 0 ? `${s.score}/${s.maxScore}` : ""}{" "}
                     <Link to={`/session/${s.sessionId}`}>{s.marked < s.answered ? "mark" : "review"}</Link>

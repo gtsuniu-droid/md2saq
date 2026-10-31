@@ -8,7 +8,7 @@ import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
 import { useSession } from "./lib/useSession";
 import { syncFromBank } from "./lib/bank";
 import { numberUnnumberedSets } from "./lib/sets";
-import HomePage from "./pages/HomePage";
+const HomePage = lazy(() => import("./pages/HomePage"));
 import NoticesBell from "./components/NoticesBell";
 import { BrandMark } from "./components/BrandMark";
 import AmbossPanel from "./components/AmbossPanel";
@@ -262,7 +262,7 @@ export default function App() {
   }
   if (pathname === "/home") markEntered();
 
-  const full = /^\/(paper|mark)(\/|$)/.test(pathname);
+  const full = /^\/(paper|mark|study)(\/|$)/.test(pathname);
   const shell = full ? "page full" : pathname === "/home" ? "page home-shell" : pathname === "/browse" ? "page browse-shell" : pathname === "/settings" ? "page settings-shell" : pathname === "/admin" ? "page admin-shell" : "page wide-shell";
   return (
     <div className="app">

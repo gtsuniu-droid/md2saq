@@ -8,11 +8,23 @@ export interface Figures { questions: number; sets: number }
 
 const DAY = 24 * 3600 * 1000;
 
+/** The students' time zone: weeks turn over at their midnight on Monday, not the function's. */
+export const BOARD_ZONE = (typeof process !== "undefined" && process.env?.BOARD_TZ) || "Australia/Melbourne";
+const PARTS = new Intl.DateTimeFormat("en-US", { timeZone: BOARD_ZONE, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", weekday: "short" });
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** The wall clock in the students' zone at `ts`, as UTC-shaped parts, and how far that clock is from UTC. */
+function wall(ts: number): { y: number; mo: number; d: number; weekday: number; offset: number } {
+  const p = Object.fromEntries(PARTS.formatToParts(ts).map((x) => [x.type, x.value]));
+  const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+  return { y: Number(p.year), mo: Number(p.month) - 1, d: Number(p.day), weekday: WEEKDAYS.indexOf(p.weekday), offset: asUtc - Math.floor(ts / 1000) * 1000 };
+}
+/** Midnight at the start of the Monday of the week containing `ts`, in the students' zone. */
 export function weekStart(ts: number): number {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d.getTime();
+  const w = wall(ts);
+  const mondayWall = Date.UTC(w.y, w.mo, w.d - w.weekday);
+  // The offset at that midnight, which may differ from now across a daylight-saving change.
+  const guess = mondayWall - w.offset;
+  return mondayWall - wall(guess).offset;
 }
 
 export function figuresFor(attempts: AttemptRow[], questionCount: Map<string, number>, start: number): Figures {
@@ -183,10 +195,11 @@ export function staleTable(last: CacheBody | null, posted: Map<string, Rec>, now
 
 /** The ISO week id, matching what devices write on their rows. */
 export function weekKey(ts: number): string {
-  const d = new Date(weekStart(ts));
-  const thursday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 3);
-  const year = thursday.getFullYear();
-  const firstWeekStart = weekStart(new Date(year, 0, 4).getTime());
-  const week = Math.round((weekStart(thursday.getTime()) - firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
+  const start = weekStart(ts);
+  const w = wall(start);
+  const thursday = Date.UTC(w.y, w.mo, w.d + 3, 12);
+  const year = new Date(thursday).getUTCFullYear();
+  const firstWeekStart = weekStart(Date.UTC(year, 0, 4, 12) - w.offset);
+  const week = Math.round((weekStart(thursday - w.offset) - firstWeekStart) / (7 * 24 * 3600 * 1000)) + 1;
   return `${year}-W${String(week).padStart(2, "0")}`;
 }

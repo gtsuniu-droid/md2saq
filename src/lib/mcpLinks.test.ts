@@ -14,17 +14,15 @@ vi.mock("../../netlify/lib/store", () => ({
 process.env.VITE_FIREBASE_API_KEY = "key";
 process.env.VITE_FIREBASE_PROJECT_ID = "project";
 process.env.VITE_ADMIN_EMAILS = "owner@x.com";
-// Google's sign-in lookup and the People-list role, as the handler asks for them.
-let role = "student";
-vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).includes("identitytoolkit")
-  ? new Response(JSON.stringify({ users: [{ localId: "u1", email: "me@x.com", emailVerified: true, displayName: "Me" }] }))
-  : new Response(JSON.stringify({ fields: { role: { stringValue: role } } }))));
+// Google's sign-in lookup, as the handler asks for it; the People-list role is read from the site's own store.
+vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ users: [{ localId: "u1", email: "me@x.com", emailVerified: true, displayName: "Me" }] }))));
+const giveRole = (role: string) => blobs.set("members/roles", { admins: role === "admin" ? { u1: { by: "o", at: 1 } } : {} });
 const { default: links, hashToken, MAX_LINKS } = await import("../../netlify/functions/mcp-token");
 
 const ask = async (method: string) => (await links(new Request("https://site.test/api/mcp-token", { method, headers: { authorization: "Bearer id-token" } }))).json();
 const live = (url: string) => blobs.get(`mcp-tokens/tokens/${hashToken(url.split("/").pop()!)}`) as { role: string } | undefined;
 
-beforeEach(() => { blobs.clear(); role = "student"; });
+beforeEach(() => { blobs.clear(); giveRole("student"); });
 
 it("keeps every link an account makes working, up to the limit, and removes them all together", async () => {
   const claude = (await ask("POST")).url;
@@ -45,7 +43,7 @@ it("carries over an account's single link from before, and brings every link up 
   blobs.set("mcp-tokens/users/u1", { hash: hashToken("oldtoken"), createdAt: 5 });
   blobs.set(`mcp-tokens/tokens/${hashToken("oldtoken")}`, { uid: "u1", role: "student" });
   expect(await ask("GET")).toMatchObject({ connected: true, links: 1, createdAt: 5 });
-  role = "admin";
+  giveRole("admin");
   const made = await ask("POST");
   expect(made.links).toBe(2);
   expect(live("https://site.test/api/mcp/oldtoken")?.role).toBe("admin");

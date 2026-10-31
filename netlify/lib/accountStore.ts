@@ -109,8 +109,8 @@ export async function push(uid: string, body: PushBody, now = Date.now(), store 
   const deleted = new Map((body.deletes ?? []).map((d) => [d.id, d]));
   // A record and its own deletion in one push: the later of the two wins.
   const writes = incoming.filter(([, r]) => newer(before.entries[r.id], r._m ?? 0) && !((deleted.get(r.id)?.at ?? -1) >= (r._m ?? 0)));
-  // A deletion applies unless the record was edited (or deleted) later than it was made.
-  const drops = (body.deletes ?? []).filter((d) => { const cur = before.entries[d.id]; return !cur || cur._m <= d.at; });
+  // A deletion applies unless the record was edited (or deleted) later than it was made, here or in this same push.
+  const drops = (body.deletes ?? []).filter((d) => { const cur = before.entries[d.id]; const w = writes.find(([, r]) => r.id === d.id); return (!cur || cur._m <= d.at) && !(w && (w[1]._m ?? 0) > d.at); });
   for (let i = 0; i < writes.length; i += 16) await Promise.all(writes.slice(i, i + 16).map(([t, r]) => store.setJSON(recordKey(uid, t, r.id), r)));
   for (let i = 0; i < drops.length; i += 16) await Promise.all(drops.slice(i, i + 16).map((d) => store.delete(recordKey(uid, d.table, d.id)).catch(() => undefined)));
   await store.update<AccountIndex>(indexKey(uid), (current) => {

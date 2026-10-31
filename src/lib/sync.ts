@@ -26,6 +26,9 @@ type Rec = Record<string, unknown> & { id: string; _m?: number };
 type Table = "attempts" | "marks";
 /** About what one call to the account store may carry; the store stops at 6 MB. */
 const BYTES_PER_CALL = 3_500_000;
+/** The store refuses more records or deletions than this in one call (see netlify/lib/accountStore.ts validPush). */
+const RECORDS_PER_CALL = 2000;
+const DELETES_PER_CALL = 5000;
 /** A record too big to send at all (pictures pasted by the dozen) stays on the device and is reported, not retried forever. */
 const MAX_RECORD_BYTES = 5_000_000;
 
@@ -45,10 +48,13 @@ async function pushToAccount(parts: { attempts: Rec[]; marks: Rec[]; settings?: 
   const bytes = (r: Rec) => new TextEncoder().encode(JSON.stringify(r)).length;
   const items = [...parts.attempts.map((r) => ({ table: "attempts" as Table, r, size: bytes(r) })), ...parts.marks.map((r) => ({ table: "marks" as Table, r, size: bytes(r) }))];
   let skipped = 0; let first = true;
+  const deletes = [...parts.deletes];
+  // Each call stays within what the store takes: so many bytes, so many records, so many deletions.
   const send = async (batch: typeof items) => {
     const body = {
       attempts: batch.filter((i) => i.table === "attempts").map((i) => i.r), marks: batch.filter((i) => i.table === "marks").map((i) => i.r),
-      ...(first ? { ...(parts.settings ? { settings: parts.settings } : {}), ...(parts.session ? { session: parts.session } : {}), deletes: parts.deletes } : {}),
+      ...(first ? { ...(parts.settings ? { settings: parts.settings } : {}), ...(parts.session ? { session: parts.session } : {}) } : {}),
+      deletes: deletes.splice(0, DELETES_PER_CALL),
     };
     first = false;
     await account("push", { method: "POST", body: JSON.stringify(body) });
@@ -56,10 +62,11 @@ async function pushToAccount(parts: { attempts: Rec[]; marks: Rec[]; settings?: 
   let batch: typeof items = []; let size = 0;
   for (const item of items) {
     if (item.size > MAX_RECORD_BYTES) { skipped++; console.warn(`sync: ${item.table} ${item.r.id} is too large to sync (${item.size} bytes); it stays on this device.`); continue; }
-    if (batch.length && size + item.size > BYTES_PER_CALL) { await send(batch); batch = []; size = 0; }
+    if (batch.length && (size + item.size > BYTES_PER_CALL || batch.length >= RECORDS_PER_CALL)) { await send(batch); batch = []; size = 0; }
     batch.push(item); size += item.size;
   }
   if (batch.length || first) await send(batch);
+  while (deletes.length) await send([]);
   return skipped;
 }
 
@@ -185,6 +192,11 @@ export function subscribeProgressSync(fn: () => void) { syncListeners.add(fn); r
 function reportSync(state: ProgressSyncState) { syncState = state; syncListeners.forEach((fn) => fn()); }
 
 /** Push local changes, then pull remote ones. Safe to call often; concurrent calls share one run. */
+const NOTES_EVERY_MS = 15 * 60_000;
+let notesSyncedAt = 0;
+/** Make the next sync compare notes again, whatever the clock says (the Notes page asks for this). */
+export function notesChanged(): void { notesSyncedAt = 0; }
+
 export async function syncNow(user?: CloudUser | null): Promise<SyncResult | null> {
   const u = user ?? (await currentUser());
   if (!u) return null;
@@ -194,7 +206,9 @@ export async function syncNow(user?: CloudUser | null): Promise<SyncResult | nul
   const job = syncQueue.catch(() => undefined).then(async () => {
     reportSync({ uid: u.uid, status: "syncing" });
     try {
-      const notesResult = syncNotes(u).then(() => null, (error: unknown) => error);
+      // Notes are whole documents read from Firestore, so they are compared only now and then; answers go every time.
+      const notesDue = Date.now() - notesSyncedAt > NOTES_EVERY_MS;
+      const notesResult = notesDue ? syncNotes(u).then(() => { notesSyncedAt = Date.now(); return null; }, (error: unknown) => error) : Promise.resolve<unknown>(null);
       const pushed = await push(u.uid);
       const pulled = await pull(u.uid);
       const notesError = await notesResult;
@@ -364,7 +378,8 @@ export function startSyncLoop(getUser: () => CloudUser | null): () => void {
     const u = getUser();
     if (u && navigator.onLine) void syncNow(u).catch(() => undefined);
   };
-  const interval = window.setInterval(tick, 120_000);
+  // A hidden tab has nothing new to say; it catches up the moment it is looked at again.
+  const interval = window.setInterval(() => { if (document.visibilityState === "visible") tick(); }, 120_000);
   const onVisible = () => {
     if (document.visibilityState === "visible") tick();
   };

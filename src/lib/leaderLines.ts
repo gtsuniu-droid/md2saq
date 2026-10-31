@@ -5,10 +5,12 @@
  */
 export const LEADER_LINES: { text: string; emoji?: string; rivals?: boolean }[] = [
   { text: "{name} is cooking", emoji: "🍳" },
-  { text: "{name} is mogging you all", emoji: "🗿" },
+  { text: "{name} mogs both Talley and O'Connor", emoji: "🗿" },
   { text: "{name} is eating and leaving no crumbs" },
   { text: "{name} is on demon time", emoji: "😈" },
   { text: "{name} is locked in", emoji: "🔒" },
+  { text: "gg too EZ" },
+  { text: "too easy mate" },
   { text: "{second} and {third}, 🤣😂🫵", rivals: true },
 ];
 

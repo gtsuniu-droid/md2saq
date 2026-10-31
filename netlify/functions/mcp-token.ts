@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { hosted, openNamedStore } from "../lib/store";
 import { OWNER_EMAIL } from "../../src/lib/owner";
+import { roleOf } from "../lib/members";
 
 /**
  * Personal connection links for Claude. A signed-in person asks for a link; the
@@ -51,14 +52,8 @@ export async function caller(req: Request): Promise<ConnectionRecord | Response>
   if (!user.emailVerified) return new Response("Confirm your email address before connecting Claude.", { status: 403 });
   const email = user.email.toLowerCase();
   let role: ConnectionRecord["role"] = email === OWNER_EMAIL ? "owner" : adminEmails.includes(email) ? "admin" : "student";
-  if (role === "student") {
-    // The admin role granted from the People list lives in Firestore; the person may read their own record.
-    const doc = await fetch(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/members/${user.localId}`, { headers: { authorization: `Bearer ${idToken}` } });
-    if (doc.ok) {
-      const data = (await doc.json()) as { fields?: { role?: { stringValue?: string } } };
-      if (data.fields?.role?.stringValue === "admin") role = "admin";
-    }
-  }
+  // The admin role given from the People list lives in the site's own store.
+  if (role === "student" && (await roleOf(user.localId)) === "admin") role = "admin";
   return { uid: user.localId, email, name: user.displayName, role, createdAt: Date.now() };
 }
 

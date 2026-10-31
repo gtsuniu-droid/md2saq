@@ -14,7 +14,7 @@ it("accepts sensible usernames and refuses the rest", () => {
   expect(normaliseUsername("  Emma   Aria ")).toBe("emma aria");
 });
 
-const a = (id: string, questionId: string, submittedAt: number | undefined, ownerId = "me"): Attempt => ({ id, ownerId, questionId, startedAt: 1, submittedAt, elapsedSec: 1, mode: "practice", answers: [] });
+const a = (id: string, questionId: string, submittedAt: number | undefined, ownerId = "me"): Attempt => ({ id, ownerId, questionId, startedAt: 1, submittedAt, elapsedSec: 1, mode: "practice", answers: [{ label: "", text: "Aspirin", doc: null }] });
 
 it("counts a week from Monday, by questions and by whole sets, for the account only", () => {
   const wed = new Date(2026, 9, 28, 15, 0).getTime();

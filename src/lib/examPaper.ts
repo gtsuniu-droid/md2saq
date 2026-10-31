@@ -38,9 +38,11 @@ export function examTiming(count: number): { readingSec: number; totalSec: numbe
 }
 
 /**
- * Draw the paper: one set per presentation first so a large topic bank is not more likely
- * to appear, then, when more sets are wanted than presentations, further sets from the same
- * presentations. Empty when the pool cannot supply the count.
+ * Draw the paper: one set per presentation, so a large topic bank is not more likely to appear
+ * and no two sets share a presentation. Drawing from the whole bank, a paper wanting more sets
+ * than there are presentations fills up with further sets from the same presentations; drawing
+ * from chosen presentations never does, so choosing six presentations gives six different ones.
+ * Empty when the pool cannot supply the count.
  */
 export function buildExamPaper(sets: QuestionSet[], questions: Question[], random = Math.random, options: ExamOptions = {}): Question[] {
   const count = Math.min(EXAM_MAX_STEMS, Math.max(1, Math.round(options.count ?? EXAM_STEMS)));
@@ -52,7 +54,8 @@ export function buildExamPaper(sets: QuestionSet[], questions: Question[], rando
     return out;
   };
   const remaining = new Map([...pool].map(([id, cases]) => [id, shuffle(cases)]));
-  if ([...remaining.values()].reduce((n, cases) => n + cases.length, 0) < count) return [];
+  const supply = chosen.size ? remaining.size : [...remaining.values()].reduce((n, cases) => n + cases.length, 0);
+  if (supply < count) return [];
   const paper: Question[][] = [];
   let order = shuffle([...remaining.keys()]);
   while (paper.length < count) {
@@ -63,4 +66,11 @@ export function buildExamPaper(sets: QuestionSet[], questions: Question[], rando
     paper.push(cases.pop()!);
   }
   return paper.flat();
+}
+
+/** How many sets a paper drawn this way can have: one per chosen presentation that has sets, or every set in the bank. */
+export function examSupply(sets: QuestionSet[], questions: Question[], presentations?: string[]): number {
+  const chosen = presentations?.length ? presentations : undefined;
+  const pool = [...examPresentationPool(sets, questions)].filter(([id]) => !chosen || chosen.includes(id));
+  return chosen ? pool.length : pool.reduce((n, [, cases]) => n + cases.length, 0);
 }

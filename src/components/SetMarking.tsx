@@ -5,11 +5,12 @@ import { Link, useNavigate } from "react-router";
 import { db, getSettings, newId } from "../data/db";
 import { ERROR_TAGS, type Attempt, type Mark, type PartAnswer, type PartMark, type Question, type QuestionSet } from "../data/types";
 import QuickEdit from "./QuickEdit";
+import ConfirmDialog from "./ConfirmDialog";
 import AmbossText from "./AmbossText";
 import AnswerHtml from "./AnswerHtml";
 import AutoTextarea from "./AutoTextarea";
 import CommentedAnswer from "./CommentedAnswer";
-import ModelAnswerContent from "./ModelAnswerContent";
+import ModelPanel from "./ModelPanel";
 import QuestionCommunity from "./QuestionCommunity";
 import FixWithClaude from "./FixWithClaude";
 import AssistantMenu from "./AssistantMenu";
@@ -40,12 +41,19 @@ import { hasUnpublishedEdits } from "../lib/bankEditState";
 import { discardAttempts } from "../lib/discardAttempts";
 import { isBlankAttempt } from "../lib/blankAttempt";
 import { hasAnswerContent } from "../lib/answerContent";
+import { deleteComment, fetchRoom, shareMyAnswers, studyRecords, type PeerMark, type StudyComment, type StudyRecord, type StudyRoomView } from "../lib/study";
+import { commentsOn, marksOn, peopleOf, type RoomPerson } from "../lib/studyRoom";
+import { FriendComments, MarkChips } from "./StudyMarks";
+
+/** What friends in a study session said about one of your answers. */
+export interface FriendMarks { marks: PeerMark[]; comments: StudyComment[]; people: RoomPerson[]; me: string; onDelete: (id: string) => void }
 
 interface Props {
   attemptId: string;
   /** Inside the paper: no heading or sidebar of its own, and the paper decides where to go after saving. */
   embedded?: boolean;
-  onAdvance?: () => void;
+  /** Called after saving, or after discarding the set (`discarded`), when the paper decides where to go next. */
+  onAdvance?: (outcome?: { discarded?: boolean }) => void;
   /** Element ids the host's sidebar scrolls to, keyed by question id and part label. */
   partId?: (questionId: string, label: string) => string;
 }
@@ -69,6 +77,9 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const [editing, setEditing] = useState<Question | null>(null);
   const [editingMode, setEditingMode] = useState<"stem" | "question">("question");
   const [active, setActive] = useState<string>("");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // The study code this set was sat under, if any, with the room's marks and comments on your answers.
+  const [friends, setFriends] = useState<{ record: StudyRecord; room: StudyRoomView } | null>(null);
   const liveData = useLiveQuery(async () => {
     const settings = await getSettings();
     const ownerId = settings.cloudUser?.uid ?? "";
@@ -202,6 +213,25 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     return () => { live = false; document.removeEventListener("visibilitychange", onVisible); };
   }, [readyNow, data?.anchor.id, data?.ownerId, wholeKey]);
 
+  // A set sat with friends shows what they gave each of your answers, refreshed while the page is open.
+  const anchorForFriends = data?.anchor;
+  useEffect(() => {
+    if (!anchorForFriends || !data?.ownerId) { setFriends(null); return; }
+    let live = true; let timer = 0;
+    const load = async () => {
+      try {
+        const record = (await studyRecords()).find((r) => r.questionIds.includes(anchorForFriends.questionId) && (r.sessionId === anchorForFriends.sessionId || Math.abs(anchorForFriends.startedAt - r.startedAt) < 12 * 3600_000));
+        if (!record) { if (live) setFriends(null); return; }
+        const room = await fetchRoom(record.code);
+        if (live && room) setFriends({ record, room });
+      } catch { /* the set marks fine without the room */ }
+    };
+    void load();
+    const tick = () => { if (document.visibilityState === "visible") void load(); };
+    timer = window.setInterval(tick, 15_000);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [anchorForFriends?.id, data?.ownerId]);
+
   if (data === undefined) return <p className="muted" role="status" style={{ padding: "1.5rem" }}>Loading your set…</p>;
   if (!data) return <div style={{ padding: "1.5rem" }}><Link to="/home#history">Back to history</Link><p>Attempt not found for this account.</p></div>;
   if (data.examLocked) return <div style={{ padding: "1.5rem" }}><h1>Submit the paper to begin marking</h1><Link to="/paper">Continue paper</Link></div>;
@@ -235,6 +265,8 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         return { mark: value, confidence: draft.confidence };
       }));
       await saveSetMarking(entries);
+      // Friends marking together see your own scores on your answers as soon as they are saved.
+      if (friends) void shareMyAnswers(friends.record.code).then((room) => { if (room) setFriends((f) => f && { ...f, room }); }).catch(() => undefined);
       for (const { attempt } of readyRows) clearMarkingDraft(data.ownerId, attempt!.id, drafts[attempt!.id]);
       setDraftWarning("");
       requestSync();
@@ -253,15 +285,15 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   };
 
   // Throw this sitting away: the set is unattempted again. A set with nothing written goes without asking.
-  const discard = async () => {
+  const discard = async (confirmed = false) => {
     if (savingRef.current) return;
     const attempts = readyRows.map((r) => r.attempt!);
-    if (!attempts.every(isBlankAttempt) && !confirm("Discard this sitting? Your answers and marks for it go, and the set is unattempted again.")) return;
+    if (!attempts.every(isBlankAttempt) && !confirmed) { setConfirmDiscard(true); return; }
     savingRef.current = true; setSaving(true);
     try {
       for (const a of attempts) clearMarkingDraft(data.ownerId, a.id, drafts[a.id]);
       await discardAttempts(attempts.map((a) => a.id), data.ownerId);
-      if (embedded && onAdvance) onAdvance(); else nav(inSession ? `/session/${inSession.id}` : "/home#history", { replace: true });
+      if (embedded && onAdvance) onAdvance({ discarded: true }); else nav(inSession ? `/session/${inSession.id}` : "/home#history", { replace: true });
     } catch (e) { setMessage(e instanceof Error ? e.message : "Could not discard this sitting."); }
     finally { savingRef.current = false; setSaving(false); }
   };
@@ -312,7 +344,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         {set?.markingNotes && <details className="mark-guide-notes"><summary>Set marking notes</summary><p className="pre">{set.markingNotes}</p></details>}
       </div>
       <div className="paper-answers mark-answers">
-        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPromptText} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}{exam ? <ExamMarking exam={exam} admin={data.admin} signedIn={!!data.ownerId} /> : null}<span className="col-head-total">{total} / {maximum}</span>{paper ? <span className="col-head-total" title="The whole exam so far, this set as it stands here">Exam {paper.score + total} / {paper.maxScore + maximum}</span> : null}</div>
+        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{friends && firstQuestion && <Link className="small hl-btn button" to={`/study/${friends.record.code}?q=${Math.max(1, friends.record.questionIds.indexOf(firstQuestion.id) + 1)}`} title="See and mark your friends' answers to this set">Mark together</Link>}{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPromptText} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}{exam ? <ExamMarking exam={exam} admin={data.admin} signedIn={!!data.ownerId} /> : null}<span className="col-head-total">{total} / {maximum}</span>{paper ? <span className="col-head-total" title="The whole exam so far, this set as it stands here">Exam {paper.score + total} / {paper.maxScore + maximum}</span> : null}</div>
         <fieldset className="mark-set-fields" disabled={saving}>
           {rows.map(({ question, attempt, mark, order }) => {
             const draft = attempt ? drafts[attempt.id] : undefined;
@@ -328,7 +360,10 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
             }
             const previous = data.attempts.filter((a) => a.questionId === question.id && a.id !== attempt.id && a.submittedAt !== undefined && (a.submittedAt ?? 0) < (attempt.submittedAt ?? attempt.startedAt)).sort((a, b) => b.submittedAt! - a.submittedAt!)[0];
             const previousMark = previous ? data.marks.filter((m) => m.attemptId === previous.id).sort((a, b) => b.markedAt - a.markedAt)[0] : undefined;
-            return <MarkingBlock key={question.id} question={question} attempt={attempt} set={set} order={order} draft={draft} suggested={suggested[attempt.id]} previous={previous} previousMark={previousMark} admin={data.admin} hasMark={!!mark} stemTexts={stemTexts} idFor={(label) => idFor(question, order, label)}
+            const fi = friends ? friends.record.questionIds.indexOf(question.id) : -1;
+            const friendMarks: FriendMarks | undefined = friends && fi >= 0 ? { marks: marksOn(friends.room.marks, fi, data.ownerId), comments: commentsOn(friends.room.comments, fi, data.ownerId), people: peopleOf(friends.room.study, friends.room.shared, data.ownerId), me: data.ownerId,
+              onDelete: (id) => void deleteComment(friends.record.code, id).then((room) => setFriends((f) => f && { ...f, room: { ...f.room, ...room } })).catch(() => undefined) } : undefined;
+            return <MarkingBlock key={question.id} question={question} attempt={attempt} set={set} order={order} draft={draft} suggested={suggested[attempt.id]} previous={previous} previousMark={previousMark} admin={data.admin} hasMark={!!mark} stemTexts={stemTexts} friends={friendMarks} idFor={(label) => idFor(question, order, label)}
               onFocusPart={(id) => setActive(id)} onEdit={(q) => { setEditingMode("question"); setEditing(q); }}
               onChange={(value) => {
                 setDrafts((current) => ({ ...current, [attempt.id]: value }));
@@ -365,11 +400,8 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
       {body}
     </div>
     {editing && <QuickEdit question={editing} mode={editingMode} onClose={() => setEditing(null)} onDeleted={deleted} />}
+    <ConfirmDialog open={confirmDiscard} title="Discard this sitting?" confirmLabel="Discard" destructive onCancel={() => setConfirmDiscard(false)} onConfirm={() => { setConfirmDiscard(false); void discard(true); }}>Your answers and marks for it go, and the set is unattempted again.</ConfirmDialog>
   </div>;
-}
-
-function ModelIcon() {
-  return <svg className="mark-model-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".14" /><path d="M4.5 8.2 7 10.6l4.6-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
 interface BlockProps {
@@ -386,6 +418,8 @@ interface BlockProps {
   /** Parts given a suggested score, which shows even when it is zero. */
   suggested?: Set<string>;
   stemTexts: string[];
+  /** Marks and comments friends gave this answer on Mark together. */
+  friends?: FriendMarks;
   onChange: (draft: MarkingDraft) => void;
   onEdit: (question: Question) => void;
   onFocusPart: (id: string) => void;
@@ -393,15 +427,13 @@ interface BlockProps {
 }
 
 /** One question: its parts, each with your answer, the model answer and a score. */
-function MarkingBlock({ question, attempt, set, order, draft, previous, previousMark, admin, hasMark, suggested, stemTexts, onChange, onEdit, onFocusPart, idFor }: BlockProps) {
+function MarkingBlock({ question, attempt, set, order, draft, previous, previousMark, admin, hasMark, suggested, stemTexts, friends, onChange, onEdit, onFocusPart, idFor }: BlockProps) {
   const [typing, setTyping] = useState<Record<string, string>>({});
   const [noteOpen, setNoteOpen] = useState(!!draft.notes || !!draft.learningPoint || draft.errorTags.length > 0);
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   // Whether a part's model answer started folded (see isFolded below).
   const defaultFold = useRef<Record<string, boolean>>({});
   const toggle = (key: string) => setFolded((f) => ({ ...f, [key]: !(f[key] ?? defaultFold.current[key] ?? false) }));
-  // The whole bar folds and unfolds; the buttons on it do their own thing without folding it.
-  const foldButton = (key: string, open: boolean) => <button type="button" className="mark-model-toggle" aria-expanded={open} onClick={(e) => { e.stopPropagation(); toggle(key); }}><ModelIcon />Model answer<svg className={"mark-model-chevron" + (open ? " open" : "")} viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></button>;
   const patch = <K extends keyof MarkingDraft>(key: K, value: MarkingDraft[K]) => onChange({ ...draft, [key]: value });
   // A score typed for a part marks it as scored, so a deliberate nought counts as marked.
   const setPart = (label: string, change: Partial<PartMark>) => onChange({ ...draft, parts: draft.parts.map((p) => (p.label === label ? { ...p, ...change } : p)), ...(change.score !== undefined ? { scored: [...new Set([...(draft.scored ?? []), label])] } : {}) });
@@ -415,7 +447,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
     <input aria-label={ariaLabel} type="number" inputMode="decimal" min={0} max={max} step="any" className="score-input" placeholder={blankUntilEntered ? "–" : undefined}
       value={typing[key] ?? (blankUntilEntered && !entered.has(key) && value === 0 ? "" : String(value))}
       onFocus={(e) => e.target.select()}
-      onChange={(e) => { const raw = e.target.value; setTyping((t) => ({ ...t, [key]: raw })); setEntered((set) => new Set(set).add(key)); const n = Number(raw); if (raw !== "" && Number.isFinite(n)) apply(Math.max(0, n)); else if (raw === "") apply(0); }}
+      onChange={(e) => { const raw = e.target.value; setTyping((t) => ({ ...t, [key]: raw })); setEntered((set) => new Set(set).add(key)); const n = Number(raw); if (raw !== "" && Number.isFinite(n)) apply(Math.max(0, max ? Math.min(n, max) : n)); else if (raw === "") apply(0); }}
       onBlur={() => setTyping((t) => { const { [key]: _gone, ...rest } = t; void _gone; return rest; })} />
   );
   const total = draft.parts.reduce((a, p) => a + p.score, 0);
@@ -458,7 +490,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
         <span>{order + 1}</span>
         <span style={{ flex: 1 }} />
         <details className="q-menu">
-          <summary aria-label={`More for question ${order + 1}`} title="Report, discussion and tools">···</summary>
+          <summary aria-label={`More for question ${order + 1}`} title="Report, discussion and tools"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="12" r="2" fill="currentColor" /><circle cx="12" cy="12" r="2" fill="currentColor" /><circle cx="19" cy="12" r="2" fill="currentColor" /></svg></summary>
           <div className="q-menu-list" onClick={(e) => { if ((e.target as HTMLElement).closest("button")) e.currentTarget.parentElement?.removeAttribute("open"); }}>
             <QuestionCommunity key={question.id} question={question} set={set} />
             {admin && <><div className="q-menu-sep" /><div className="q-menu-label">Admin</div><FixWithClaude set={set} question={question} /><button type="button" className="small" onClick={() => onEdit(question)}>Edit question</button></>}
@@ -474,7 +506,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
       {(question.images ?? []).filter((im) => im.place === "question").map((im) => (
         <figure key={im.id} className="qimg"><img src={im.dataUrl} alt={im.caption ?? ""} />{im.caption && <figcaption className="muted">{im.caption}</figcaption>}</figure>
       ))}
-      {wholeModel && <div className={"mark-panel whole" + (isFolded("whole", "") ? " folded" : "")}><div className="mark-panel-head" onClick={() => toggle("whole")}>{foldButton("whole", !isFolded("whole", ""))}<span style={{ flex: 1 }} />{admin && <button type="button" className="small link mark-model-edit" onClick={(e) => { e.stopPropagation(); onEdit(question); }}>Edit</button>}</div>{!isFolded("whole", "") && <div className="mark-model-body"><ModelAnswerContent answer={question} /></div>}</div>}
+      {wholeModel && <ModelPanel className="whole" answer={question} folded={isFolded("whole", "")} onToggle={() => toggle("whole")} actions={admin && <button type="button" className="small link mark-model-edit" onClick={(e) => { e.stopPropagation(); onEdit(question); }}>Edit</button>} />}
 
       {partsInfo.map((pi) => {
         const pm = draft.parts.find((p) => p.label === pi.part.label);
@@ -507,6 +539,7 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
               </div>
               {verdicts.length ? <div className="mark-verdict-text">{verdicts.map((v) => <p key={v.id} className="pre">{v.text}</p>)}<span className="muted mark-verdict-by">Marker</span></div>
                 : list && asTicks[label] && !isFolded(label, label) ? <p className="muted mark-verdict-hint">Tick the points you made below and the score follows, or type it.</p> : null}
+              {friends && friends.marks.length > 0 && <div className="mark-verdict-text mt-chips" aria-label="Marks from friends"><MarkChips marks={friends.marks} people={friends.people} part={partsInfo.length > 1 ? label : undefined} firstPart={pi === partsInfo[0]} /></div>}
             </div>
             {(pm.rewrite || revised || showing !== "answer") && <div className="mark-views" role="group" aria-label="Answer view">
               <button type="button" className="small" aria-pressed={showing === "answer"} onClick={() => setView((v) => ({ ...v, [label]: "answer" }))}>Your answer</button>
@@ -529,24 +562,14 @@ function MarkingBlock({ question, attempt, set, order, draft, previous, previous
                 {prevAns?.doc ? <AnswerHtml doc={prevAns.doc} /> : <p className="pre">{prevAns?.text || "No answer written."}</p>}
               </details>
             )}
-            <div className={"mark-panel" + (isFolded(label, label) ? " folded" : "")}>
-              <div className="mark-panel-head" onClick={() => toggle(label)}>
-                {foldButton(label, !isFolded(label, label))}
-                <span style={{ flex: 1 }} />
-                {list && !isFolded(label, label) && <button type="button" className="small link mark-model-edit" aria-pressed={!!asTicks[label]} title="Tick the points you made and the score adds up; or read the model answer as written" onClick={(e) => { e.stopPropagation(); setAsTicks((t) => ({ ...t, [label]: !t[label] })); }}>{asTicks[label] ? "As written" : "Tick list"}</button>}
-                {admin && <button type="button" className="small link mark-model-edit" onClick={(e) => { e.stopPropagation(); onEdit(question); }}>Edit</button>}
-              </div>
-              {!isFolded(label, label) && <div className="mark-model-body">
-                {list && asTicks[label] ? <>
-                  <ul className="tick-list">{list.rows.map((r) => <li key={r.index}><label className={"tick-row" + (pm.pointsHit.includes(r.index) ? " on" : "")}><input type="checkbox" checked={pm.pointsHit.includes(r.index)} onChange={() => tick(label, list, pm, r.index)} /><span>{r.text}</span><span className="tick-marks">{r.marks}</span></label></li>)}</ul>
-                  {list.guidance.length > 0 && <details className="tick-guidance"><summary>Marking guidance</summary>{list.guidance.map((g, i) => <p key={i} className="pre">{g}</p>)}</details>}
-                </> : hasModelAnswer(pi.part) ? <ModelAnswerContent answer={pi.part} /> : <p className="muted">{wholeModel ? "See the model answer above." : "No model answer for this part."}</p>}
-              </div>}
-            </div>
+            <ModelPanel answer={pi.part} list={list} asTicks={!!asTicks[label]} onAsTicks={(on) => setAsTicks((t) => ({ ...t, [label]: on }))} pointsHit={pm.pointsHit} onTick={(i) => tick(label, list!, pm, i)}
+              folded={isFolded(label, label)} onToggle={() => toggle(label)} emptyText={wholeModel ? "See the model answer above." : "No model answer for this part."}
+              actions={admin && <button type="button" className="small link mark-model-edit" onClick={(e) => { e.stopPropagation(); onEdit(question); }}>Edit</button>} />
           </div>
         );
       })}
 
+      {friends && friends.comments.length > 0 && <div className="mt-comments"><FriendComments comments={friends.comments} me={friends.me} onDelete={friends.onDelete} /></div>}
       <div className="mark-question-foot">
         <strong>Question {order + 1}: {total} / {max}</strong>
         <span style={{ flex: 1 }} />

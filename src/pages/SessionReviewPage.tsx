@@ -87,8 +87,8 @@ export default function SessionReviewPage() {
         {unmarked.length > 0 && !examLocked && <button className="primary" onClick={() => session?.id === id ? resume(unmarked[0].a.questionId) : nav(`/mark/${unmarked[0].a.id}`)}>Mark next set</button>}
         {exam && exam.questions.length > 0 && <ExamMarking exam={exam} admin={admin} signedIn={!!ownerId} />}
         {unfinished.length > 0 && session?.id === id && <button className="primary" onClick={() => resume(unfinished[0].a.questionId)}>Continue session</button>}
-        {study && !unfinished.length && <Link className="button" to={`/study/${study.code}`}>Compare answers with friends</Link>}
-        <button className={unmarked.length === 0 ? "primary" : ""} onClick={finish}>{unfinished.length ? "Save & exit" : "Done"}</button>
+        {study && !unfinished.length && <Link className="button" to={`/study/${study.code}`}>Mark together with friends</Link>}
+        {!(examLocked && unfinished.length) && <button className={unmarked.length === 0 ? "primary" : ""} onClick={finish}>{unfinished.length ? "Save & exit" : "Done"}</button>}
       </div>
     </div>
   );

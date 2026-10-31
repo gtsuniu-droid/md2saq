@@ -10,6 +10,11 @@ export function writeAnswerDraft(sessionId: string, attemptId: string, answers: 
   catch { /* IndexedDB autosave remains available if localStorage is full. */ }
 }
 
+/** Forget every answer draft on this device. */
+export function clearAllAnswerDrafts(): void {
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith(PREFIX)) localStorage.removeItem(k); } catch { /* storage unavailable */ }
+}
+
 export function clearAnswerDraft(attemptId: string, savedAnswers: PartAnswer[]): void {
   try {
     const raw = localStorage.getItem(PREFIX + attemptId);

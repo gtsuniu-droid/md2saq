@@ -2,7 +2,7 @@ import HomeLeaderboard from "../components/HomeLeaderboard";
 import LibraryStatus from "../components/LibraryStatus";
 import { loadLibrary } from "../lib/library";
 import { ensureQuestionContent, ensureSetContent } from "../lib/bank";
-import { buildExamPaper, examPresentationPool, examTiming, EXAM_MAX_STEMS, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
+import { buildExamPaper, examSupply, examTiming, EXAM_MAX_STEMS, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
 import { hasAnswerContent } from "../lib/answerContent";
 import AttemptHistory from "../components/AttemptHistory";
 import { belongsToAccount } from "../lib/progressAccount";
@@ -19,7 +19,7 @@ import { formatDuration, truncate, stemsOf } from "../lib/questions";
 import { discardSession, saveSession, startSession } from "../lib/session";
 import { attachSession, type StudySession } from "../lib/study";
 import StudyWithFriends from "../components/StudyWithFriends";
-import { readingRemainingSec, remainingSec } from "../lib/sessionClock";
+import { readingRemainingSec, remainingSec, perSetClocks } from "../lib/sessionClock";
 import { useSession } from "../lib/useSession";
 import { answeredPerDay, heatGrid, presentationProgress, summarise } from "../lib/stats";
 
@@ -155,8 +155,8 @@ export default function HomePage() {
   };
 
   const examPresentations = examPick === "choose" ? [...selected] : undefined;
-  const examPool = [...examPresentationPool(data.sets, data.questions)].filter(([id]) => !examPresentations || examPresentations.includes(id));
-  const examSetsAvailable = examPool.reduce((n, [, cases]) => n + cases.length, 0);
+  // One set per presentation: with chosen presentations the paper can have no more sets than presentations that hold sets.
+  const examSetsAvailable = examSupply(data.sets, data.questions, examPresentations);
   const examSize = Math.min(EXAM_MAX_STEMS, Math.max(1, Math.round(Number(examCount) || EXAM_STEMS)));
   const examReady = examSetsAvailable >= examSize && (examPick === "random" || selected.size > 0);
   const examDefault = examTiming(examSize);
@@ -179,7 +179,8 @@ export default function HomePage() {
     finally { setStarting(false); }
   };
   const readingLeft = session ? readingRemainingSec(session, Date.now()) : 0;
-  const left = session ? readingLeft || remainingSec(session, Date.now()) : null;
+  // Per-set practice shows a clock per set on the paper, so no whole-paper figure is shown here.
+  const left = session && !perSetClocks(session) ? readingLeft || remainingSec(session, Date.now()) : null;
   const total = session?.questionIds.length ?? 0;
   const done = inProgress?.submitted ?? 0;
   const submittedAll = !!session && total > 0 && done >= total;
@@ -232,7 +233,7 @@ export default function HomePage() {
           <div>
             <div className="resume-title">{submittedAll ? "Paper submitted, waiting to be marked" : `${session.mode === "exam" ? "Exam" : "Practice"} in progress`}</div>
             <div className="muted">
-              Question {session.index + 1}{session.activePart ? ` (${session.activePart})` : ""} of {total}
+              Question {session.index + 1}{session.activePart ? ` (${session.activePart})` : ""}/{total}
               {session.mode === "practice" ? `, ${done} submitted` : `, ${Math.max(done, inProgress.answered)} answered`}
               {left !== null && !submittedAll ? session.mode === "practice" && left === 0 ? ", suggested time reached" : `, ${formatDuration(left)} ${readingLeft ? "reading" : "writing"} time left` : ""}
               {submittedAll ? "" : ", saved where you left it"}
@@ -284,7 +285,7 @@ export default function HomePage() {
           </div>
           <div className="exam-format"><div><strong>{examSize} {examSize === 1 ? "stem" : "stems"}</strong><span>{examPick === "random" ? "Mixed presentations" : `${selected.size} chosen`}</span></div><div><label className="exam-time"><input aria-label="Reading time in minutes" type="number" min={0} step={1} placeholder={String(Math.round(examDefault.readingSec / 60))} value={examReading} onChange={(e) => setExamReading(e.target.value)} /><strong>min</strong></label><span>Reading time</span></div><div><label className="exam-time"><input aria-label="Writing time in minutes" type="number" min={1} step={1} placeholder={String(Math.round(examDefault.totalSec / 60))} value={examWriting} onChange={(e) => setExamWriting(e.target.value)} /><strong>min</strong></label><span>Writing time</span></div></div>
           <p className="muted">{examClock.readingSec ? "Answers unlock after reading time. " : "No reading time: answers open at once. "}The clock never stops, and the paper submits itself when it runs out.</p>
-          {!examReady && <p role="status">{examPick === "choose" && !selected.size ? "Choose at least one presentation." : `${examSetsAvailable} ${examSetsAvailable === 1 ? "set" : "sets"} available${examPick === "choose" ? " in the chosen presentations" : ""}; lower the number or add sets.`}</p>}
+          {!examReady && <p role="status">{examPick === "choose" && !selected.size ? "Choose at least one presentation." : examPick === "choose" ? `Each set comes from a different presentation: ${examSetsAvailable} of the chosen ${selected.size === 1 ? "presentation has" : "presentations have"} sets, so choose ${examSize - examSetsAvailable} more or lower the number.` : `${examSetsAvailable} ${examSetsAvailable === 1 ? "set" : "sets"} available; lower the number or add sets.`}</p>}
           {examError && <p className="field-error" role="alert">{examError}</p>}
           <button className="primary" onClick={() => void startExam()} disabled={starting || !examReady}>{starting ? "Preparing exam…" : "Start exam"}</button>
         </div> : <>
@@ -325,7 +326,7 @@ export default function HomePage() {
             <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={() => void start()} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
           </div>
         </>}
-        <StudyWithFriends mode={mode} buildPaper={() => mode === "exam" ? buildExam() : selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} examTiming={examClock} signedIn={!!data.settings.cloudUser} canCreate={!starting && (mode === "exam" ? examReady : !!selectedQuestions.length && validMinutes && validCount)} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
+        <StudyWithFriends mode={mode} buildPaper={() => mode === "exam" ? buildExam() : selectedQuestions} sets={data.sets} presentations={[...selected]} minutes={minutes.trim() === "" ? suggestedMinutes : Number(minutes)} examTiming={examClock} signedIn={!!data.settings.cloudUser} me={data.settings.cloudUser?.uid} canCreate={!starting && (mode === "exam" ? examReady : !!selectedQuestions.length && validMinutes && validCount)} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
       </div>
       )}
       <section className="card home-card join-card" aria-labelledby="join-heading">
@@ -333,7 +334,7 @@ export default function HomePage() {
           <span className="entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M4 12h11M11 8l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
           <div><strong id="join-heading">Join a study session</strong><span className="muted">A friend's six-digit code gives you their questions or exam.</span></div>
         </div>
-        <StudyWithFriends variant="join" mode="practice" buildPaper={() => []} sets={data.sets} presentations={[]} minutes={0} signedIn={!!data.settings.cloudUser} canCreate={false} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
+        <StudyWithFriends variant="join" mode="practice" buildPaper={() => []} sets={data.sets} presentations={[]} minutes={0} signedIn={!!data.settings.cloudUser} me={data.settings.cloudUser?.uid} canCreate={false} starting={starting} onStart={(ids, study) => void startStudy(ids, study)} />
       </section>
       <AttemptHistory key={data.settings.cloudUser?.uid ?? ""} {...data} />
 

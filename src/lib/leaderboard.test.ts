@@ -14,7 +14,7 @@ vi.mock("./sync", () => ({ getProgressSyncState: () => sync.state, syncNow: asyn
 const posts: Record<string, unknown>[] = [];
 let served = 0;
 const row = (count: number) => ({ uid: "u", name: "Gabe", questions: count, sets: 0, prevQuestions: 0, prevSets: 0 });
-const answer = (id: string): Attempt => ({ id, ownerId: "u", questionId: `q-${id}`, answers: [], startedAt: Date.now() - 10, submittedAt: Date.now(), elapsedSec: 5, mode: "practice" } as unknown as Attempt);
+const answer = (id: string): Attempt => ({ id, ownerId: "u", questionId: `q-${id}`, answers: [{ label: "", text: "Aspirin", doc: null }], startedAt: Date.now() - 10, submittedAt: Date.now(), elapsedSec: 5, mode: "practice" } as unknown as Attempt);
 
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()));

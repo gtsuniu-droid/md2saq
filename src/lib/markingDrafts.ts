@@ -52,6 +52,12 @@ export function writeMarkingDraft(ownerId: string, attemptId: string, questionId
 }
 
 /** A completed save must not erase a newer edit made in another tab. */
+/** Forget every marking draft on this device. */
+export function clearAllMarkingDrafts(): void {
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith(PREFIX)) localStorage.removeItem(k); } catch { /* storage unavailable */ }
+  changed();
+}
+
 export function clearMarkingDraft(ownerId: string, attemptId: string, savedDraft: MarkingDraft): void {
   try {
     const key = storageKey(ownerId, attemptId);

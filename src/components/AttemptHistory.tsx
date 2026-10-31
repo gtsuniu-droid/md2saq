@@ -10,6 +10,7 @@ import { scoreBand } from "../lib/scoreBand";
 import { getProgressSyncState, subscribeProgressSync, syncNow } from "../lib/sync";
 import { discardAttempts } from "../lib/discardAttempts";
 import { isBlankAttempt } from "../lib/blankAttempt";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface Props { attempts: Attempt[]; marks: Mark[]; questions: Question[]; sets: QuestionSet[]; settings: Settings }
 
@@ -24,16 +25,18 @@ const band = scoreBand;
 function Row({ g, sitting, caption = true, ownerId }: { g: HistoryGroup; sitting: number; caption?: boolean; ownerId: string }) {
   const openPath = g.kind === "exam" ? `/session/${g.sessionId}` : `/history/${g.anchor.id}`;
   const unmarked = g.entries.find((e) => !e.mark)?.attempt ?? g.anchor;
-  const discard = () => {
+  const [confirming, setConfirming] = useState(false);
+  const discard = (confirmed = false) => {
     const attempts = g.entries.map((e) => e.attempt);
-    if (!attempts.every(isBlankAttempt) && !confirm("Discard this sitting? Your answers and marks for it go, and the set is unattempted again.")) return;
+    if (!attempts.every(isBlankAttempt) && !confirmed) { setConfirming(true); return; }
     void discardAttempts(attempts.map((a) => a.id), ownerId);
   };
+  const confirmDialog = <ConfirmDialog open={confirming} title="Discard this sitting?" confirmLabel="Discard" destructive onCancel={() => setConfirming(false)} onConfirm={() => { setConfirming(false); discard(true); }}>Your answers and marks for it go, and the set is unattempted again.</ConfirmDialog>;
   const name = g.presentation && g.label.startsWith(`${g.presentation} `) ? g.label.slice(g.presentation.length + 1) : g.label;
   const emoji = g.presentationId ? PRESENTATION_BY_ID.get(g.presentationId)?.emoji : undefined;
   const titled = !!g.set && !!setTitle(g.set);
   const p = pct(g);
-  return (
+  return (<>
     <li className={g.marked < g.total ? "unmarked" : undefined}>
       <div className="history-question">
         {caption && g.presentation && <span className="history-pres">{emoji && <span aria-hidden="true">{emoji}</span>}{g.presentation}</span>}
@@ -51,14 +54,15 @@ function Row({ g, sitting, caption = true, ownerId }: { g: HistoryGroup; sitting
         {p !== null ? <>
           <span className="history-score">{g.score} / {g.maxScore}<small className={`history-pct ${band(p)}`}>{p}%</small></span>
           <span className="history-bar" aria-hidden="true"><span className={band(p)} style={{ width: `${p}%` }} /></span>
-        </> : <span className="muted">{g.marked ? `${g.marked} of ${g.total} marked` : "Needs marking"}</span>}
+        </> : <span className="muted">{g.marked ? `${g.marked}/${g.total} marked` : "Needs marking"}</span>}
         <span className="history-links">
           {g.reviewLater && <span className="review-later-label">⚑ Review later</span>}
           {g.marked < g.total ? <Link to={g.kind === "exam" ? openPath : `/mark/${unmarked.id}`}>Mark</Link> : <Link to={openPath}>Open</Link>}
-          {g.mode === "practice" && <button type="button" className="link history-discard" onClick={discard} title="Throw this sitting away; the set is unattempted again">Discard</button>}
+          {g.mode === "practice" && <button type="button" className="link history-discard" onClick={() => discard()} title="Throw this sitting away; the set is unattempted again">Discard</button>}
         </span>
       </div>
     </li>
+    {confirmDialog}</>
   );
 }
 
@@ -139,6 +143,6 @@ export default function AttemptHistory({ attempts, marks, questions, sets, setti
         </details>
       ))
       : <ol className="history-list">{filtered.slice(0, limit).map((g) => <Row ownerId={ownerId} key={g.key} g={g} sitting={sittingOf.get(g.key) ?? 1} />)}</ol>}
-    {filtered.length > 0 && view === "recent" && <div className="row spread history-more"><span className="muted">Showing {Math.min(limit, filtered.length)} of {filtered.length} sittings</span>{limit < filtered.length && <button className="small" onClick={() => setLimit((n) => n + 10)}>Show more</button>}</div>}
+    {filtered.length > 0 && view === "recent" && <div className="row spread history-more"><span className="muted">Showing {Math.min(limit, filtered.length)}/{filtered.length} sittings</span>{limit < filtered.length && <button className="small" onClick={() => setLimit((n) => n + 10)}>Show more</button>}</div>}
   </section>;
 }

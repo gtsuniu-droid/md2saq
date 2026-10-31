@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Question, QuestionSet } from "../data/types";
 import { formatDate } from "../lib/questions";
-import { createStudySession, fetchStudySession, formatCode, joinStudySession, normaliseCode, studyRecords, type StudyRecord, type StudySession } from "../lib/study";
+import { announceJoin, createStudySession, fetchStudySession, formatCode, joinStudySession, normaliseCode, studyRecords, type StudyRecord, type StudySession } from "../lib/study";
 import { PRESENTATIONS } from "../data/presentations";
 
 interface Props {
@@ -14,6 +14,8 @@ interface Props {
   minutes: number;
   examTiming?: { readingSec: number; totalSec: number };
   signedIn: boolean;
+  /** The signed-in account, for the "you" badge on the joined list. */
+  me?: string;
   canCreate: boolean;
   starting: boolean;
   onStart: (questionIds: string[], study: StudySession) => void;
@@ -51,7 +53,7 @@ function Participants({ study, me }: { study: StudySession; me?: string }) {
 }
 
 /** Inside New session: make a code for the current selection, or join a friend's. */
-export default function StudyWithFriends({ buildPaper, sets, presentations, mode, minutes, examTiming, signedIn, canCreate, starting, onStart, variant = "create" }: Props) {
+export default function StudyWithFriends({ buildPaper, sets, presentations, mode, minutes, examTiming, signedIn, me, canCreate, starting, onStart, variant = "create" }: Props) {
   const [params, setParams] = useSearchParams();
   const [code, setCode] = useState(() => normaliseCode(params.get("join") ?? ""));
   const [busy, setBusy] = useState(false);
@@ -63,12 +65,13 @@ export default function StudyWithFriends({ buildPaper, sets, presentations, mode
   const polled = useRef(0);
 
   useEffect(() => { void studyRecords().then((r) => setRecent(r.slice(0, 5))); }, [created?.code, found?.code]);
-  // The joined list keeps itself fresh while the code card is open.
+  // The joined list keeps itself fresh while the code card is open, so a friend entering the code appears within moments.
   useEffect(() => {
     const open = created ?? found;
     if (!open) return;
     const tick = async () => { try { const fresh = await fetchStudySession(open.code); if (fresh) (created ? setCreated : setFound)(fresh); } catch { /* keep what we have */ } };
-    const timer = window.setInterval(() => { polled.current++; void tick(); }, 10_000);
+    const opened = Date.now();
+    const timer = window.setInterval(() => { if (document.visibilityState !== "visible" || Date.now() - opened > 30 * 60_000) return; polled.current++; void tick(); }, 3_000);
     return () => window.clearInterval(timer);
   }, [created?.code, found?.code]);
   // Arriving by a shared link (?join=CODE) looks the code up at once.
@@ -86,7 +89,8 @@ export default function StudyWithFriends({ buildPaper, sets, presentations, mode
     try {
       const study = await fetchStudySession(code);
       if (!study) throw new Error("No session has that code. Check the digits with your friend.");
-      setFound(study); setCreated(null);
+      // On the list straight away, for this person and for everyone else looking at the card.
+      setFound(await announceJoin(study)); setCreated(null);
       if (params.get("join")) { params.delete("join"); setParams(params, { replace: true }); }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not find that code."); }
     finally { setBusy(false); }
@@ -122,13 +126,13 @@ export default function StudyWithFriends({ buildPaper, sets, presentations, mode
           <div className="study-code-pane">
             <span className="study-eyebrow">Your study code</span>
             <div className="study-digits" aria-label={`Code ${created.code}`}>{created.code.split("").map((d, i) => <span key={i} className={i === 3 ? "gap" : undefined}>{d}</span>)}</div>
-            <p className="muted">Anyone who enters this code on their home page gets {created.mode === "exam" ? "this exact exam" : `these ${created.questions.length} questions in this order`}. It works for 7 days.</p>
+            <p className="muted">Anyone who enters this code on their home page gets {created.mode === "exam" ? "this exact exam" : `these ${created.questions.length} questions in this order`}. Friends can join for 7 days.</p>
             <div className="row"><button type="button" className="small" onClick={() => void copy("code")}>{copied === "code" ? "Copied" : "Copy code"}</button><button type="button" className="small" onClick={() => void copy("link")}>{copied === "link" ? "Copied" : "Copy link"}</button></div>
           </div>
           <div className="study-people-pane">
             <div className="row spread"><strong>Joined so far</strong><span className="muted">{created.participants.length} {created.participants.length === 1 ? "person" : "people"}</span></div>
-            <Participants study={created} />
-            <p className="muted">Everyone works at their own pace. Afterwards, Compare answers is on the session summary.</p>
+            <Participants study={created} me={me} />
+            <p className="muted">Everyone works at their own pace. Afterwards, Mark together is on the session summary.</p>
           </div>
           <div className="study-card-foot">
             <div><strong>{created.questions.length} questions</strong><span className="muted">{describeTiming(created)}, same order for everyone</span></div>
@@ -145,10 +149,10 @@ export default function StudyWithFriends({ buildPaper, sets, presentations, mode
           </div>
           <div className="study-people-pane">
             <div className="row spread"><strong>Joined so far</strong><span className="muted">{found.participants.length}</span></div>
-            <Participants study={found} />
+            <Participants study={found} me={me} />
           </div>
           <div className="study-card-foot">
-            <span className="muted">{found.mode === "exam" ? "The clock starts when you press start and does not stop." : "The host set the time."} Compare answers with everyone afterwards.</span>
+            <span className="muted">{found.mode === "exam" ? "The clock starts when you press start and does not stop." : "The host set the time."} Mark each other's answers afterwards.</span>
             <div className="row"><button type="button" onClick={() => { setFound(null); setCode(""); }} disabled={busy}>Cancel</button><button type="button" className="primary" disabled={busy || starting} onClick={() => void startJoined()}>{busy || starting ? "Preparing…" : found.mode === "exam" ? "Start the same exam" : "Start the same questions"}</button></div>
           </div>
         </section>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Question, QuestionSet } from "../data/types";
 import { PRESENTATIONS } from "../data/presentations";
-import { buildExamPaper, examPresentationPool } from "./examPaper";
+import { buildExamPaper, examPresentationPool, examSupply } from "./examPaper";
 import { seededRandom } from "./sessionBuilder";
 import { primaryPresentation } from "./primaryPresentation";
 
@@ -19,14 +19,19 @@ describe("fixed exam paper", () => {
       ids.forEach(id => expect(paper.filter(q => q.setId === id).map(q => q.order)).toEqual([0, 1, 2]));
     }
   });
-  it("fills a bigger paper from the chosen presentations, and refuses a pool that is too small", () => {
-    const chosen = PRESENTATIONS.slice(0, 3).map((p) => p.id);
+  it("never repeats a presentation when they are chosen, and fills a bigger paper only from the whole bank", () => {
+    const chosen = PRESENTATIONS.slice(0, 5).map((p) => p.id);
     const paper = buildExamPaper(sets, questions, seededRandom(3), { count: 5, presentations: chosen });
     const ids = [...new Set(paper.map((q) => q.setId))];
     expect(ids).toHaveLength(5);
-    expect(new Set(ids.map((id) => sets.find((s) => s.id === id)!.primaryPresentation)).size).toBe(3);
-    expect(buildExamPaper(sets, questions, seededRandom(3), { count: 7, presentations: chosen })).toEqual([]);
+    expect(new Set(ids.map((id) => sets.find((s) => s.id === id)!.primaryPresentation)).size).toBe(5);
+    // Three presentations chosen cannot give five different ones, however many sets they hold.
+    expect(buildExamPaper(sets, questions, seededRandom(3), { count: 5, presentations: chosen.slice(0, 3) })).toEqual([]);
+    expect(examSupply(sets, questions, chosen.slice(0, 3))).toBe(3);
+    expect(examSupply(sets, questions, [...chosen.slice(0, 3), "no-such-presentation"])).toBe(3);
+    // From the whole bank a ten-set paper draws every presentation once, then goes round again.
     expect(buildExamPaper(sets, questions, seededRandom(3), { count: 10 }).length).toBe(30);
+    expect(examSupply(sets, questions)).toBe(16);
     expect(buildExamPaper(sets.slice(0, 4), questions)).toEqual([]);
     const extras = [{ id: "empty", name: "Empty", primaryPresentation: "cough", createdAt: 1 }, { id: "unknown", name: "Unknown", primaryPresentation: "fake", createdAt: 1 }];
     expect(examPresentationPool([...sets, ...extras], [...questions, { ...questions[0], id: "unknown-q", setId: "unknown" }]).size).toBe(8);

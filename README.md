@@ -94,9 +94,13 @@ stays on its device and is counted, never retried forever. The old Firestore rec
 imported a page at a time behind pulls, with the position saved between pages, and left
 alone for ten minutes after a refusal.
 
+The board's week starts at midnight on Monday in the students' time zone (`BOARD_TZ`, default
+`Australia/Melbourne`), not where the function happens to run.
+
 Other named stores: `bank` (the question bank, catalogue, leaderboard table and board
 records), `board` (per-device board posts), `answers` (sets kept for marking through the
-connector), `study` (study codes), `community`, `mcp-tokens` (hashes only) and
+connector), `study` (study codes, everyone's shared answers under each code, and the marks and
+comments friends give them on the Mark together page), `community`, `mcp-tokens` (hashes only) and
 `presentation-notes`. Locally, each is a JSON file under `.netlify/dev-<name>.json`.
 
 ## AMBOSS
@@ -190,14 +194,17 @@ or a question; pictures are resized on the way in and travel with the set.
 
 ## People and admins
 
-Every Google sign-in is recorded in Firestore at `members/{uid}` (name, email, picture, first
-and last seen). The Admin page's **People** section is visible to one fixed owner account
-(`OWNER_EMAIL` in `src/lib/admin.ts`, enforced again by the Firestore rules, which also require
-a verified Google sign-in). It lists everyone and lets the owner make someone an admin or remove that again; the role is read from Firestore at each sign-in and held in memory
-only, so nothing stored on a device can grant it. The
-accounts in `VITE_ADMIN_EMAILS` are always admins and cannot be demoted from the list. A new
-admin still needs the bank passcode to change the shared library. The `members` rules in
-`firestore.rules` must be deployed to the Firebase project for the list to load.
+Every sign-in is recorded in the site's own store (blob store `members`: name, email, picture,
+first and last seen) through `netlify/functions/members.ts`. The Admin page's **People** section is
+visible to one fixed owner account (`OWNER_EMAIL` in `src/lib/owner.ts`, checked on the server
+against the verified sign-in). It lists everyone and lets the owner make someone an admin or
+remove that again; the role is read from the store at each sign-in and held in memory only, so
+nothing stored on a device can grant it, and nothing about it depends on Firestore's daily read
+budget. The people and roles recorded in Firestore before this are brought across once, and each
+role change is copied back to `members/{uid}.role` when Firestore allows, for the rules that
+still read it (notices, hidden leaderboard rows). The accounts in `VITE_ADMIN_EMAILS` are always
+admins and cannot be demoted from the list. A new admin still needs the bank passcode to change
+the shared library.
 
 ## Admin passcode and admin account
 

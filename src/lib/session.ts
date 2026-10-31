@@ -170,6 +170,14 @@ export function resumeSession(ownerId = sessionOwner()): Session | null {
 }
 
 /** Throw the paper away: unanswered questions are forgotten, submitted ones stay as attempts. */
+/** Forget every paper kept on this device, whichever account it belonged to (used when all data is deleted). */
+export function clearAllSessions(): void {
+  try {
+    for (const k of Object.keys(localStorage)) if (k === KEY || k.startsWith(`${KEY}:`) || LEGACY_KEYS.includes(k)) localStorage.removeItem(k);
+  } catch { /* storage unavailable */ }
+  notify();
+}
+
 export async function discardSession(): Promise<void> {
   const s = loadSession();
   saveSession(null);

@@ -89,7 +89,7 @@ export function shouldAutoSubmit(s: Session, now: number): boolean {
 
 export function overtimeSec(s: Session, now: number): number {
   if (!s.totalSec) return 0;
-  return Math.max(0, Math.floor(((continuousClock(s) ? now : s.pausedAt ?? now) - s.startedAt) / 1000) - s.totalSec);
+  return Math.max(0, Math.floor(((continuousClock(s) ? now : s.pausedAt ?? now) - s.startedAt) / 1000) - (s.readingSec ?? 0) - s.totalSec);
 }
 
 /** Reading and writing deadlines use the saved start and never reset on reload. */

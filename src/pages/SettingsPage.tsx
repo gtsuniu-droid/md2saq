@@ -1,3 +1,6 @@
+import { clearAllSessions } from "../lib/session";
+import { clearAllMarkingDrafts } from "../lib/markingDrafts";
+import { clearAllAnswerDrafts } from "../lib/answerDrafts";
 import { setProgressAccount } from "../lib/progressAccount";
 import AmbossSettings from "../components/AmbossSettings";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -84,6 +87,7 @@ export default function SettingsPage() {
         await recordDeletes("marks", goneMarks);
         await syncNow().catch(() => undefined);
       }
+      clearAllSessions(); clearAllMarkingDrafts(); clearAllAnswerDrafts();
       await ambossLogout();
       setDangerMsg("Deleted. The saved AMBOSS login was removed from this device too.");
       setWiping(false);
@@ -117,8 +121,9 @@ export default function SettingsPage() {
             <p className="muted">Defaults for new sessions. You can override the time on each set.</p>
             <div className="card">
               <Row title="Minutes per mark" help="The suggested time for a paper is its total marks multiplied by this. A paper that states its own time uses that instead.">
-                <input aria-label="Minutes per mark" type="number" step={0.25} min={0.25} value={settings.minutesPerMark}
-                  onChange={(e) => patchSettings({ minutesPerMark: Number(e.target.value) || DEFAULT_SETTINGS.minutesPerMark })} />
+                <input aria-label="Minutes per mark" type="number" step={0.25} min={0.25} key={settings.minutesPerMark} defaultValue={settings.minutesPerMark}
+                  onChange={(e) => { const n = Number(e.target.value); if (n >= 0.25) void patchSettings({ minutesPerMark: n }); }}
+                  onBlur={(e) => { const n = Number(e.target.value); if (!(n >= 0.25)) { e.target.value = String(settings.minutesPerMark || DEFAULT_SETTINGS.minutesPerMark); } }} />
               </Row>
             </div>
           </section>

@@ -1,7 +1,7 @@
 import { db, getSettings } from "../data/db";
 import type { Question, QuestionSet } from "../data/types";
 import { syncFromBank } from "./bank";
-import { cloudConfigured, communityServices, idToken } from "./firebase";
+import { cloudConfigured, idToken } from "./firebase";
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
 import { setLabel } from "./sets";
@@ -11,15 +11,13 @@ import { setLabel } from "./sets";
  * Anyone who enters the code sits the same questions in the same order, with the host's
  * time, and afterwards everyone's answers can be compared side by side.
  *
- * The code itself (making it, looking it up, joining) lives in the site's own store, so it
- * works whatever Firestore's daily read budget says. A copy is written to Firestore too, which
- * the shared answers and comments under the code still use.
+ * Codes, shared answers, the marks friends give each other and the comments all live in the
+ * site's own store (netlify/lib/studyStore.ts), reached through /api/study: nothing here
+ * waits on Firestore, whose daily read budget used to leave the page empty.
  */
-export type { StudyParticipant, StudyQuestion, StudySession } from "./studyTypes";
-import type { StudyParticipant, StudyQuestion, StudySession } from "./studyTypes";
+export type { PeerMark, PeerPartMark, SharedAnswer, SharedAnswers, SharedPart, StudyComment, StudyParticipant, StudyQuestion, StudyRoomView, StudySession } from "./studyTypes";
+import type { PeerPartMark, SharedAnswer, SharedPart, StudyQuestion, StudyRoomView, StudySession } from "./studyTypes";
 export interface StudyOptions { mode: "practice" | "exam"; minutes?: number; readingSec?: number; totalSec?: number; presentations: string[] }
-export interface SharedAnswer { index: number; text: string; score?: number; maxScore?: number }
-export interface SharedAnswers { uid: string; name: string; photo?: string; answers: SharedAnswer[]; sharedAt: number }
 /** What this device remembers about a code it created or joined. */
 export interface StudyRecord { code: string; questionIds: string[]; startedAt: number; role: "host" | "guest"; sessionId?: string; hostName: string; questionCount: number }
 
@@ -48,7 +46,14 @@ async function remember(record: StudyRecord): Promise<void> {
 export async function studyRecords(): Promise<StudyRecord[]> {
   const rows = await db.meta.where("id").startsWith(META).toArray();
   const out: StudyRecord[] = [];
-  for (const r of rows) { try { out.push(JSON.parse(String(r.value)) as StudyRecord); } catch { /* damaged */ } }
+  const stale: string[] = [];
+  const cutoff = Date.now() - (STUDY_DAYS + 30) * 24 * 3600 * 1000;
+  for (const r of rows) {
+    if (r.id.startsWith(`${META}shared:`)) continue;
+    try { const rec = JSON.parse(String(r.value)) as StudyRecord; if (rec.startedAt < cutoff) stale.push(rec.code); else out.push(rec); } catch { stale.push(r.id.slice(META.length)); }
+  }
+  // Codes long gone take their records and the copy of what was shared with them.
+  if (stale.length) await db.meta.bulkDelete(stale.flatMap((code) => [`${META}${code}`, `${META}shared:${code}`])).catch(() => undefined);
   return out.sort((a, b) => b.startedAt - a.startedAt);
 }
 
@@ -61,39 +66,18 @@ export async function attachSession(code: string, sessionId: string): Promise<vo
   if (r) await remember({ ...r, sessionId });
 }
 
-/** The site's study code endpoint, signed in. */
-async function studyApi(init?: RequestInit, query = ""): Promise<Response> {
+/** The site's study endpoint, signed in: `path` is "" for the code itself or "/room", "/share", "/mark", "/comment", "/uncomment". */
+async function studyApi(init?: RequestInit, path = "", query = ""): Promise<Response> {
   const token = await idToken().catch(() => null);
   if (!token) throw new Error("Sign in first.");
-  return fetch(`/api/study${query}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } });
+  return fetch(`/api/study${path}${query}`, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } });
 }
 
-/** Firestore stalls rather than failing when its daily budget is spent: give up after a while. */
-const withinSeconds = <T,>(p: Promise<T>, seconds: number): Promise<T> =>
-  Promise.race([p, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Could not reach the study service. Try again in a moment.")), seconds * 1000))]);
-
-/** The Firestore copy of a code, for the shared answers and comments under it. Best effort. */
-async function mirror(study: StudySession): Promise<void> {
-  const { firestore } = await communityServices();
-  const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
-  const { code, hostUid, hostName, expiresAt, presentations, questions, mode, minutes, readingSec, totalSec, participants } = study;
-  await setDoc(doc(firestore, "studySessions", code), { code, hostUid, hostName, createdAt: serverTimestamp(), expiresAt, presentations, questions, mode, minutes, ...(mode === "exam" ? { readingSec: readingSec ?? 0, totalSec: totalSec ?? 0 } : {}), participants });
-}
-
-function fromDoc(code: string, v: Record<string, unknown>): StudySession {
-  const at = (x: unknown) => (x as { toMillis?: () => number } | undefined)?.toMillis?.() ?? (typeof x === "number" ? x : 0);
-  return {
-    code,
-    hostUid: String(v.hostUid ?? ""), hostName: String(v.hostName ?? "Host"),
-    createdAt: at(v.createdAt), expiresAt: typeof v.expiresAt === "number" ? v.expiresAt : 0,
-    presentations: Array.isArray(v.presentations) ? (v.presentations as string[]) : [],
-    questions: Array.isArray(v.questions) ? (v.questions as StudyQuestion[]) : [],
-    mode: v.mode === "exam" ? "exam" : "practice",
-    minutes: typeof v.minutes === "number" ? v.minutes : 0,
-    readingSec: typeof v.readingSec === "number" ? v.readingSec : undefined,
-    totalSec: typeof v.totalSec === "number" ? v.totalSec : undefined,
-    participants: Array.isArray(v.participants) ? (v.participants as StudyParticipant[]) : [],
-  };
+/** A reply's JSON, or the plain sentence the server gave for refusing. */
+async function replyOf<T>(res: Response, fallback: string): Promise<T> {
+  const body = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!res.ok) throw new Error(body?.error ?? fallback);
+  return body as T;
 }
 
 /** Publish the chosen questions under a fresh code. Every question must come from a published set. */
@@ -115,24 +99,16 @@ export async function createStudySession(questions: Question[], sets: QuestionSe
   if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "Could not make a code. Try again.");
   const study = (await res.json()) as StudySession;
   await remember({ code: study.code, questionIds: questions.map((q) => q.id), startedAt: Date.now(), role: "host", hostName: name, questionCount: list.length });
-  void mirror(study).catch(() => undefined);
   return study;
 }
 
 export async function fetchStudySession(raw: string): Promise<StudySession | null> {
   const code = normaliseCode(raw);
   if (code.length !== 6) throw new Error("A study code has six digits.");
-  const res = await studyApi(undefined, `?code=${code}`);
+  const res = await studyApi(undefined, "", `?code=${code}`);
   if (!res.ok && res.status !== 404) throw new Error("Could not look that code up. Try again in a moment.");
-  let study = res.ok ? (await res.json()) as StudySession : null;
-  if (!study) {
-    // Codes made before they moved to the site's own store are only in Firestore.
-    const { firestore } = await communityServices();
-    const { doc, getDoc } = await import("firebase/firestore");
-    const snap = await withinSeconds(getDoc(doc(firestore, "studySessions", code)), 8);
-    if (!snap.exists()) return null;
-    study = fromDoc(code, snap.data() as Record<string, unknown>);
-  }
+  const study = res.ok ? (await res.json()) as StudySession : null;
+  if (!study) return null;
   if (study.expiresAt && Date.now() > study.expiresAt) throw new Error("That code has expired. Codes last seven days.");
   return study;
 }
@@ -156,25 +132,34 @@ export async function resolveStudyQuestions(study: StudySession): Promise<string
   return ids as string[];
 }
 
+/** Put this person on the code's list the moment the code is accepted, so everyone sees them arrive; the study as it now stands. */
+export async function announceJoin(study: StudySession): Promise<StudySession> {
+  const me = (await getSettings()).cloudUser?.uid;
+  if (!me || study.participants.some((p) => p.uid === me)) return study;
+  const { name, photo } = await displayName();
+  const res = await studyApi({ method: "POST", body: JSON.stringify({ join: study.code, name, ...(photo ? { photo } : {}) }) });
+  return res.ok ? (await res.json()) as StudySession : study;
+}
+
 /** Join: add this person to the list and remember the questions locally. */
 export async function joinStudySession(study: StudySession): Promise<string[]> {
   const questionIds = await resolveStudyQuestions(study);
-  const { firestore, auth } = await communityServices();
-  const me = auth.currentUser!;
-  if (!study.participants.some((p) => p.uid === me.uid)) {
+  const me = (await getSettings()).cloudUser?.uid;
+  if (me && !study.participants.some((p) => p.uid === me)) {
     const { name, photo } = await displayName();
-    const who = { uid: me.uid, name, ...(photo ? { photo } : {}) };
-    await studyApi({ method: "POST", body: JSON.stringify({ join: study.code, ...who }) }).catch(() => undefined);
-    // The Firestore copy's list too, which the shared answers under the code go by. Best effort.
-    void import("firebase/firestore").then(({ arrayUnion, doc, updateDoc }) => updateDoc(doc(firestore, "studySessions", study.code), { participants: arrayUnion(who) })).catch(() => undefined);
+    await studyApi({ method: "POST", body: JSON.stringify({ join: study.code, name, ...(photo ? { photo } : {}) }) }).catch(() => undefined);
   }
   const existing = await studyRecord(study.code);
   await remember({ code: study.code, questionIds, startedAt: Date.now(), role: existing?.role ?? "guest", hostName: study.hostName, questionCount: study.questions.length, sessionId: existing?.sessionId });
   return questionIds;
 }
 
-/** Push this person's latest submitted answers (and self-marked scores) for the code's questions. */
-export async function shareMyAnswers(code: string): Promise<SharedAnswers | null> {
+/**
+ * Push this person's latest submitted answers to the code's questions, with any self-marked
+ * scores, and bring back the room as it now stands. Null when this device never sat the code,
+ * or has nothing submitted for it yet.
+ */
+export async function shareMyAnswers(code: string): Promise<StudyRoomView | null> {
   const record = await studyRecord(code);
   if (!record) return null;
   const settings = await getSettings();
@@ -187,56 +172,50 @@ export async function shareMyAnswers(code: string): Promise<SharedAnswers | null
     const a = attempts[0];
     if (!a) continue;
     const mark = (await db.marks.where("attemptId").equals(a.id).toArray()).find((m) => belongsToAccount(m, uid));
-    const text = a.answers.map((p) => (p.label ? `(${p.label}) ` : "") + (p.text ?? "").trim()).filter((t) => t.trim()).join("\n").slice(0, 4000);
-    answers.push({ index, text, ...(mark ? { score: mark.score, maxScore: mark.maxScore } : {}) });
+    // Each part's formatted document comes along when it is small, so friends see the answer as it was written.
+    const parts: SharedPart[] = a.answers.map((p) => ({ label: (p.label ?? "").slice(0, 10), text: (p.text ?? "").trim().slice(0, 4000), ...(p.doc && JSON.stringify(p.doc).length <= 60_000 ? { doc: p.doc } : {}) })).filter((p) => p.text || p.doc);
+    const text = parts.map((p) => (p.label ? `(${p.label}) ` : "") + p.text).join("\n").slice(0, 4000);
+    answers.push({ index, text, parts: parts.slice(0, 12), ...(mark ? { score: mark.score, maxScore: mark.maxScore } : {}) });
   }
   if (!answers.length) return null;
-  const { firestore } = await communityServices();
-  const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
   const { name, photo } = await displayName();
-  const body = { uid, name, ...(photo ? { photo } : {}), answers, sharedAt: serverTimestamp() };
-  await setDoc(doc(firestore, "studySessions", code, "answers", uid), body);
-  return { uid, name, photo, answers, sharedAt: Date.now() };
+  const body = JSON.stringify({ code, name, ...(photo ? { photo } : {}), answers });
+  // Opening the page again with nothing new to say reads the room rather than writing the same answers over.
+  const sentKey = `${META}shared:${code}`;
+  if ((await db.meta.get(sentKey))?.value === body) return fetchRoom(code);
+  const res = await studyApi({ method: "POST", body }, "/share");
+  const room = await replyOf<StudyRoomView>(res, "Could not share your answers. Try again in a moment.");
+  await db.meta.put({ id: sentKey, value: body });
+  return room;
 }
 
-export interface StudyComment { id: string; uid: string; name: string; photo?: string; index: number; targetUid: string; text: string; createdAt: number }
+/** The code, everyone's shared answers, marks and comments; null when no code matches. */
+export async function fetchRoom(raw: string): Promise<StudyRoomView | null> {
+  const code = normaliseCode(raw);
+  if (code.length !== 6) throw new Error("A study code has six digits.");
+  const res = await studyApi(undefined, "/room", `?code=${code}`);
+  if (res.status === 404) return null;
+  return replyOf<StudyRoomView>(res, "Could not reach the study service. Try again in a moment.");
+}
+
+type Room = Pick<StudyRoomView, "marks" | "comments">;
+
+/** Mark one person's answer to one question out of `maxScore`, part by part when the question has parts; null takes your mark away. */
+export async function giveMark(code: string, index: number, targetUid: string, score: number | null, maxScore: number, parts?: PeerPartMark[]): Promise<Room> {
+  const res = await studyApi({ method: "POST", body: JSON.stringify({ code, index, targetUid, score, maxScore, ...(parts ? { parts } : {}) }) }, "/mark");
+  return replyOf<Room>(res, "Could not save that mark. Try again in a moment.");
+}
 
 /** Say something about one person's answer to one question. */
-export async function postComment(code: string, index: number, targetUid: string, text: string): Promise<void> {
+export async function postComment(code: string, index: number, targetUid: string, text: string): Promise<Room> {
   const body = text.trim().slice(0, 1000);
-  if (!body) return;
-  const settings = await getSettings();
-  const uid = settings.cloudUser?.uid;
-  if (!uid) throw new Error("Sign in first.");
-  const { firestore } = await communityServices();
-  const { addDoc, collection, serverTimestamp } = await import("firebase/firestore");
+  if (!body) throw new Error("Write something first.");
   const { name, photo } = await displayName();
-  await addDoc(collection(firestore, "studySessions", code, "comments"), { uid, name, ...(photo ? { photo } : {}), index, targetUid, text: body, createdAt: serverTimestamp() });
+  const res = await studyApi({ method: "POST", body: JSON.stringify({ code, index, targetUid, text: body, name, ...(photo ? { photo } : {}) }) }, "/comment");
+  return replyOf<Room>(res, "Could not post that. Try again in a moment.");
 }
 
-export async function deleteComment(code: string, id: string): Promise<void> {
-  const { firestore } = await communityServices();
-  const { deleteDoc, doc } = await import("firebase/firestore");
-  await deleteDoc(doc(firestore, "studySessions", code, "comments", id));
-}
-
-/** Every comment in a session, live, oldest first. Resolves the unsubscribe function. */
-export async function subscribeComments(code: string, cb: (rows: StudyComment[]) => void, onError: (message: string) => void): Promise<() => void> {
-  const { firestore } = await communityServices();
-  const { collection, limit, onSnapshot, query } = await import("firebase/firestore");
-  return onSnapshot(query(collection(firestore, "studySessions", code, "comments"), limit(500)), (snap) => {
-    cb(snap.docs.map((d) => {
-      const v = d.data() as Record<string, unknown>; const at = v.createdAt as { toMillis?: () => number } | null | undefined;
-      return { id: d.id, uid: String(v.uid ?? ""), name: String(v.name ?? "Student"), photo: typeof v.photo === "string" ? v.photo : undefined, index: typeof v.index === "number" ? v.index : -1, targetUid: String(v.targetUid ?? ""), text: String(v.text ?? ""), createdAt: at?.toMillis?.() ?? Date.now() };
-    }).sort((a, b) => a.createdAt - b.createdAt));
-  }, (e) => onError(e.message));
-}
-
-/** Everyone's shared answers for a code, live. Resolves the unsubscribe function. */
-export async function subscribeSharedAnswers(code: string, cb: (rows: SharedAnswers[]) => void, onError: (message: string) => void): Promise<() => void> {
-  const { firestore } = await communityServices();
-  const { collection, limit, onSnapshot, query } = await import("firebase/firestore");
-  return onSnapshot(query(collection(firestore, "studySessions", code, "answers"), limit(50)), (snap) => {
-    cb(snap.docs.map((d) => { const v = d.data() as Record<string, unknown>; const at = v.sharedAt as { toMillis?: () => number } | undefined; return { uid: d.id, name: String(v.name ?? "Student"), photo: typeof v.photo === "string" ? v.photo : undefined, answers: Array.isArray(v.answers) ? (v.answers as SharedAnswer[]) : [], sharedAt: at?.toMillis?.() ?? 0 }; }));
-  }, (e) => onError(e.message));
+export async function deleteComment(code: string, id: string): Promise<Room> {
+  const res = await studyApi({ method: "POST", body: JSON.stringify({ code, id }) }, "/uncomment");
+  return replyOf<Room>(res, "Could not remove that comment.");
 }

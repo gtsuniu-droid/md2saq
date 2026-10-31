@@ -96,9 +96,9 @@ export function allTimeFigures(attempts: Attempt[], questions: Pick<Question, "i
   return { total: mine.length, totalSets: completedSets(mine, questions) };
 }
 
-/** Questions submitted by this account in the week starting at `start`. */
+/** Distinct questions answered by this account in the week starting at `start`; a resit of the same question is not a second question. */
 export function questionsInWeek(attempts: Attempt[], ownerId: string, start: number): number {
-  return inWeek(attempts, ownerId, start).length;
+  return new Set(inWeek(attempts, ownerId, start).map((a) => a.questionId)).size;
 }
 
 /** Sets completed in the week: every question of the set submitted within it. */

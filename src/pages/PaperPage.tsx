@@ -11,19 +11,20 @@ import AmbossSearch from "../components/AmbossSearch";
 import { useLiveQuery } from "dexie-react-hooks";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
-import { db, newId } from "../data/db";
+import { db, newId, withRemoteWrites } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
 import { answerParts, partLabel, stemsOf } from "../lib/questions";
-import { loadSession, pauseSession, resumeSession, saveSession, subscribeSession } from "../lib/session";
+import { loadSession, pauseSession, resumeSession, saveSession, subscribeSession, discardSession } from "../lib/session";
 import { recoverAnswerDrafts, writeAnswerDraft, clearAnswerDraft } from "../lib/answerDrafts";
-import { canWriteAnswers, perSetClocks, readingRemainingSec, usesSetClock, withManualSetClock, withoutSetClock, withSetClock } from "../lib/sessionClock";
+import { canWriteAnswers, perSetClocks, readingRemainingSec, shouldAutoSubmit, usesSetClock, withManualSetClock, withoutSetClock, withSetClock } from "../lib/sessionClock";
 import PaperClock, { useClockPhase } from "../components/PaperClock";
 import { suggestedSessionMinutes } from "../lib/sessionBuilder";
 import AmbossText from "../components/AmbossText";
 import QuickEdit from "../components/QuickEdit";
 import SetMarking from "../components/SetMarking";
 import { paperScore } from "../lib/examMarking";
+import ConfirmDialog from "../components/ConfirmDialog";
 import AccountGate from "../components/AccountGate";
 import FixWithClaude from "../components/FixWithClaude";
 import { useAccountGate } from "../lib/accountGate";
@@ -263,15 +264,23 @@ export default function PaperPage() {
   // Which phase the paper is in; the clock face itself ticks in its own component.
   const { reading, expired, examExpired } = useClockPhase(session, clockKey);
 
+  // What was last written for each attempt, so a flush with nothing new is only a time stamp.
+  const flushedRef = useRef(new Map<string, { answers?: PartAnswer[]; hl?: { stem: number; start: number; end: number }[] }>());
   const flushAttempt = useCallback(async (attemptId: string) => {
     const answers = answersRef.current.get(attemptId);
     const elapsedSec = elapsedRef.current.get(attemptId);
+    const hl = highlightsRef.current.get(attemptId);
+    const last = flushedRef.current.get(attemptId);
+    const changed = (answers && answers !== last?.answers) || (hl && hl !== last?.hl);
     const patch: Partial<Attempt> = {};
     if (answers) patch.answers = answers;
-    const hl = highlightsRef.current.get(attemptId);
     if (hl) patch.stemHighlights = hl;
     if (elapsedSec !== undefined) patch.elapsedSec = elapsedSec;
-    await db.attempts.update(attemptId, patch);
+    // Elapsed time ticking on its own is not a change worth uploading every few seconds; it travels
+    // with the next real edit or the submission, so the whole record (pictures included) is not re-sent.
+    if (changed) await db.attempts.update(attemptId, patch);
+    else await withRemoteWrites(() => db.attempts.update(attemptId, patch));
+    flushedRef.current.set(attemptId, { answers, hl });
     if (answers) clearAnswerDraft(attemptId, answers);
   }, []);
 
@@ -312,36 +321,42 @@ export default function PaperPage() {
   }, [flushAll]);
 
 
-  // Counts the active attempt's writing time, a second at a time.
+  // Counts the active attempt's writing time, a second at a time. Keyed by id, not the record,
+  // so the ticking does not restart (and lose a fraction of a second) each time the record is saved.
+  const attemptId = attempt?.id;
+  const attemptSubmitted = attempt?.submittedAt !== undefined;
   useEffect(() => {
+    if (!attemptId || attemptSubmitted) return;
     const t = setInterval(() => {
-      if (attempt && !attempt.submittedAt && sessionRef.current && canWriteAnswers(sessionRef.current, Date.now())) {
-        elapsedRef.current.set(attempt.id, (elapsedRef.current.get(attempt.id) ?? 0) + 1);
-      }
+      if (sessionRef.current && canWriteAnswers(sessionRef.current, Date.now())) elapsedRef.current.set(attemptId, (elapsedRef.current.get(attemptId) ?? 0) + 1);
     }, 1000);
     return () => clearInterval(t);
-  }, [attempt]);
+  }, [attemptId, attemptSubmitted]);
 
   // Periodic flush of elapsed time.
   useEffect(() => {
-    const t = setInterval(() => {
-      if (attempt && !attempt.submittedAt) void flushAttempt(attempt.id);
-    }, 5000);
+    if (!attemptId || attemptSubmitted) return;
+    const t = setInterval(() => void flushAttempt(attemptId), 5000);
     return () => clearInterval(t);
-  }, [attempt, flushAttempt]);
+  }, [attemptId, attemptSubmitted, flushAttempt]);
 
   // Handing the exam paper in: every answer is submitted, and marking opens here on the same
   // page, set by set, as it does in practice.
   const submitAll = useCallback(async () => {
     if (!session || !data || session.submittedAt || readingRemainingSec(session, Date.now()) > 0 || submittingRef.current || imageJobs.current.size) return;
     submittingRef.current = true;
+    // A paper whose clock ran out while the tab was away is stamped with its deadline, not the moment it was reopened.
+    const deadline = session.startedAt + ((session.readingSec ?? 0) + (session.totalSec ?? 0)) * 1000;
+    const at = shouldAutoSubmit(session, Date.now()) ? Math.min(deadline, Date.now()) : Date.now();
     try {
       for (const a of data.attempts) {
         await flushAttempt(a.id);
-        if (!a.submittedAt) await db.attempts.update(a.id, { submittedAt: Date.now() });
+        if (!a.submittedAt) await db.attempts.update(a.id, { submittedAt: at });
       }
       requestSync(0);
-      const next = sessionAtQuestion({ ...session, submittedAt: Date.now() }, data.questions, 0);
+      // A paper sat with friends joins the marking page as soon as it is handed in.
+      if (session.studyCode) void import("../lib/study").then((m) => m.shareMyAnswers(session.studyCode!)).catch(() => undefined);
+      const next = sessionAtQuestion({ ...session, submittedAt: at }, data.questions, 0);
       sessionRef.current = next;
       saveSession(next); setSession(next);
       setSummaryOpen(false);
@@ -354,7 +369,7 @@ export default function PaperPage() {
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [session?.mode]);
+  }, [session?.mode, session?.submittedAt]);
 
   // Only exams submit at the deadline. Practice remains editable after time runs out.
   useEffect(() => {
@@ -374,7 +389,8 @@ export default function PaperPage() {
     if (session) writeAnswerDraft(session.id, attemptId, next);
     const prev = flushTimers.current.get(attemptId);
     if (prev) clearTimeout(prev);
-    flushTimers.current.set(attemptId, window.setTimeout(() => void flushAttempt(attemptId).then(() => requestSync()), 600));
+    // Saved locally at once; the account copy follows once typing has paused for a while, not after every sentence.
+    flushTimers.current.set(attemptId, window.setTimeout(() => void flushAttempt(attemptId).then(() => requestSync(20_000)), 600));
   };
 
   const toggleFlag = async (attemptId: string, label: string) => {
@@ -438,6 +454,14 @@ export default function PaperPage() {
   }, [highlightSelection]);
 
   const restoredPosition = useRef(false);
+  // A paper that will not load gets a way out after a few seconds rather than a spinner for ever.
+  const [slow, setSlow] = useState(false);
+  const [abandoning, setAbandoning] = useState(false);
+  useEffect(() => {
+    if (data) { setSlow(false); return; }
+    const t = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(t);
+  }, [data]);
   useEffect(() => {
     if (!data || restoredPosition.current) return;
     restoredPosition.current = true;
@@ -473,8 +497,12 @@ export default function PaperPage() {
     setTimeout(() => document.getElementById(`part-${i}-${label || "q"}`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   };
 
-  if (!session || !data || !question || !attempt) return <p role="status">Loading session…</p>;
-  if (!content.ready || data.pending.has(question.setId)) return <div role="status"><p>{content.error || "Loading set…"}</p>{content.error && <button onClick={content.retry}>Retry</button>}<button onClick={() => nav("/home")}>Save & exit</button></div>;
+  const abandonDialog = <ConfirmDialog open={abandoning} title="Abandon this exam?" confirmLabel="Abandon exam" destructive onCancel={() => setAbandoning(false)} onConfirm={() => { setAbandoning(false); void discardSession().then(() => nav("/home", { replace: true })); }}>Nothing you have written in it is kept, and the sets are unattempted again.</ConfirmDialog>;
+  const lockedExam = !!session && session.mode === "exam" && !!session.examFormat && !session.submittedAt;
+  if (!session || !data || !question || !attempt) return <div className="paper-wait" role="status"><p>Loading session…</p>
+    {slow && <><p className="muted">This is taking a while. The paper may have changed underneath, or a set may be missing from the library.</p><div className="row"><button onClick={() => window.location.reload()}>Reload</button>{session && (lockedExam ? <button className="danger" onClick={() => setAbandoning(true)}>Abandon exam</button> : <button onClick={() => nav("/home")}>Save & exit</button>)}</div></>}
+    {abandonDialog}</div>;
+  if (!content.ready || data.pending.has(question.setId)) return <div className="paper-wait" role="status"><p>{content.error || "Loading set…"}</p><div className="row">{content.error && <button onClick={content.retry}>Retry</button>}{lockedExam ? <button className="danger" onClick={() => setAbandoning(true)}>Abandon exam</button> : <button onClick={() => nav("/home")}>Save & exit</button>}</div>{abandonDialog}</div>;
   const behindRevision = data.behind.get(question.setId);
   const unsubmitted = data.attempts.filter((a) => !a.submittedAt).length;
   const setMode = session.studyUnit === "sets";
@@ -546,7 +574,7 @@ export default function PaperPage() {
       <div className="paper-top">
         <span className="paper-status">
           <span className="paper-mode">{session.mode === "exam" ? "Exam" : "Practice"}</span>
-          {setMode && setGroups.length > 1 && <span>Set {setIndex + 1} of {setGroups.length}</span>}
+          {setMode && setGroups.length > 1 && <span>Set {setIndex + 1}/{setGroups.length}</span>}
           <span>{setMode ? `Question ${questionNumber(index)}` : `Question ${index + 1} of ${data.questions.length}`}</span>
         </span>
         {!session.submittedAt && <PaperClock session={session} clockKey={clockKey} onSetTimer={setTimer} onClearTimer={clearTimer} />}
@@ -569,7 +597,7 @@ export default function PaperPage() {
       <div className="paper">
         <SessionSidebar session={session} questions={data.questions} attempts={data.attempts} sets={data.sets} marks={data.marks} activePart={activePart} summaryOpen={summaryOpen} onQuestion={goTo} />
         {summaryOpen ? <section className="paper-summary" aria-label="Session summary">
-          <h1>Session summary</h1><p className="muted">{data.attempts.length - unsubmitted} of {data.questions.length} questions submitted. {data.marks.length} marked.</p>
+          <h1>Session summary</h1><p className="muted">{data.attempts.length - unsubmitted}/{data.questions.length} submitted. {data.marks.length} marked.</p>
           {session.mode === "exam" && paper.marked > 0 && <p className="paper-summary-total"><strong>Exam {paper.score} / {paper.maxScore}</strong>{paper.marked < paper.total ? <span className="muted">, {paper.marked}/{paper.total} marked</span> : null}</p>}
           {(setMode ? openedGroups : setGroups).map((group, number) => {
             const set = data.sets.find((s) => s.id === group.setId);
@@ -581,7 +609,15 @@ export default function PaperPage() {
           <div className="row"><button onClick={() => setSummaryOpen(false)}>Back to question</button>{setMode && openedGroups.length < setGroups.length && <button className="primary" onClick={() => goTo(setGroups[openedGroups.length].indices[0])}>Open next set</button>}{unsubmitted === 0 && <button className="primary" onClick={() => nav(`/session/${session.id}`)}>Finish session</button>}</div>
         </section> : (session.mode === "practice" || unsubmitted === 0) && setSubmitted ? <SetMarking key={currentSet.setId} attemptId={data.attempts[firstToMark].id} embedded
           partId={(questionId, label) => `part-${data.questions.findIndex((q) => q.id === questionId)}-${label || "q"}`}
-          onAdvance={() => { if (setIndex + 1 < setGroups.length) goTo(setGroups[setIndex + 1].indices[0]); else { flushAll(); setSummaryOpen(true); } }} /> : <div className="paper-split" ref={splitRef}>
+          onAdvance={(outcome) => {
+            if (outcome?.discarded) {
+              // The set is gone from the paper, so its first index now belongs to the set after it.
+              const first = currentSet.indices[0];
+              if (setIndex + 1 < setGroups.length) goTo(first); else if (first > 0) { goTo(first - 1); setSummaryOpen(true); } else { flushAll(); setSummaryOpen(true); }
+              return;
+            }
+            if (setIndex + 1 < setGroups.length) goTo(setGroups[setIndex + 1].indices[0]); else { flushAll(); setSummaryOpen(true); }
+          }} /> : <div className="paper-split" ref={splitRef}>
         <div className="paper-stem" style={{ flexBasis: `${stemPct}%` }} ref={stemRef}>
           <div className="col-head">
             <span>{groupLabel}</span>
@@ -641,7 +677,7 @@ export default function PaperPage() {
                         {p.label && <span className="label">{partLabel(p.label)}</span>}
                         <AmbossText cacheKey={q.id} texts={stemTexts} text={p.text} doc={p.textDoc} className="text" disabled={!ambossOnPaper} />
                         {q.parts.length > 0 && p.marks !== undefined && <span className="marks">({p.marks} mark{p.marks === 1 ? "" : "s"})</span>}
-                        <button className={"small" + (ans?.flagged ? " active" : "")} title="Flag for review" onClick={() => toggleFlag(a.id, p.label)}>⚑</button>
+                        <button className={"small" + (ans?.flagged ? " active" : "")} title="Flag for review" aria-label="Flag for review" aria-pressed={!!ans?.flagged} onClick={() => toggleFlag(a.id, p.label)}>⚑</button>
                       </div>
                       {!reading && <Editor
                         initial={ans?.doc}

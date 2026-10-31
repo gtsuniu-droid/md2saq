@@ -48,7 +48,7 @@ export default function LeaderboardPage() {
       {error && <p className="field-error" role="alert">{error}</p>}
       {!rows && !error && <p className="muted" role="status">Loading…</p>}
       {rows && !sorted.length && <p className="muted">{period === "all" ? "Nobody has answered a question yet." : "Nobody has answered a question yet this week."}</p>}
-      {!user && rows && <div className="lb-standing lb-invite"><p><strong>Want your name up here?</strong> Sign in with Google, answer questions, and join the board from your home page. Your progress follows you to every device.</p><SignInToJoin /></div>}
+      {!user && rows && <div className="lb-standing lb-invite"><p><strong>Want your name up here?</strong> Sign in, answer questions, and join the board from Settings. Your progress follows you to every device.</p><SignInToJoin /></div>}
       {sorted.length > 0 && (
         <>
           <Podium rows={sorted} unit={unit} me={user?.uid ?? ""} period={period} />

@@ -78,10 +78,10 @@ export default function PaperClock({ session, clockKey, onSetTimer, onClearTimer
   const className = "timer" + (displayed === null ? " idle" : expired && session.mode === "practice" ? " over" : displayed <= 60 ? " low" : "");
   const aria = displayed === null ? "Set a timer for this set" : expired && session.mode === "practice" ? (perSet ? "Over this set's time" : "Practice overtime") : reading ? "Reading time remaining" : perSet ? "Time left for this set" : "Writing time remaining";
 
-  if (!settable) return displayed === null ? null : <span className={className} aria-label={aria}>{face}</span>;
+  if (!settable) return displayed === null ? null : <span className={className} title={aria}>{face}</span>;
   return (
     <div className="timer-wrap" ref={popRef}>
-      <button type="button" className={className} aria-label={aria} title="Set a timer for this set" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setMinutes(""); setOpen((o) => !o); }}>{face}</button>
+      <button type="button" className={className} title={aria} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setMinutes(""); setOpen((o) => !o); }}>{face}</button>
       {open && (
         <form className="timer-pop" role="dialog" aria-label="Timer for this set" onSubmit={(e) => { e.preventDefault(); start(); }}>
           <label>Finish this set in <input autoFocus type="number" inputMode="numeric" min={1} max={300} step={1} placeholder={defaultMinutes} value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="Minutes" /> min</label>

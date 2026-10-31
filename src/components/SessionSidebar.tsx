@@ -32,7 +32,7 @@ export default function SessionSidebar({ session, questions, attempts, sets, mar
   });
   return <aside className="paper-side session-sidebar" aria-label="Session navigation">
     <nav aria-label="Opened questions">{sidebarEntries(session, questions, attempts, sets, marks, activePart, drafts).map((entry) => {
-      if (entry.kind === "set") return <div key={entry.key} className="side-set" title={entry.title}>{entry.label}{entry.allMarked && <span className="side-set-done" aria-label=", all marked"> ✓</span>}</div>;
+      if (entry.kind === "set") return <div key={entry.key} className="side-set" title={entry.title}>{entry.label}{entry.allMarked && <span className="side-set-done" role="img" aria-label="All marked"> ✓</span>}</div>;
       const { row, score, unanswered } = entry;
       const attempt = attempts[row.index];
       const answer = attempt?.answers.find((a) => a.label === row.part);

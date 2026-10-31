@@ -21,13 +21,13 @@ async function signingKeys(fresh = false): Promise<Map<string, KeyObject>> {
 }
 
 /** Who a valid ID token for this project belongs to, as Google or Facebook signed them in; null when it is missing, forged, expired or for another project. */
-export async function verifiedUser(req: Request, projectId: string): Promise<{ uid: string; name?: string; picture?: string; email?: string } | null> {
+export async function verifiedUser(req: Request, projectId: string): Promise<{ uid: string; name?: string; picture?: string; email?: string; verified?: boolean; provider?: string } | null> {
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const [h, p, sig] = token?.split(".") ?? [];
   if (!h || !p || !sig) return null;
   try {
     const header = JSON.parse(Buffer.from(h, "base64url").toString()) as { alg?: string; kid?: string };
-    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as { aud?: string; iss?: string; sub?: string; exp?: number; iat?: number; name?: unknown; picture?: unknown; email?: unknown };
+    const claims = JSON.parse(Buffer.from(p, "base64url").toString()) as { aud?: string; iss?: string; sub?: string; exp?: number; iat?: number; name?: unknown; picture?: unknown; email?: unknown; email_verified?: unknown; firebase?: { sign_in_provider?: unknown } };
     const now = Date.now() / 1000;
     if (header.alg !== "RS256" || !header.kid) return null;
     if (claims.aud !== projectId || claims.iss !== `https://securetoken.google.com/${projectId}`) return null;
@@ -37,7 +37,7 @@ export async function verifiedUser(req: Request, projectId: string): Promise<{ u
     if (!key || !createVerify("RSA-SHA256").update(`${h}.${p}`).verify(key, sig, "base64url")) return null;
     const text = (v: unknown, max: number) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
     const picture = text(claims.picture, 2000);
-    return { uid: claims.sub, name: text(claims.name, 80), picture: picture && /^https:\/\//.test(picture) ? picture : undefined, email: text(claims.email, 320)?.toLowerCase() };
+    return { uid: claims.sub, name: text(claims.name, 80), picture: picture && /^https:\/\//.test(picture) ? picture : undefined, email: text(claims.email, 320)?.toLowerCase(), verified: claims.email_verified === true, provider: text(claims.firebase?.sign_in_provider, 40) };
   } catch { return null; }
 }
 
