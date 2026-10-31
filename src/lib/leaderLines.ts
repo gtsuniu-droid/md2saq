@@ -1,25 +1,15 @@
 /**
  * A line for whoever leads the week, under the podium: one of these, picked afresh each
- * visit. Only when the lead is worth crowing about (five questions or more), and the lines
- * that quote the count only once it is a big one.
+ * visit, only when the lead is worth crowing about (five questions or more). The last one
+ * laughs at second and third place, so it needs both.
  */
-export const LEADER_LINES: { text: string; emoji?: string; minCount?: number }[] = [
+export const LEADER_LINES: { text: string; emoji?: string; rivals?: boolean }[] = [
   { text: "{name} is cooking", emoji: "🍳" },
-  { text: "{name} is very demure, very mindful, very first", emoji: "💅" },
-  { text: "{name} understood the assignment", emoji: "📝" },
-  { text: "It's giving {name}", emoji: "✨" },
-  { text: "{name} said “bet” and answered {count} questions", emoji: "😤", minCount: 20 },
-  { text: "{name} ate and left no crumbs" },
-  { text: "Let {name} cook", emoji: "🔥" },
-  { text: "{name} is in their flop-proof era", emoji: "😮‍💨" },
-  { text: "Sigma grindset: {name}", emoji: "🗿" },
+  { text: "{name} is mogging you all", emoji: "🗿" },
+  { text: "{name} is eating and leaving no crumbs" },
+  { text: "{name} is on demon time", emoji: "😈" },
   { text: "{name} is locked in", emoji: "🔒" },
-  { text: "{name} is on demon time with the SAQs", emoji: "😈" },
-  { text: "{name} is gatekeeping first place", emoji: "🚧" },
-  { text: "{name} is the main character this week" },
-  { text: "Skill issue for everyone except {name}", emoji: "💀" },
-  { text: "{name} has {count} questions and zero chill", emoji: "🧊", minCount: 20 },
-  { text: "{name} is lowkey carrying the whole board", emoji: "🏋️" },
+  { text: "{second} and {third}, 🤣😂🫵", rivals: true },
 ];
 
 export const LEADER_LINE_MIN = 5;
@@ -27,12 +17,12 @@ export const LEADER_LINE_MIN = 5;
 /**
  * The line for this leader, or null when the lead is too small to make a fuss of. `pick` is a
  * number in [0, 1). `worthy` says whether the lead deserves a line when the board is ranked
- * by something other than questions (sets); the count lines still need the questions.
+ * by something other than questions (sets). `rivals` are the names in second and third place.
  */
-export function leaderLine(name: string, count: number, pick = Math.random(), worthy = count >= LEADER_LINE_MIN): string | null {
+export function leaderLine(name: string, count: number, pick = Math.random(), worthy = count >= LEADER_LINE_MIN, rivals: string[] = []): string | null {
   if (!worthy) return null;
-  const fitting = LEADER_LINES.filter((l) => count >= (l.minCount ?? 0));
+  const fitting = LEADER_LINES.filter((l) => !l.rivals || rivals.length >= 2);
   const line = fitting[Math.min(fitting.length - 1, Math.floor(Math.max(0, Math.min(0.999999, pick)) * fitting.length))];
-  const text = line.text.replaceAll("{name}", name).replaceAll("{count}", String(count));
+  const text = line.text.replaceAll("{name}", name).replaceAll("{second}", rivals[0] ?? "").replaceAll("{third}", rivals[1] ?? "");
   return line.emoji ? `${text} ${line.emoji}` : text;
 }

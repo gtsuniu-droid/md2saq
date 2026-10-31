@@ -1599,25 +1599,35 @@ details.section > summary h2 { font-size: 1.15rem; }
 .lb-optin-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .lb-optin-actions input { width: 180px; max-width: 100%; min-height: 36px; }
 .lb-optin-actions button.link { color: var(--brand); font-weight: 600; }
-.lb-strip { display: flex; align-items: center; gap: .75rem 1rem; flex-wrap: wrap; margin: 0 0 1.2rem; padding: .7rem 1.1rem; border-radius: 12px; background: var(--card); border: 1px solid var(--border); font-size: .9rem; }
-.lb-strip-title { display: inline-flex; align-items: center; gap: .5rem; min-width: 110px; }
-.lb-strip-title svg { width: 22px; height: 17px; }
-.lb-chips { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
-.lb-chip-row { display: inline-flex; align-items: center; gap: .45rem; height: 36px; padding: 0 .75rem 0 .25rem; border-radius: 999px; background: var(--surface); font-size: .85rem; }
-.lb-chip-row.gold { background: #fff8e1; border: 1px solid #f3dd9a; }
-.lb-chip-row.me { box-shadow: inset 0 0 0 1.5px var(--brand); }
-.lb-chip-row .lb-avatar { width: 28px; height: 28px; font-size: .8rem; border-width: 2px; }
-.lb-chip-row .lb-avatar.gold { width: 28px; height: 28px; font-size: .8rem; }
-.lb-chip-name { font-weight: 600; }
-.lb-chip-count { font-weight: 700; }
-.lb-chip-row.gold .lb-chip-count { color: #b7791f; } .lb-chip-row.silver .lb-chip-count { color: var(--brand); } .lb-chip-row.bronze .lb-chip-count { color: var(--teal); }
-.lb-strip-line { flex: 1; }
+.lb-strip { display: flex; align-items: center; gap: .4rem .9rem; flex-wrap: wrap; margin: 0 0 1.2rem; padding: .4rem .8rem .4rem .95rem; border-radius: 12px; background: var(--card); border: 1px solid var(--border); font-size: .86rem; }
+.lb-strip-title { display: inline-flex; align-items: center; gap: .45rem; }
+.lb-strip-title svg { width: 20px; height: 15px; }
+/* The week's top three as one ranked row: rank dot, avatar, name, count, a hairline of each one's share of the leader. */
+.lb-rank { list-style: none; margin: 0; padding: 0; display: flex; align-items: stretch; gap: .2rem; flex-wrap: wrap; }
+.lb-rank-row { position: relative; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "n a name count" "n a bar bar"; align-items: center; column-gap: .4rem; row-gap: 3px; padding: .3rem .6rem .32rem .4rem; border-radius: 9px; min-width: 7.5rem; line-height: 1.15; }
+.lb-rank-row.me { background: var(--brand-soft); }
+.lb-rank-row.gap { margin-left: .55rem; }
+.lb-rank-row.gap::before { content: ""; position: absolute; left: -.42rem; top: 22%; height: 56%; border-left: 1px solid var(--border); }
+.lb-rank-n { grid-area: n; width: 17px; height: 17px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: .64rem; font-weight: 800; color: #fff; background: var(--muted); font-variant-numeric: tabular-nums; }
+.lb-rank-row.gold .lb-rank-n { background: #e7ab23; color: #3b2a00; }
+.lb-rank-row.silver .lb-rank-n { background: #a9b1bd; color: #1f2430; }
+.lb-rank-row.bronze .lb-rank-n { background: #c98a52; color: #fff; }
+.lb-rank-row .lb-avatar, .lb-rank-row .lb-avatar.gold, .lb-rank-row .lb-avatar.plain { grid-area: a; width: 24px; height: 24px; font-size: .7rem; font-weight: 700; border-width: 1.5px; }
+.lb-rank-name { grid-area: name; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9rem; }
+.lb-rank-you { margin-left: .35rem; font-size: .6rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); vertical-align: 1px; }
+.lb-rank-count { grid-area: count; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lb-rank-bar { grid-area: bar; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 9%, transparent); overflow: hidden; }
+.lb-rank-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--muted); }
+.lb-rank-row.gold .lb-rank-bar > span { background: #e7ab23; } .lb-rank-row.silver .lb-rank-bar > span { background: #a9b1bd; } .lb-rank-row.bronze .lb-rank-bar > span { background: #c98a52; } .lb-rank-row.me .lb-rank-bar > span { background: var(--brand); }
+.lb-strip-line { display: inline-flex; align-items: center; gap: .7rem; }
+.lb-nick { font-size: .8rem; }
 .lb-strip-invite { display: inline-flex; align-items: center; gap: .6rem 1rem; flex-wrap: wrap; }
 .lb-signin { display: inline-flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .lb-invite { margin-top: .5rem; }
 .lb-seg button { padding-inline: 1rem; }
 .lb-seg button.on { background: var(--brand-soft); color: var(--brand); }
-.lb-more { display: inline-block; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.lb-more { margin-left: auto; display: inline-flex; align-items: center; gap: .15rem; font-weight: 600; font-size: .84rem; text-decoration: none; white-space: nowrap; }
+.lb-more svg { width: 13px; height: 13px; }
 .lb-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .lb-podium { list-style: none; margin: 1rem 0 0; padding: 1.6rem 1.2rem 1.2rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; align-items: end; background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
 .lb-podium.compact { margin-top: .9rem; padding: 1.1rem .7rem .8rem; gap: .5rem; background: transparent; border: 0; }

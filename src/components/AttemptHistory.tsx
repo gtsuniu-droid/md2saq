@@ -4,6 +4,7 @@ import type { Attempt, Mark, Question, QuestionSet, Settings } from "../data/typ
 import { PRESENTATION_BY_ID, presentationName } from "../data/presentations";
 import { historyEntries, historyGroups, type HistoryGroup } from "../lib/history";
 import { truncate } from "../lib/questions";
+import { primaryPresentation } from "../lib/primaryPresentation";
 import { setTitle } from "../lib/sets";
 import { scoreBand } from "../lib/scoreBand";
 import { getProgressSyncState, subscribeProgressSync, syncNow } from "../lib/sync";
@@ -21,6 +22,7 @@ const band = scoreBand;
 
 /** One sitting: what it was, when, how it went. The presentation sits above so the eye can scan. */
 function Row({ g, sitting, caption = true, ownerId }: { g: HistoryGroup; sitting: number; caption?: boolean; ownerId: string }) {
+  const openPath = g.kind === "exam" ? `/session/${g.sessionId}` : `/history/${g.anchor.id}`;
   const unmarked = g.entries.find((e) => !e.mark)?.attempt ?? g.anchor;
   const discard = () => {
     const attempts = g.entries.map((e) => e.attempt);
@@ -35,13 +37,13 @@ function Row({ g, sitting, caption = true, ownerId }: { g: HistoryGroup; sitting
     <li className={g.marked < g.total ? "unmarked" : undefined}>
       <div className="history-question">
         {caption && g.presentation && <span className="history-pres">{emoji && <span aria-hidden="true">{emoji}</span>}{g.presentation}</span>}
-        <strong><Link to={`/history/${g.anchor.id}`}>{name}</Link></strong>
-        {!titled && g.kind === "set" && <p className="muted">{truncate(g.text, 110)}</p>}
+        <strong><Link to={openPath}>{name}</Link></strong>
+        {(g.kind === "exam" || (!titled && g.kind === "set")) && <p className="muted">{truncate(g.text, 110)}</p>}
         {g.kind === "question" && <p className="muted">{truncate(g.text, 110)}</p>}
         <span className="muted history-meta">
           <time dateTime={new Date(g.submittedAt).toISOString()}>{when(g.submittedAt)}</time>
-          {g.kind === "set" ? `, ${g.total} question${g.total === 1 ? "" : "s"}` : ", single question"}
-          {g.mode === "exam" ? ", exam" : ""}
+          {g.kind === "exam" ? `, ${g.setIds.length} set${g.setIds.length === 1 ? "" : "s"}, ${g.total} question${g.total === 1 ? "" : "s"}` : g.kind === "set" ? `, ${g.total} question${g.total === 1 ? "" : "s"}` : ", single question"}
+          {g.mode === "exam" && g.kind !== "exam" ? ", exam" : ""}
           {sitting > 1 ? `, ${ordinal(sitting)} sitting` : ""}
         </span>
       </div>
@@ -52,7 +54,7 @@ function Row({ g, sitting, caption = true, ownerId }: { g: HistoryGroup; sitting
         </> : <span className="muted">{g.marked ? `${g.marked} of ${g.total} marked` : "Needs marking"}</span>}
         <span className="history-links">
           {g.reviewLater && <span className="review-later-label">⚑ Review later</span>}
-          {g.marked < g.total ? <Link to={`/mark/${unmarked.id}`}>Mark</Link> : <Link to={`/history/${g.anchor.id}`}>Open</Link>}
+          {g.marked < g.total ? <Link to={g.kind === "exam" ? openPath : `/mark/${unmarked.id}`}>Mark</Link> : <Link to={openPath}>Open</Link>}
           {g.mode === "practice" && <button type="button" className="link history-discard" onClick={discard} title="Throw this sitting away; the set is unattempted again">Discard</button>}
         </span>
       </div>
@@ -79,17 +81,32 @@ export default function AttemptHistory({ attempts, marks, questions, sets, setti
     }
     return out;
   }, [groups]);
+  const presentationBySet = useMemo(() => {
+    const bySet = new Map<string, Question[]>();
+    for (const q of questions) bySet.set(q.setId, [...(bySet.get(q.setId) ?? []), q]);
+    return new Map(sets.map((s) => [s.id, primaryPresentation(s, bySet.get(s.id) ?? [])]));
+  }, [questions, sets]);
   const query = search.trim().toLowerCase();
-  const filtered = groups.filter((g) =>
-    (filter === "all" || (filter === "review" ? g.reviewLater : filter === "unmarked" ? g.marked < g.total : g.mode === filter))
-    && (!query || `${g.label} ${g.presentation ?? ""} ${g.set?.name ?? ""} ${g.text} ${g.entries.map((e) => `${e.text} ${e.mark?.notes ?? ""}`).join(" ")}`.toLowerCase().includes(query)));
+  const filtered = groups.filter((g) => {
+    if (filter !== "all" && !(filter === "review" ? g.reviewLater : filter === "unmarked" ? g.marked < g.total : g.mode === filter)) return false;
+    if (!query) return true;
+    // An exam remains searchable by every set and presentation inside it.
+    const details = g.entries.map((e) => {
+      const presentationId = e.set ? presentationBySet.get(e.set.id) : undefined;
+      return `${e.label} ${e.set?.name ?? ""} ${presentationId ? presentationName(presentationId) : ""} ${e.text} ${e.mark?.notes ?? ""}`;
+    }).join(" ");
+    return `${g.label} ${g.presentation ?? ""} ${g.text} ${details}`.toLowerCase().includes(query);
+  });
   const sections = useMemo(() => {
     const by = new Map<string, HistoryGroup[]>();
-    for (const g of filtered) by.set(g.presentation ?? "Other", [...(by.get(g.presentation ?? "Other") ?? []), g]);
+    for (const g of filtered) {
+      const section = g.kind === "exam" ? "Exams" : g.presentation ?? "Other";
+      by.set(section, [...(by.get(section) ?? []), g]);
+    }
     return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, rows]) => {
       const marked = rows.filter((r) => pct(r) !== null);
       const best = marked.length ? Math.max(...marked.map((r) => pct(r)!)) : null;
-      const setsDone = new Set(rows.filter((r) => r.kind === "set" && r.set).map((r) => r.set!.id)).size;
+      const setsDone = new Set(rows.flatMap((r) => r.setIds)).size;
       return { name, rows, best, setsDone, emoji: rows[0].presentationId ? PRESENTATION_BY_ID.get(rows[0].presentationId)?.emoji : undefined };
     });
   }, [filtered]);
@@ -100,10 +117,12 @@ export default function AttemptHistory({ attempts, marks, questions, sets, setti
     try { if (!await syncNow()) setMessage("Sign in to sync your history."); }
     catch { /* The shared sync state shows the failure and keeps local history visible. */ }
   };
-  const setsDoneAll = new Set(groups.filter((g) => g.kind === "set" && g.set).map((g) => g.set!.id)).size;
+  const setsDoneAll = new Set(groups.flatMap((g) => g.setIds)).size;
+  const attemptedSetIds = new Set(groups.flatMap((g) => g.entries.flatMap((e) => e.set ? [e.set.id] : [])));
+  const presentationsDone = new Set([...attemptedSetIds].map((id) => presentationBySet.get(id)).filter(Boolean)).size;
   return <section className="card home-card history-card" id="history" aria-labelledby="history-heading">
     <div className="row spread">
-      <div><h2 id="history-heading">History</h2>{groups.length > 0 && <p className="muted history-summary">{setsDoneAll} {setsDoneAll === 1 ? "set" : "sets"} done across {new Set(groups.map((g) => g.presentation).filter(Boolean)).size} presentations, {groups.length} {groups.length === 1 ? "sitting" : "sittings"}.</p>}</div>
+      <div><h2 id="history-heading">History</h2>{groups.length > 0 && <p className="muted history-summary">{setsDoneAll} {setsDoneAll === 1 ? "set" : "sets"} done across {presentationsDone} presentations, {groups.length} {groups.length === 1 ? "sitting" : "sittings"}.</p>}</div>
       {ownerId ? <button className="small" disabled={busy} onClick={() => void refresh()}>{busy ? "Syncing…" : "Sync history"}</button> : <Link to="/settings">Sign in to sync</Link>}
     </div>
     {(message || sync?.status === "error") && <p className="muted history-sync" role="status">{message || "Saved on this device. Cloud sync failed, try again."}</p>}

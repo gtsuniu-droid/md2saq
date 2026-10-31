@@ -8,22 +8,27 @@ import { setLabel } from "../lib/sets";
 import { stemsOf } from "../lib/questions";
 import { sessionAtQuestion } from "../lib/sessionNavigation";
 import { studyRecords } from "../lib/study";
+import { isAdmin } from "../lib/admin";
+import ExamMarking from "../components/ExamMarking";
+import { buildExamForMarking, examKey, examSets } from "../lib/examMarking";
 
 export default function SessionReviewPage() {
   const { id = "" } = useParams();
   const nav = useNavigate();
-  const data = useLiveQuery(async () => {
-    const ownerId = (await getSettings()).cloudUser?.uid ?? "";
+  const live = useLiveQuery(async () => {
+    const settings = await getSettings();
+    const ownerId = settings.cloudUser?.uid ?? "";
     const attempts = (await db.attempts.where("sessionId").equals(id).toArray()).filter((a) => belongsToAccount(a, ownerId));
     const questions = await db.questions.bulkGet(attempts.map((a) => a.questionId));
     const marks = await db.marks.where("attemptId").anyOf(attempts.map((a) => a.id)).filter((m) => belongsToAccount(m, ownerId)).toArray();
     const byAttempt = new Map(marks.map((m) => [m.attemptId, m]));
     const sets = await db.sets.toArray();
-    return attempts.map((a, i) => ({ a, q: questions[i], m: byAttempt.get(a.id), set: sets.find((s) => s.id === questions[i]?.setId) }));
+    return { rows: attempts.map((a, i) => ({ a, q: questions[i], m: byAttempt.get(a.id), set: sets.find((s) => s.id === questions[i]?.setId) })), sets, admin: isAdmin(settings), ownerId };
   }, [id]);
 
   const study = useLiveQuery(async () => (await studyRecords()).find((r) => r.sessionId === id) ?? null, [id]);
-  if (!data) return null;
+  if (!live) return null;
+  const { rows: data, sets, admin, ownerId } = live;
   const session = loadSession();
   const ordered = session?.id === id ? [...data].sort((x, y) => session.attemptIds.indexOf(x.a.id) - session.attemptIds.indexOf(y.a.id)) : data;
   const groups = Array.from(new Set(ordered.map((r) => r.q?.setId ?? r.a.qref?.setId ?? r.a.id))).map((setId) => ({
@@ -34,6 +39,9 @@ export default function SessionReviewPage() {
   const unfinished = ordered.filter((r) => r.a.submittedAt === undefined);
   const total = ordered.reduce((acc, r) => acc + (r.m?.score ?? 0), 0);
   const max = ordered.reduce((acc, r) => acc + (r.m?.maxScore ?? 0), 0);
+  // A submitted exam of several sets can be copied, or handed to an assistant, as one paper.
+  const exam = !unfinished.length && groups.length > 1 && ordered.every((r) => r.a.mode === "exam")
+    ? buildExamForMarking(examKey(id), examSets(ordered.map((r) => r.a), ordered.flatMap((r) => r.q ? [r.q] : []), sets, session?.id === id ? session.attemptIds : undefined)) : null;
 
   const finish = () => {
     if (session?.id === id && !unfinished.length) saveSession(null);
@@ -77,6 +85,7 @@ export default function SessionReviewPage() {
       </table>
       <div className="row" style={{ marginTop: "1rem" }}>
         {unmarked.length > 0 && !examLocked && <button className="primary" onClick={() => session?.id === id ? resume(unmarked[0].a.questionId) : nav(`/mark/${unmarked[0].a.id}`)}>Mark next set</button>}
+        {exam && exam.questions.length > 0 && <ExamMarking exam={exam} admin={admin} signedIn={!!ownerId} />}
         {unfinished.length > 0 && session?.id === id && <button className="primary" onClick={() => resume(unfinished[0].a.questionId)}>Continue session</button>}
         {study && !unfinished.length && <Link className="button" to={`/study/${study.code}`}>Compare answers with friends</Link>}
         <button className={unmarked.length === 0 ? "primary" : ""} onClick={finish}>{unfinished.length ? "Save & exit" : "Done"}</button>

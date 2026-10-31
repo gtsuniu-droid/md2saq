@@ -78,3 +78,41 @@ it("tells sets with the same name apart by their id", async () => {
   expect((await (await call("ana")).json()).suggested.parts[0]).toMatchObject({ attemptId: "t1", label: "b" });
 });
 
+
+it("carries a whole exam through the answers store and connector with continuous part ids", async () => {
+  const exam: SetForMarking = {
+    ...set, key: "exam:paper", name: "Exam", exam: true, at: 300,
+    questions: Array.from({ length: 60 }, (_, i) => ({
+      ...set.questions[0], attemptId: `exam-a${i}`, number: i + 1,
+      ...(i % 6 === 0 ? { section: `Set ${i / 6 + 1}` } : {}),
+      parts: [{ ...set.questions[0].parts[0], id: `${i + 1}(a)` }],
+    })),
+  };
+  const request = (body: SetForMarking) => answers(new Request("http://x/api/answers", {
+    method: "POST", headers: { authorization: "Bearer exam-student", "content-type": "application/json" }, body: JSON.stringify(body),
+  }));
+  expect((await request(exam)).status).toBe(204);
+  expect((await request({ ...exam, questions: [...exam.questions, exam.questions[0]] })).status).toBe(400);
+  const tool = await connect("exam-student");
+  const got = await tool("getMyAnswers", { set: exam.key });
+  expect(got.body.text).toContain("this exam paper");
+  expect(got.body.text).toContain("# Set 10");
+  expect(got.body.parts).toHaveLength(60);
+  expect((await tool("markMyAnswers", { set: exam.key, marks: [{ part: "60(a)", score: 1, feedback: "One credited point." }] })).body).toMatchObject({ success: true, partsMarked: 1 });
+  const response = await answers(new Request(`http://x/api/answers?key=${encodeURIComponent(exam.key)}`, { headers: { authorization: "Bearer exam-student" } }));
+  expect((await response.json()).suggested.parts[0]).toMatchObject({ attemptId: "exam-a59", label: "a", score: 1 });
+});
+
+it('finds the most recent exam paper when the student speaks of "the exam", however the sets are named', async () => {
+  const post = (uid: string, body: unknown) => answers(new Request("http://x/api/answers", { method: "POST", headers: { authorization: `Bearer ${uid}`, "content-type": "application/json" }, body: JSON.stringify(body) }));
+  const exam: SetForMarking = { ...set, key: "exam:p1", name: "Paper, 31 Oct 2026", exam: true, at: 300, questions: [{ ...set.questions[0], attemptId: "x1" }] };
+  await post("finn", set);
+  await post("finn", exam);
+  await post("finn", { ...set, key: "t3", at: 400, questions: [{ ...set.questions[0], attemptId: "t3" }] });
+  const tool = await connect("finn");
+  expect((await tool("getMyAnswers", {})).body.id).toBe("t3"); // the most recently kept set
+  expect((await tool("getMyAnswers", { set: "exam" })).body).toMatchObject({ id: "exam:p1", exam: true, otherRecentSets: [{ id: "t3" }, { id: "t1" }] });
+  expect((await tool("getMyAnswers", { set: "the exam I just did" })).body.id).toBe("exam:p1");
+  expect((await tool("markMyAnswers", { set: "exam", marks: [{ part: "1(a)", score: 2, feedback: "Both credited." }] })).body).toMatchObject({ success: true, id: "exam:p1" });
+  expect((await tool("getMyAnswers", { set: "exam" })).body.howToMark).toMatch(/consultant[\s\S]*clinical reasoning[\s\S]*not a script/);
+});

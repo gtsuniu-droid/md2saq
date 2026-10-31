@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { Attempt, Question, QuestionSet } from "../data/types";
-import { buildSetForMarking, checkSuggested, docText, MARKING_RULES, setText } from "./setForMarking";
+import { buildSetForMarking, checkSuggested, docText, MARKING_RULES, markPrompt, setText } from "./setForMarking";
 
 const stem = "Mr Lee, 64, has had central chest pain for 40 minutes. BP 100/60, HR 110.";
 const q1: Question = { id: "q1", setId: "s", order: 0, stems: [stem], text: "", parts: [
@@ -26,6 +26,10 @@ it("lays a set out for marking, the shared case once, every part with its marks 
   // Marked strictly, with a pearl per part, whoever the text is pasted to.
   for (const rule of MARKING_RULES) expect(text).toContain(rule);
   expect(MARKING_RULES.join(" ")).toMatch(/strictly[\s\S]*benefit of the doubt[\s\S]*only the first that many[\s\S]*pearl[\s\S]*no label/);
+  // A consultant's judgement, not a blind reading of the guide, and still strict.
+  expect(MARKING_RULES[0]).toMatch(/expert consultant doctor[\s\S]*clinical reasoning[\s\S]*evidence-based[\s\S]*not a script[\s\S]*clinical equivalent/);
+  expect(MARKING_RULES[1]).toMatch(/clinically wrong for this patient[\s\S]*Never give the benefit of the doubt/);
+  expect(markPrompt(built)).toMatch(/consultant doctor[\s\S]*clinical reasoning[\s\S]*no benefit of the doubt/);
 });
 
 it("keeps what a marker sent that fits the set, and says what did not", () => {
@@ -45,4 +49,13 @@ it("keeps what a marker sent that fits the set, and says what did not", () => {
 it("reads rich documents as plain lines", () => {
   const p = (text: string) => ({ type: "paragraph", content: [{ type: "text", text }] });
   expect(docText({ type: "doc", content: [p("Intro"), { type: "bulletList", content: [{ type: "listItem", content: [p("One"), { type: "bulletList", content: [{ type: "listItem", content: [p("Nested")] }] }] }] }] })).toBe("Intro\n- One\n  - Nested");
+});
+
+
+it("asks the connector to mark a normal set by its own key", () => {
+  const prompt = markPrompt(built);
+  expect(prompt).toContain('"Set 12: Chest pain" (set id t1)');
+  expect(prompt).toContain('getMyAnswers (set: "t1")');
+  expect(prompt).toContain('markMyAnswers (set: "t1")');
+  expect(prompt).not.toContain("whole exam paper");
 });

@@ -9,23 +9,25 @@ import { answerParts } from "./questions";
  * back suggested marks. Pure, so the site and its functions share it.
  */
 export interface MarkingPart { id: string; label: string; marks: number; prompt: string; answer: string; model: string; /** The student's own revision after reading the model answer, when they made one. */ revised?: string }
-export interface MarkingQuestion { attemptId: string; number: number; stems: string[]; text: string; model: string; parts: MarkingPart[] }
-export interface SetForMarking { key: string; name: string; at: number; notes?: string; questions: MarkingQuestion[] }
+export interface MarkingQuestion { attemptId: string; number: number; stems: string[]; text: string; model: string; parts: MarkingPart[]; /** The set this question opens, when the paper holds several sets (an exam). */ section?: string }
+export interface SetForMarking { key: string; name: string; at: number; notes?: string; questions: MarkingQuestion[]; /** A whole exam paper: every set of the sitting, numbered right through. */ exam?: boolean }
 
 /** Suggested marks for one part: a score, a line of feedback, and comments on quoted passages of the answer. */
 export interface SuggestedPart { attemptId: string; label: string; score: number; feedback: string; comments: { quote: string; text: string; start: number; end: number }[]; /** The student's answer rewritten for full marks in their own words, when it fell short. */ rewrite?: string }
 export interface SuggestedMarks { at: number; summary?: string; parts: SuggestedPart[] }
 
 /**
- * How to mark, wherever marking is asked for (the connector, Mark with AI, Copy set): strictly,
- * as a finals examiner would, with a high-yield pearl in each part's feedback.
+ * How to mark, wherever marking is asked for (the connector, Mark with AI, Copy set, Copy exam):
+ * as an expert, evidence-based consultant examining finals would, strictly, with the model answer
+ * as the guide and their own clinical reasoning rather than a blind reading of it, and a high-yield
+ * pearl in each part's feedback.
  */
 export const MARKING_RULES = [
-  "Mark strictly, as a finals examiner would. A mark is earned only by a point the model answer or marking notes credit, stated specifically and correctly; follow the mark shown against each point, e.g. [1 mark].",
-  "No marks for vague, generic or implied points (\"order bloods\", \"manage symptoms\", \"refer\"), for points the model answer does not credit, or for being on the right track. Never give the benefit of the doubt.",
+  "Mark strictly, as an expert consultant doctor examining finals would, using your own clinical reasoning and current evidence-based practice. The model answer and marking notes are your guide to what earns marks, not a script to follow blindly: a mark is earned by a point they credit, or by a point an expert consultant would accept as its clinical equivalent on the evidence (the same drug or investigation named another way, a more precise version of the same point, the current guideline's choice), stated specifically and correctly; follow the mark shown against each point, e.g. [1 mark].",
+  "No marks for vague, generic or implied points (\"order bloods\", \"manage symptoms\", \"refer\"), for being on the right track, or for a credited point that is clinically wrong for this patient. Never give the benefit of the doubt. Where the model answer itself is clinically doubtful or behind current evidence, say so in the feedback and mark what an expert consultant would accept today.",
   "When a question asks for a number of items (e.g. THREE), mark only the first that many; later ones earn nothing, and a wrong item still uses up its place.",
   "A point contradicted elsewhere in the answer earns nothing. Half marks only where the model answer or notes allow them; never round up, never exceed a part's marks.",
-  "In each part's feedback, say which points earned marks and which were missed, then end with one high-yield clinical pearl for this question (a fact that wins marks or a trap to avoid), written as a plain closing sentence with no label.",
+  "In each part's feedback, reason as a clinician: say which points earned marks, which were missed and why they matter for this patient, then end with one high-yield clinical pearl for this question (a fact that wins marks or a trap to avoid), written as a plain closing sentence with no label.",
 ];
 
 /** "1(a)", or "2" for a question without parts: how a part is named in the text and by the connector. */
@@ -69,8 +71,9 @@ export function buildSetForMarking(key: string, name: string, rows: { question?:
 
 /** The set as text to paste anywhere: a marker gets everything they need, in reading order. */
 export function setText(s: SetForMarking): string {
-  const out = [`Please mark my answers to this short-answer question set: a score out of its marks for each part, and feedback, against the model answer${s.notes ? " and marking notes" : ""}.`, "", ...MARKING_RULES.map((r) => `- ${r}`), "", `# ${s.name}`];
+  const out = [`Please mark my answers to this ${s.exam ? "exam paper" : "short-answer question set"}: a score out of its marks for each part, and feedback, against the model answer${s.notes ? " and marking notes" : ""}.`, "", ...MARKING_RULES.map((r) => `- ${r}`), "", `# ${s.name}`];
   for (const q of s.questions) {
+    if (q.section) out.push("", `# ${q.section}`);
     for (const stem of q.stems) out.push("", stem);
     const marks = q.parts.reduce((sum, p) => sum + p.marks, 0);
     out.push("", `## Question ${q.number}${marks ? ` [${marks} mark${marks === 1 ? "" : "s"}]` : ""}`, ...(q.text ? [q.text] : []));
@@ -84,6 +87,22 @@ export function setText(s: SetForMarking): string {
   }
   if (s.notes) out.push("", "## Marking notes", s.notes);
   return out.join("\n");
+}
+
+/**
+ * What to say to an assistant with the SAQ Practice connector so it marks the set, or the whole
+ * exam paper, and sends the marks back to the marking page.
+ */
+export function markPrompt(s: SetForMarking): string {
+  const sets = s.questions.filter((q) => q.section).length;
+  const last = s.questions[s.questions.length - 1]?.number ?? s.questions.length;
+  return [
+    `Using the SAQ Practice connector: mark my answers to ${s.exam ? `my whole exam paper "${s.name}"` : `"${s.name}"`} (set id ${s.key}).`,
+    ...(s.exam ? [`It is one paper of ${sets} sets and ${last} questions, numbered 1 to ${last} right through; mark the whole paper in one go and send every part together.`] : []),
+    `Read them with getMyAnswers (set: "${s.key}") and mark every part strictly, as an expert, evidence-based consultant doctor examining finals would, following its howToMark with your own clinical reasoning: marks for points the model answer credits, or an expert consultant would accept as their clinical equivalent on current evidence, stated specifically; nothing for vague points, for items beyond the number asked, or for points wrong for this patient; no benefit of the doubt.`,
+    `Quote the passages of my answers you comment on, end each part's feedback with one high-yield clinical pearl as a plain sentence, and where a part fell short include a rewrite of my answer that would earn full marks in my own words; then send it all with markMyAnswers (set: "${s.key}").`,
+    "I will check and save them on the marking page.",
+  ].join("\n");
 }
 
 /**

@@ -33,11 +33,17 @@ export async function suggest(uid: string, setKey: string, marks: SuggestedMarks
     : null);
 }
 
-/** A set by its id, else by name or number (any part of it, any case), else the most recent. */
+/**
+ * A set by its id; for a query that speaks of an exam ("exam", "the exam I just did"), the most
+ * recent whole exam paper; else by name or number (any part of it, any case); else the most recent.
+ */
 export function findSet(sets: StoredSet[], query?: string): StoredSet | undefined {
   const q = query?.trim();
   if (!q) return sets[0];
-  return sets.find((s) => s.key === q) ?? sets.find((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  const byKey = sets.find((s) => s.key === q);
+  if (byKey) return byKey;
+  if (/\bexams?\b/i.test(q)) { const exam = sets.find((s) => s.exam); if (exam) return exam; }
+  return sets.find((s) => s.name.toLowerCase().includes(q.toLowerCase()));
 }
 
 /** A posted set, checked for shape and size before it is kept. */
@@ -45,8 +51,8 @@ export function validSet(b: unknown): SetForMarking | null {
   if (!b || typeof b !== "object" || JSON.stringify(b).length > 400_000) return null;
   const s = b as SetForMarking;
   const str = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
-  const ok = str(s.key, 100) && !!s.key && str(s.name, 300) && typeof s.at === "number" && (s.notes === undefined || str(s.notes, 50_000)) && Array.isArray(s.questions) && s.questions.length <= 30
+  const ok = str(s.key, 100) && !!s.key && str(s.name, 300) && typeof s.at === "number" && (s.notes === undefined || str(s.notes, 50_000)) && Array.isArray(s.questions) && s.questions.length <= 60
     && s.questions.every((q) => str(q.attemptId, 100) && typeof q.number === "number" && Array.isArray(q.stems) && q.stems.every((t) => str(t, 50_000)) && str(q.text, 20_000) && str(q.model, 50_000) && Array.isArray(q.parts) && q.parts.length <= 20
       && q.parts.every((p) => str(p.id, 40) && str(p.label, 20) && typeof p.marks === "number" && str(p.prompt, 20_000) && str(p.answer, 100_000) && str(p.model, 50_000)));
-  return ok ? { key: s.key, name: s.name, at: s.at, ...(s.notes ? { notes: s.notes } : {}), questions: s.questions } : null;
+  return ok ? { key: s.key, name: s.name, at: s.at, ...(s.notes ? { notes: s.notes } : {}), ...(s.exam === true ? { exam: true } : {}), questions: s.questions } : null;
 }
