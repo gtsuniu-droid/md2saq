@@ -78,3 +78,27 @@ it("tells sets with the same name apart by their id", async () => {
   expect((await (await call("ana")).json()).suggested.parts[0]).toMatchObject({ attemptId: "t1", label: "b" });
 });
 
+
+it("carries a whole exam through the answers store and connector with continuous part ids", async () => {
+  const exam: SetForMarking = {
+    ...set, key: "exam:paper", name: "Exam", exam: true, at: 300,
+    questions: Array.from({ length: 60 }, (_, i) => ({
+      ...set.questions[0], attemptId: `exam-a${i}`, number: i + 1,
+      ...(i % 6 === 0 ? { section: `Set ${i / 6 + 1}` } : {}),
+      parts: [{ ...set.questions[0].parts[0], id: `${i + 1}(a)` }],
+    })),
+  };
+  const request = (body: SetForMarking) => answers(new Request("http://x/api/answers", {
+    method: "POST", headers: { authorization: "Bearer exam-student", "content-type": "application/json" }, body: JSON.stringify(body),
+  }));
+  expect((await request(exam)).status).toBe(204);
+  expect((await request({ ...exam, questions: [...exam.questions, exam.questions[0]] })).status).toBe(400);
+  const tool = await connect("exam-student");
+  const got = await tool("getMyAnswers", { set: exam.key });
+  expect(got.body.text).toContain("this exam paper");
+  expect(got.body.text).toContain("# Set 10");
+  expect(got.body.parts).toHaveLength(60);
+  expect((await tool("markMyAnswers", { set: exam.key, marks: [{ part: "60(a)", score: 1, feedback: "One credited point." }] })).body).toMatchObject({ success: true, partsMarked: 1 });
+  const response = await answers(new Request(`http://x/api/answers?key=${encodeURIComponent(exam.key)}`, { headers: { authorization: "Bearer exam-student" } }));
+  expect((await response.json()).suggested.parts[0]).toMatchObject({ attemptId: "exam-a59", label: "a", score: 1 });
+});

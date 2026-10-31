@@ -45,8 +45,8 @@ export function validSet(b: unknown): SetForMarking | null {
   if (!b || typeof b !== "object" || JSON.stringify(b).length > 400_000) return null;
   const s = b as SetForMarking;
   const str = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
-  const ok = str(s.key, 100) && !!s.key && str(s.name, 300) && typeof s.at === "number" && (s.notes === undefined || str(s.notes, 50_000)) && Array.isArray(s.questions) && s.questions.length <= 30
+  const ok = str(s.key, 100) && !!s.key && str(s.name, 300) && typeof s.at === "number" && (s.notes === undefined || str(s.notes, 50_000)) && Array.isArray(s.questions) && s.questions.length <= 60
     && s.questions.every((q) => str(q.attemptId, 100) && typeof q.number === "number" && Array.isArray(q.stems) && q.stems.every((t) => str(t, 50_000)) && str(q.text, 20_000) && str(q.model, 50_000) && Array.isArray(q.parts) && q.parts.length <= 20
       && q.parts.every((p) => str(p.id, 40) && str(p.label, 20) && typeof p.marks === "number" && str(p.prompt, 20_000) && str(p.answer, 100_000) && str(p.model, 50_000)));
-  return ok ? { key: s.key, name: s.name, at: s.at, ...(s.notes ? { notes: s.notes } : {}), questions: s.questions } : null;
+  return ok ? { key: s.key, name: s.name, at: s.at, ...(s.notes ? { notes: s.notes } : {}), ...(s.exam === true ? { exam: true } : {}), questions: s.questions } : null;
 }

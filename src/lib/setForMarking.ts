@@ -9,8 +9,8 @@ import { answerParts } from "./questions";
  * back suggested marks. Pure, so the site and its functions share it.
  */
 export interface MarkingPart { id: string; label: string; marks: number; prompt: string; answer: string; model: string; /** The student's own revision after reading the model answer, when they made one. */ revised?: string }
-export interface MarkingQuestion { attemptId: string; number: number; stems: string[]; text: string; model: string; parts: MarkingPart[] }
-export interface SetForMarking { key: string; name: string; at: number; notes?: string; questions: MarkingQuestion[] }
+export interface MarkingQuestion { attemptId: string; number: number; stems: string[]; text: string; model: string; parts: MarkingPart[]; /** The set this question opens, when the paper holds several sets (an exam). */ section?: string }
+export interface SetForMarking { key: string; name: string; at: number; notes?: string; questions: MarkingQuestion[]; /** A whole exam paper: every set of the sitting, numbered right through. */ exam?: boolean }
 
 /** Suggested marks for one part: a score, a line of feedback, and comments on quoted passages of the answer. */
 export interface SuggestedPart { attemptId: string; label: string; score: number; feedback: string; comments: { quote: string; text: string; start: number; end: number }[]; /** The student's answer rewritten for full marks in their own words, when it fell short. */ rewrite?: string }
@@ -69,8 +69,9 @@ export function buildSetForMarking(key: string, name: string, rows: { question?:
 
 /** The set as text to paste anywhere: a marker gets everything they need, in reading order. */
 export function setText(s: SetForMarking): string {
-  const out = [`Please mark my answers to this short-answer question set: a score out of its marks for each part, and feedback, against the model answer${s.notes ? " and marking notes" : ""}.`, "", ...MARKING_RULES.map((r) => `- ${r}`), "", `# ${s.name}`];
+  const out = [`Please mark my answers to this ${s.exam ? "exam paper" : "short-answer question set"}: a score out of its marks for each part, and feedback, against the model answer${s.notes ? " and marking notes" : ""}.`, "", ...MARKING_RULES.map((r) => `- ${r}`), "", `# ${s.name}`];
   for (const q of s.questions) {
+    if (q.section) out.push("", `# ${q.section}`);
     for (const stem of q.stems) out.push("", stem);
     const marks = q.parts.reduce((sum, p) => sum + p.marks, 0);
     out.push("", `## Question ${q.number}${marks ? ` [${marks} mark${marks === 1 ? "" : "s"}]` : ""}`, ...(q.text ? [q.text] : []));
@@ -84,6 +85,22 @@ export function setText(s: SetForMarking): string {
   }
   if (s.notes) out.push("", "## Marking notes", s.notes);
   return out.join("\n");
+}
+
+/**
+ * What to say to an assistant with the SAQ Practice connector so it marks the set, or the whole
+ * exam paper, and sends the marks back to the marking page.
+ */
+export function markPrompt(s: SetForMarking): string {
+  const sets = s.questions.filter((q) => q.section).length;
+  const last = s.questions[s.questions.length - 1]?.number ?? s.questions.length;
+  return [
+    `Using the SAQ Practice connector: mark my answers to ${s.exam ? `my whole exam paper "${s.name}"` : `"${s.name}"`} (set id ${s.key}).`,
+    ...(s.exam ? [`It is one paper of ${sets} sets and ${last} questions, numbered 1 to ${last} right through; mark the whole paper in one go and send every part together.`] : []),
+    `Read them with getMyAnswers (set: "${s.key}") and mark every part strictly, as a finals examiner would, following its howToMark: marks only for points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked; no benefit of the doubt.`,
+    `Quote the passages of my answers you comment on, end each part's feedback with one high-yield clinical pearl as a plain sentence, and where a part fell short include a rewrite of my answer that would earn full marks in my own words; then send it all with markMyAnswers (set: "${s.key}").`,
+    "I will check and save them on the marking page.",
+  ].join("\n");
 }
 
 /**

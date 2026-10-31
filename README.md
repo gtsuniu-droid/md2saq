@@ -343,6 +343,12 @@ continuing restores that question and part. Draft answers autosave to IndexedDB,
 synchronous recovery copy to cover closing or refreshing before the delayed save finishes.
 Starting another paper from Home or a set asks before replacing the existing session.
 
+Submitted exams appear as one **Exam** row in History, with the combined question count and
+score. Open or Mark takes you to the whole paper; practice sittings keep their existing set rows.
+For exams spanning several sets, **Copy exam** copies every submitted question and answer
+with continuous numbering and each set’s marking notes. Signed-in admins also have
+**Mark exam with AI**; suggested marks fill in on each set’s marking page for review and saving.
+
 ### Question suggestions and discussion
 
 Published questions have Suggestions and Discussion controls in practice, question details, and marking. Suggestions can propose an answer or report a problem. Discussion supports comments and quoted replies. Posts are shared with signed-in users; they do not include private practice answers or saved notes automatically.

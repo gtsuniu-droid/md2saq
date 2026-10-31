@@ -26,17 +26,20 @@ export async function keepForMarking(s: SetForMarking): Promise<void> {
   if (res.ok) write(k, String(body.length) + body.slice(-64));
 }
 
-/** Marks suggested for the set and not yet filled in on this device, or null. */
-export async function newSuggestions(key: string): Promise<SuggestedMarks | null> {
+/**
+ * Marks suggested for the set and not yet filled in on this device, or null. A whole exam's
+ * suggestions are filled in set by set, so each set page notes them filled under its own key.
+ */
+export async function newSuggestions(key: string, filledKey = key): Promise<SuggestedMarks | null> {
   const auth = await authed();
   if (!auth) return null;
   const res = await fetch(`/api/answers?key=${encodeURIComponent(key)}`, { headers: auth });
   if (!res.ok) return null;
   const { suggested } = (await res.json()) as { suggested: SuggestedMarks | null };
-  return suggested && suggested.at > Number(read(`marking.filled.${key}`) ?? 0) ? suggested : null;
+  return suggested && suggested.at > Number(read(`marking.filled.${filledKey}`) ?? 0) ? suggested : null;
 }
 
-export const markFilled = (key: string, marks: SuggestedMarks) => write(`marking.filled.${key}`, String(marks.at));
+export const markFilled = (filledKey: string, marks: SuggestedMarks) => write(`marking.filled.${filledKey}`, String(marks.at));
 
 /**
  * The suggested comments on the answers themselves, replacing any sent before: a part's

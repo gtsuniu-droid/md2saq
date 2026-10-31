@@ -38,8 +38,10 @@ export function historyEntries(attempts: Attempt[], marks: Mark[], questions: Qu
 
 export interface HistoryGroup {
   key: string;
-  /** A whole set sat in one sitting, or one question on its own. */
-  kind: "set" | "question";
+  /** A whole exam, a set sat in one sitting, or one question on its own. */
+  kind: "exam" | "set" | "question";
+  sessionId?: string;
+  setIds: string[];
   entries: HistoryEntry[];
   /** The attempt whose page shows the whole sitting. */
   anchor: Attempt;
@@ -58,32 +60,41 @@ export interface HistoryGroup {
 }
 
 /**
- * One row per sitting: attempts from the same session and set fold into a set row with
- * the total score; a lone question keeps its own row. Newest first.
+ * One row per exam session; practice attempts fold by session and set, and a lone
+ * question keeps its own row. Scores span the whole row. Newest first.
  */
 export function historyGroups(entries: HistoryEntry[], questions: Question[], presentationName: (id: string) => string): HistoryGroup[] {
   const groups = new Map<string, HistoryEntry[]>();
   for (const entry of entries) {
     const setId = entry.set?.id ?? entry.question?.setId ?? entry.attempt.qref?.setId ?? "";
-    const key = entry.attempt.sessionId && setId ? `${entry.attempt.sessionId}:${setId}` : `attempt:${entry.attempt.id}`;
+    const key = entry.attempt.mode === "exam" && entry.attempt.sessionId ? `exam:${entry.attempt.sessionId}`
+      : entry.attempt.sessionId && setId ? `${entry.attempt.sessionId}:${setId}` : `attempt:${entry.attempt.id}`;
     groups.set(key, [...(groups.get(key) ?? []), entry]);
   }
   const bySet = new Map<string, Question[]>();
   for (const q of questions) bySet.set(q.setId, [...(bySet.get(q.setId) ?? []), q]);
   return [...groups.entries()].map(([key, members]): HistoryGroup => {
-    const ordered = [...members].sort((a, b) => (a.question?.order ?? a.attempt.qref?.order ?? 0) - (b.question?.order ?? b.attempt.qref?.order ?? 0));
+    const exam = members[0].attempt.mode === "exam" && !!members[0].attempt.sessionId;
+    const ordered = [...members].sort((a, b) => (exam ? a.attempt.startedAt - b.attempt.startedAt : 0) || (a.question?.order ?? a.attempt.qref?.order ?? 0) - (b.question?.order ?? b.attempt.qref?.order ?? 0));
     const first = ordered[0];
-    const set = first.set;
+    const set = exam ? undefined : first.set;
+    const setMembers = new Map<string, HistoryEntry>();
+    for (const entry of ordered) {
+      const setId = entry.set?.id ?? entry.question?.setId ?? entry.attempt.qref?.setId;
+      if (setId && !setMembers.has(setId)) setMembers.set(setId, entry);
+    }
     const single = members.length === 1;
     const marked = members.filter((m) => m.mark);
     const presentationId = set ? primaryPresentation(set, bySet.get(set.id) ?? []) : undefined;
     const presentation = presentationId ? presentationName(presentationId) : undefined;
     const setName = set ? setHeadline(set) : first.attempt.qref?.setNumber !== undefined ? `Set ${String(first.attempt.qref.setNumber).padStart(2, "0")}` : first.attempt.qref?.setName || "Question set";
     return {
-      key, kind: single ? "question" : "set", entries: ordered, anchor: first.attempt, set, presentation, presentationId,
-      label: single ? first.label : presentation ? `${presentation} ${setName}` : setName,
+      key, kind: exam ? "exam" : single ? "question" : "set", sessionId: first.attempt.sessionId,
+      setIds: exam || !single ? [...setMembers.keys()] : [],
+      entries: ordered, anchor: first.attempt, set, presentation, presentationId,
+      label: exam ? "Exam" : single ? first.label : presentation ? `${presentation} ${setName}` : setName,
       // The headline already carries the title, so the second line is the case stem; a stale "Set 3" name never shows.
-      text: single ? first.text : (first.question && stemsOf(first.question)[0]) || (set?.name && !/^(set|case)\s*\d*$/i.test(set.name.trim()) && !setName.includes(set.name.trim()) ? set.name : "") || first.text,
+      text: exam ? [...setMembers.values()].map((e) => e.set ? setHeadline(e.set) : e.attempt.qref?.setName || (e.attempt.qref?.setNumber !== undefined ? `Set ${String(e.attempt.qref.setNumber).padStart(2, "0")}` : "Question set")).join(", ") : single ? first.text : (first.question && stemsOf(first.question)[0]) || (set?.name && !/^(set|case)\s*\d*$/i.test(set.name.trim()) && !setName.includes(set.name.trim()) ? set.name : "") || first.text,
       submittedAt: Math.max(...members.map((m) => m.attempt.submittedAt ?? 0)),
       mode: first.attempt.mode,
       marked: marked.length, total: members.length,

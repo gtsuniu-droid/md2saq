@@ -13,6 +13,7 @@ import ModelAnswerContent from "./ModelAnswerContent";
 import QuestionCommunity from "./QuestionCommunity";
 import FixWithClaude from "./FixWithClaude";
 import AssistantMenu from "./AssistantMenu";
+import ExamMarking from "./ExamMarking";
 import { belongsToAccount } from "../lib/progressAccount";
 import { setAttemptReview } from "../lib/setAttemptReview";
 import { introducedStems, markingDraft, reconcileMarkingParts, type MarkingDraft } from "../lib/markingSet";
@@ -25,7 +26,8 @@ import { loadSession, saveSession } from "../lib/session";
 import { sessionAtQuestion } from "../lib/sessionNavigation";
 import { questionRef, requestSync } from "../lib/sync";
 import { clearMarkingDraft, loadMarkingDraft, writeMarkingDraft } from "../lib/markingDrafts";
-import { buildSetForMarking, setText } from "../lib/setForMarking";
+import { buildSetForMarking, markPrompt, setText, type SetForMarking, type SuggestedMarks } from "../lib/setForMarking";
+import { buildExamForMarking, examKey, examSets } from "../lib/examMarking";
 import { keepForMarking, markFilled, newSuggestions, placeSuggestedComments } from "../lib/suggestedMarks";
 import { isGeneralComment } from "../lib/answerComments";
 import { tickList, tickedScore } from "../lib/markingTicks";
@@ -81,11 +83,17 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     const setId = anchorQuestion?.setId ?? anchor.qref?.setId;
     const setQuestions: Question[] = setId ? await db.questions.where("setId").equals(setId).toArray() : anchorQuestion ? [anchorQuestion] : [];
     const sessionQuestions: Question[] = inSession ? (await db.questions.bulkGet(inSession.questionIds)).filter((q): q is Question => !!q) : [];
-    const questions: Question[] = [...new Map([...setQuestions, ...sessionQuestions].map((q) => [q.id, q])).values()];
     const [atSet, inSitting] = await Promise.all([
       db.attempts.where("questionId").anyOf(setQuestions.map((q) => q.id)).toArray(),
       anchor.sessionId ? db.attempts.where("sessionId").equals(anchor.sessionId).toArray() : Promise.resolve([anchor]),
     ]);
+    // The rest of an exam paper (its other sets' questions and the sets themselves), so the whole paper can be laid out for marking at once.
+    const sitting = inSitting.filter((a) => belongsToAccount(a, ownerId));
+    const sittingQuestions: Question[] = anchor.mode === "exam" && anchor.sessionId ? (await db.questions.bulkGet([...new Set(sitting.map((a) => a.questionId))])).filter((q): q is Question => !!q) : [];
+    const questions: Question[] = [...new Map([...setQuestions, ...sessionQuestions, ...sittingQuestions].map((q) => [q.id, q])).values()];
+    const paperSetIds = [...new Set(sitting.map((a) => sittingQuestions.find((q) => q.id === a.questionId)?.setId ?? a.qref?.setId ?? a.id))];
+    const wholeExam = sittingQuestions.length > 0 && paperSetIds.length > 1;
+    const paperSets: QuestionSet[] = wholeExam ? (await db.sets.bulkGet(paperSetIds)).filter((s): s is QuestionSet => !!s) : [];
     const attempts = [...new Map([anchor, ...atSet, ...inSitting].filter((a) => belongsToAccount(a, ownerId)).map((a) => [a.id, a])).values()];
     const marks = (await db.marks.where("attemptId").anyOf(attempts.map((a) => a.id)).toArray()).filter((m) => belongsToAccount(m, ownerId));
     const review = setAttemptReview(anchor.id, attempts, questions, marks, ownerId);
@@ -95,7 +103,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     const lastIndex = inSession ? Math.max(...review.rows.flatMap((r) => r.attempt ? [inSession.attemptIds.indexOf(r.attempt.id)] : [])) : -1;
     const nextId = inSession && lastIndex >= 0 ? inSession.attemptIds[lastIndex + 1] : undefined;
     const nextAttempt = nextId ? attempts.find((a) => a.id === nextId) : undefined;
-    return { ...review, set, attempts, marks, questions, admin: isAdmin(settings), ownerId, examLocked, inSession, nextAttempt };
+    return { ...review, set, attempts, marks, questions, admin: isAdmin(settings), ownerId, examLocked, inSession, nextAttempt, sitting, sittingQuestions, paperSets, wholeExam };
   }, [attemptId]);
   const lastData = useRef(liveData);
   if (liveData) lastData.current = liveData;
@@ -145,12 +153,16 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
   const [copied, setCopied] = useState(false);
   const copy = () => { if (forMarking) void navigator.clipboard.writeText(setText(forMarking)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); };
   // Admins only: their assistant reads the set through the connector and sends marks back here.
-  const markPrompt = forMarking ? [
-    `Using the SAQ Practice connector: mark my answers to "${forMarking.name}" (set id ${forMarking.key}).`,
-    `Read them with getMyAnswers (set: "${forMarking.key}") and mark every part strictly, as a finals examiner would, following its howToMark: marks only for points the model answer credits, stated specifically; nothing for vague points or for items beyond the number asked; no benefit of the doubt.`,
-    `Quote the passages of my answers you comment on, end each part's feedback with one high-yield clinical pearl as a plain sentence, and where a part fell short include a rewrite of my answer that would earn full marks in my own words; then send it all with markMyAnswers (set: "${forMarking.key}").`,
-    "I will check and save them on the marking page.",
-  ].join("\n") : "";
+  const markPromptText = forMarking ? markPrompt(forMarking) : "";
+  // An exam of several sets is also laid out whole, kept the same way, so the paper can be copied or marked in one go.
+  const exam = useMemo<SetForMarking | null>(() => {
+    if (!data?.wholeExam || !data.anchor.sessionId) return null;
+    const built = buildExamForMarking(examKey(data.anchor.sessionId), examSets(data.sitting, data.sittingQuestions, data.paperSets, data.inSession?.attemptIds));
+    return built.questions.length ? built : null;
+  }, [data]);
+  const examJson = useMemo(() => exam ? JSON.stringify(exam) : "", [exam]);
+  useEffect(() => { if (exam && data?.ownerId) void keepForMarking(exam).catch(() => undefined); }, [examJson]);
+  const wholeKey = exam?.key ?? "";
   // Parts given a suggested score, per attempt, so their score boxes show it.
   const [suggested, setSuggested] = useState<Record<string, Set<string>>>({});
   useEffect(() => {
@@ -159,32 +171,38 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
     let live = true;
     // Filled in when the page opens, and on coming back to it from wherever the set was marked.
     const check = async () => {
-      const marks = await newSuggestions(anchor.id).catch(() => null);
-      if (!marks || !live) return;
-      setDrafts((current) => {
-        const next = { ...current };
-        for (const { question, attempt, mark } of rows) {
-          const draft = attempt && current[attempt.id];
-          const parts = marks.parts.filter((p) => p.attemptId === attempt?.id);
-          if (!draft || !question || !parts.length) continue;
-          next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score, ...(s.rewrite ? { rewrite: s.rewrite } : {}) } : pm; }), scored: [...new Set([...(draft.scored ?? []), ...parts.map((p) => p.label)])] };
-          writeMarkingDraft(ownerId, attempt.id, question.id, next[attempt.id], mark);
-        }
-        // The overall note goes with the first question, unless the student wrote one there already.
-        const first = rows.find((r) => r.attempt && next[r.attempt.id]);
-        if (marks.summary && first?.attempt && !next[first.attempt.id].notes.trim()) next[first.attempt.id] = { ...next[first.attempt.id], notes: marks.summary };
-        return next;
-      });
-      setSuggested(Object.fromEntries(rows.flatMap((r) => r.attempt ? [[r.attempt.id, new Set(marks.parts.filter((p) => p.attemptId === r.attempt!.id).map((p) => p.label))]] : [])));
-      await placeSuggestedComments(marks);
-      markFilled(anchor.id, marks);
+      // Marks sent for this set, and for the whole paper when the set is part of an exam; the newer fill in last.
+      const sources: [string, string][] = [[anchor.id, anchor.id], ...(wholeKey ? [[wholeKey, `${wholeKey}:${anchor.id}`] as [string, string]] : [])];
+      const found = (await Promise.all(sources.map(async ([key, filledKey]) => { const marks = await newSuggestions(key, filledKey).catch(() => null); return marks ? { marks, filledKey, whole: key !== anchor.id } : null; })))
+        .filter((f): f is { marks: SuggestedMarks; filledKey: string; whole: boolean } => !!f).sort((a, b) => a.marks.at - b.marks.at);
+      if (!found.length || !live) return;
+      for (const { marks, filledKey, whole } of found) {
+        setDrafts((current) => {
+          const next = { ...current };
+          for (const { question, attempt, mark } of rows) {
+            const draft = attempt && current[attempt.id];
+            const parts = marks.parts.filter((p) => p.attemptId === attempt?.id);
+            if (!draft || !question || !parts.length) continue;
+            next[attempt.id] = { ...draft, parts: draft.parts.map((pm) => { const s = parts.find((p) => p.label === pm.label); return s ? { ...pm, score: pm.maxScore ? Math.min(s.score, pm.maxScore) : s.score, ...(s.rewrite ? { rewrite: s.rewrite } : {}) } : pm; }), scored: [...new Set([...(draft.scored ?? []), ...parts.map((p) => p.label)])] };
+            writeMarkingDraft(ownerId, attempt.id, question.id, next[attempt.id], mark);
+          }
+          // The overall note goes with the first question, unless the student wrote one there already; a whole paper's note goes with the set the paper opens on.
+          const first = rows.find((r) => r.attempt && next[r.attempt.id]);
+          const here = !whole || rows.some((r) => r.attempt && r.attempt.id === marks.parts[0]?.attemptId);
+          if (marks.summary && here && first?.attempt && !next[first.attempt.id].notes.trim()) next[first.attempt.id] = { ...next[first.attempt.id], notes: marks.summary };
+          return next;
+        });
+        setSuggested((current) => ({ ...current, ...Object.fromEntries(rows.flatMap((r) => r.attempt ? [[r.attempt.id, new Set([...(current[r.attempt.id] ?? []), ...marks.parts.filter((p) => p.attemptId === r.attempt!.id).map((p) => p.label)])]] : [])) }));
+        await placeSuggestedComments(marks);
+        markFilled(filledKey, marks);
+      }
       if (live) setMessage("Suggested marks filled in. Check them, then save.");
     };
     void check();
     const onVisible = () => { if (document.visibilityState === "visible") void check(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { live = false; document.removeEventListener("visibilitychange", onVisible); };
-  }, [readyNow, data?.anchor.id, data?.ownerId]);
+  }, [readyNow, data?.anchor.id, data?.ownerId, wholeKey]);
 
   if (data === undefined) return <p className="muted" role="status" style={{ padding: "1.5rem" }}>Loading your set…</p>;
   if (!data) return <div style={{ padding: "1.5rem" }}><Link to="/home#history">Back to history</Link><p>Attempt not found for this account.</p></div>;
@@ -294,7 +312,7 @@ export default function SetMarking({ attemptId, embedded = false, onAdvance, par
         {set?.markingNotes && <details className="mark-guide-notes"><summary>Set marking notes</summary><p className="pre">{set.markingNotes}</p></details>}
       </div>
       <div className="paper-answers mark-answers">
-        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPrompt} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}<span className="col-head-total">{total} / {maximum}</span></div>
+        <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{forMarking?.questions.length ? <button className="small hl-btn" title="Copy the case, the questions, your answers and the model answers, to paste anywhere" onClick={copy}>{copied ? "Copied" : "Copy set"}</button> : null}{data.admin && forMarking?.questions.length && data.ownerId ? <AssistantMenu label="Mark with AI" title="Have your AI assistant mark this set through the connector; the scores and comments come back here to check and save." prompt={markPromptText} hint="Your assistant reads this set, marks each part and sends the scores and comments back. They fill in here when you return." beforeOpen={() => keepForMarking(forMarking)} /> : null}{exam ? <ExamMarking exam={exam} admin={data.admin} signedIn={!!data.ownerId} /> : null}<span className="col-head-total">{total} / {maximum}</span></div>
         <fieldset className="mark-set-fields" disabled={saving}>
           {rows.map(({ question, attempt, mark, order }) => {
             const draft = attempt ? drafts[attempt.id] : undefined;

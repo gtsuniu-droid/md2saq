@@ -42,3 +42,62 @@ describe("account history", () => {
     expect(groups[0]).toMatchObject({ label: "Set 04: Example case, Question 2", total: 1, marked: 0, score: undefined });
   });
 });
+
+
+describe("exam history", () => {
+  const sets: QuestionSet[] = [set, { ...set, id: "s2", name: "Another case", number: 5 }];
+  const questions: Question[] = [
+    { ...question, id: "q1", order: 0, presentations: ["chest-pain"] },
+    { ...question, id: "q2", order: 1, presentations: ["chest-pain"] },
+    { ...question, id: "q3", setId: "s2", order: 0, presentations: ["falls"] },
+  ];
+  const paper = (mode: Attempt["mode"] = "exam", sessionId = "paper"): Attempt[] => questions.map((q, i) => ({
+    ...attempt(`${sessionId}-${q.id}`, "alice", 100 + i), questionId: q.id, mode, sessionId, startedAt: 10 + i,
+  }));
+  const marks = (attempts: Attempt[]): Mark[] => attempts.map((a, i) => ({
+    ...mark(`m-${a.id}`, "alice", 200), attemptId: a.id, questionId: a.questionId, score: i, maxScore: 4, reviewLater: i === 2,
+  }));
+  const group = (attempts: Attempt[], saved: Mark[] = [], qs = questions, ss = sets) =>
+    historyGroups(historyEntries(attempts, saved, qs, ss, "alice"), qs, (id) => id);
+
+  it("shows multiple exam sets as one row with the whole paper's score", () => {
+    const attempts = paper();
+    const groups = group(attempts, marks(attempts));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      key: "exam:paper", kind: "exam", sessionId: "paper", label: "Exam", setIds: ["s", "s2"],
+      total: 3, marked: 3, score: 3, maxScore: 12, reviewLater: true, submittedAt: 102,
+      presentation: undefined, presentationId: undefined, set: undefined,
+      text: "Set 04: Example case, Set 05: Another case",
+    });
+    expect(groups[0].entries.map((e) => e.attempt.id)).toEqual(attempts.map((a) => a.id));
+  });
+
+  it("keeps practice sets separate, even when they share a session", () => {
+    const groups = group(paper("practice"));
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.kind)).toEqual(["question", "set"]);
+    expect(groups[1].setIds).toEqual(["s"]);
+  });
+
+  it("keeps repeated exam sessions separate and newest first", () => {
+    const groups = group([...paper(), ...paper("exam", "repeat").map((a) => ({ ...a, submittedAt: 300 }))]);
+    expect(groups.map((g) => g.key)).toEqual(["exam:repeat", "exam:paper"]);
+  });
+
+  it("counts partial marking without displaying an incomplete score", () => {
+    const attempts = paper();
+    expect(group(attempts, marks(attempts).slice(0, 1))[0]).toMatchObject({ total: 3, marked: 1, score: undefined, maxScore: undefined });
+    expect(group(attempts)[0]).toMatchObject({ total: 3, marked: 0 });
+  });
+
+  it("groups exams from cloud references before the bank downloads", () => {
+    const attempts = paper().map((a, i) => ({ ...a, qref: { setId: questions[i].setId, setName: i < 2 ? "Remote chest case" : "Remote falls case", order: questions[i].order } }));
+    expect(group(attempts, [], [], [])[0]).toMatchObject({ kind: "exam", setIds: ["s", "s2"], total: 3, text: "Remote chest case, Remote falls case" });
+  });
+
+  it("also gives a one-question exam a session row, leaving sessionless attempts alone", () => {
+    expect(group(paper().slice(0, 1))[0]).toMatchObject({ kind: "exam", total: 1, setIds: ["s"] });
+    expect(group([{ ...paper()[0], sessionId: undefined }])[0]).toMatchObject({ kind: "question", setIds: [] });
+  });
+});
