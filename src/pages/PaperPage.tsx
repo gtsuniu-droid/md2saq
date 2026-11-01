@@ -11,7 +11,7 @@ import AmbossSearch from "../components/AmbossSearch";
 import { useLiveQuery } from "dexie-react-hooks";
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
-import { db, newId, withRemoteWrites } from "../data/db";
+import { db, KEEP_STAMP, newId } from "../data/db";
 import type { Attempt, PartAnswer, Question, Session } from "../data/types";
 import Editor from "../components/Editor";
 import { answerParts, partLabel, stemsOf } from "../lib/questions";
@@ -278,8 +278,7 @@ export default function PaperPage() {
     if (elapsedSec !== undefined) patch.elapsedSec = elapsedSec;
     // Elapsed time ticking on its own is not a change worth uploading every few seconds; it travels
     // with the next real edit or the submission, so the whole record (pictures included) is not re-sent.
-    if (changed) await db.attempts.update(attemptId, patch);
-    else await withRemoteWrites(() => db.attempts.update(attemptId, patch));
+    await db.attempts.update(attemptId, changed ? patch : { ...patch, [KEEP_STAMP]: true } as Partial<Attempt>);
     flushedRef.current.set(attemptId, { answers, hl });
     if (answers) clearAnswerDraft(attemptId, answers);
   }, []);

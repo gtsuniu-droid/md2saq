@@ -1,6 +1,6 @@
 import { loadLibrary, readCatalogue } from "./library";
 import { syncFromBank } from "./bank";
-import { db, getSettings, withRemoteWrites } from "../data/db";
+import { db, getSettings, KEEP_STAMP } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet, QuestionRef, Session, Settings } from "../data/types";
 import { cloudConfigured, currentUser, idToken, type CloudUser } from "./firebase";
 import { loadSessionEnvelope, saveSessionEnvelope } from "./session";
@@ -299,15 +299,16 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
 
   let applied = 0;
   let unresolved = 0;
-  await withRemoteWrites(async () => {
-    await db.transaction("rw", db.attempts, db.marks, db.settings, async () => {
+  // Each write carries the marker: what arrives from the account keeps its own stamp, and a
+  // write the open paper makes meanwhile keeps its new one.
+  await db.transaction("rw", db.attempts, db.marks, db.settings, async () => {
       for (const raw of attempts as unknown as Attempt[]) {
         const qid = resolveQuestionId(raw.questionId, raw.qref, byId, byBankAndOrder);
         if (!qid) unresolved++;
         const local = await db.attempts.get(raw.id);
         if (local && (!belongsToAccount(local, uid) || (!remoteWins(local._m, raw._m) && (!qid || local.questionId === qid)))) continue;
         const latest = local && !remoteWins(local._m, raw._m) ? local : raw;
-        await db.attempts.put({ ...latest, ownerId: uid, questionId: qid ?? raw.questionId });
+        await db.attempts.put({ ...latest, ownerId: uid, questionId: qid ?? raw.questionId, [KEEP_STAMP]: true } as Attempt);
         applied++;
       }
       for (const raw of marks as unknown as Mark[]) {
@@ -316,7 +317,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
         const local = await db.marks.get(raw.id);
         if (local && (!belongsToAccount(local, uid) || (!remoteWins(local._m, raw._m) && (!qid || local.questionId === qid)))) continue;
         const latest = local && !remoteWins(local._m, raw._m) ? local : raw;
-        await db.marks.put({ ...latest, ownerId: uid, questionId: qid ?? raw.questionId });
+        await db.marks.put({ ...latest, ownerId: uid, questionId: qid ?? raw.questionId, [KEEP_STAMP]: true } as Mark);
         applied++;
       }
       const remoteSettings = settingsDocs.find((d) => d.id === "settings") as (Partial<Settings> & { _m?: number }) | undefined;
@@ -328,7 +329,7 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
           // device's is the one kept, date the document now so the next push corrects the cloud copy.
           const social = newerSocial(local?.social, remoteSettings.social);
           if (social !== remoteSettings.social) Object.assign(merged, { social, _m: Date.now() });
-          await db.settings.put(merged as Settings);
+          await db.settings.put({ ...merged, [KEEP_STAMP]: true } as Settings);
           applied++;
         }
       }
@@ -337,7 +338,6 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
         const local = await table?.get(d.id);
         if (local && belongsToAccount(local, uid)) await table?.delete(d.id);
       }
-    });
   });
   // The paper in progress follows the account: a newer one from another device replaces this device's.
   const remoteSession = settingsDocs.find((d) => d.id === "session") as CloudSession | undefined;

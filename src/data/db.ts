@@ -57,7 +57,18 @@ export class SaqDatabase extends Dexie {
 /** Tables whose records sync to the cloud and therefore carry a modified stamp. */
 const SYNCED_TABLES = new Set(["attempts", "marks", "settings"]);
 
-/** Set while records arriving from the cloud are written, so they are not stamped and echoed back. */
+/**
+ * A write that must not move the modified stamp: records arriving from the account (they would
+ * only be echoed back), and a paper's elapsed time ticking on its own. The marker travels on the
+ * write itself, so two writes in flight at once never affect each other's stamp, and it is
+ * stripped before anything reaches the database.
+ */
+export const KEEP_STAMP = "__keepStamp";
+export type KeepStamp = { [KEEP_STAMP]?: true };
+const marked = (v: unknown): boolean => !!v && typeof v === "object" && KEEP_STAMP in (v as object);
+const unmarked = <T,>(v: T): T => { if (!marked(v)) return v; const { [KEEP_STAMP]: _, ...rest } = v as Record<string, unknown>; void _; return rest as T; };
+
+/** @deprecated Writes inside run unstamped, and so does any other write that lands meanwhile; mark each write with KEEP_STAMP instead. */
 let applyingRemote = false;
 export async function withRemoteWrites<T>(fn: () => Promise<T>): Promise<T> {
   applyingRemote = true;
@@ -77,7 +88,16 @@ function stampModified(core: DBCore): DBCore {
       return {
         ...table,
         mutate(req: DBCoreMutateRequest) {
-          if (applyingRemote || (req.type !== "add" && req.type !== "put")) return table.mutate(req);
+          if (req.type !== "add" && req.type !== "put") return table.mutate(req);
+          const keep = req.values.some(marked) || (req.type === "put" && (marked(req.changeSpec) || !!req.updates?.changeSpecs.some(marked)));
+          if (applyingRemote || keep) return table.mutate({
+            ...req,
+            values: req.values.map(unmarked),
+            ...(req.type === "put" ? {
+              changeSpec: unmarked(req.changeSpec),
+              updates: req.updates ? { ...req.updates, changeSpecs: req.updates.changeSpecs.map(unmarked) } : req.updates,
+            } : {}),
+          } as DBCoreMutateRequest);
           const now = Date.now();
           const values = req.values.map((v) => (v && typeof v === "object" ? { ...v, _m: now } : v));
           if (req.type === "add") return table.mutate({ ...req, values });

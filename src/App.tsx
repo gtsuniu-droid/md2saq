@@ -3,7 +3,7 @@ import { setProgressAccount } from "./lib/progressAccount";
 import { lazy, Suspense, useEffect } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { isAdmin } from "./lib/admin";
-import { db, getSettings } from "./data/db";
+import { getSettings } from "./data/db";
 import { loadSession, sessionOwner, subscribeSession } from "./lib/session";
 import { useSession } from "./lib/useSession";
 import { syncFromBank } from "./lib/bank";
@@ -19,11 +19,12 @@ import { authErrorMessage, cloudConfigured, onCloudUser, refreshVerification, re
 import SignInPanel from "./components/SignInPanel";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState } from "react";
-import { recordDeletes, requestSync, startSyncLoop, syncNow } from "./lib/sync";
+import { requestSync, startSyncLoop, syncNow } from "./lib/sync";
 import { touchMember } from "./lib/members";
 import { publishWeeklyCount } from "./lib/leaderboard";
 import { useSubmittedCount } from "./lib/useSubmittedCount";
 import { setAdminRole } from "./lib/adminRole";
+import { sweepOrphans } from "./lib/orphanSweep";
 import { hasEntered, markEntered } from "./lib/entered";
 import { patchSettings } from "./data/db";
 
@@ -178,7 +179,7 @@ export default function App() {
       if (u) {
         // Ask the browser to keep this site's data through storage pressure and Safari's clean-ups.
         try { void navigator.storage?.persist?.(); } catch { /* not offered here */ }
-        void syncNow(u).catch(() => undefined);
+        void syncNow(u).catch(() => undefined).then(() => sweepOrphans(u.uid, loadSession(u.uid)?.id)).catch(() => undefined);
         // Record the sign-in and read any admin role granted from the People list. The role
         // stays in memory; touching settings makes the screens that depend on it re-render.
         void touchMember(u).then((role) => { setAdminRole(u.uid, role); return patchSettings({}); });
@@ -224,15 +225,12 @@ export default function App() {
     return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); window.removeEventListener("online", onVisible); clearInterval(timer); };
   }, []);
 
-  // Drop unsubmitted attempts left behind by abandoned papers.
+  // Drop unsubmitted attempts left behind by papers abandoned here. A signed-in account's sweep
+  // waits for its first sync, so a paper in progress on another device is known before it runs.
   useEffect(() => {
-    const current = loadSession()?.id;
     void (async () => {
-      const ownerId = (await getSettings()).cloudUser?.uid ?? "";
-      const orphans = (await db.attempts.filter((a) => (a.ownerId ?? "") === ownerId && a.submittedAt === undefined && a.sessionId !== current).primaryKeys()) as string[];
-      if (orphans.length === 0) return;
-      await db.attempts.bulkDelete(orphans);
-      await recordDeletes("attempts", orphans);
+      if ((await getSettings()).cloudUser) return;
+      await sweepOrphans("", loadSession("")?.id);
     })();
     // Pull the shared bank into the library, for everyone. Silently does nothing when unreachable.
     void (async () => {
