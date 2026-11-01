@@ -76,5 +76,11 @@ describe("stats", () => {
     const fresh = compileQuestions(qs, [attempt("x", "a1", 1)], ["cough"], { random, newOnly: true, count: 2 });
     expect(fresh).toHaveLength(2);
     expect(fresh.some((x) => x.id === "a1")).toBe(false);
+    // A count beyond the unattempted pool is made up from attempted questions, unattempted first.
+    const topped = compileQuestions(qs, [attempt("x", "a1", 1), attempt("y", "a2", 1)], ["cough"], { random, newOnly: true, count: 2 });
+    expect(topped).toHaveLength(2);
+    expect(topped.some((x) => x.id === "b2")).toBe(true);
+    expect(topped.filter((x) => x.setId === "A")).toHaveLength(1);
+    expect(compileQuestions(qs, [attempt("x", "a1", 1)], ["cough"], { random, newOnly: true })).toHaveLength(2);
   });
 });

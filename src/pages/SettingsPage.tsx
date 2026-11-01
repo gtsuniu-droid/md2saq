@@ -19,7 +19,8 @@ import { cloudConfigured, signOutCloud } from "../lib/firebase";
 import SignInPanel from "../components/SignInPanel";
 import ClaudeConnect from "../components/ClaudeConnect";
 import { isAdmin } from "../lib/admin";
-import { recordDeletes, syncNow } from "../lib/sync";
+import { recordDeletes, requestSync, syncNow } from "../lib/sync";
+import { resetProgress } from "../lib/progressReset";
 
 function Row({ title, help, children, danger }: { title: string; help?: string; children?: React.ReactNode; danger?: boolean }) {
   return (
@@ -46,6 +47,8 @@ export default function SettingsPage() {
   const [wipeCloud, setWipeCloud] = useState(false);
   const [wipeBusy, setWipeBusy] = useState(false);
   const [dangerMsg, setDangerMsg] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   if (!settings) return null;
   const stamp = new Date().toISOString().slice(0, 10);
@@ -125,6 +128,10 @@ export default function SettingsPage() {
                   onChange={(e) => { const n = Number(e.target.value); if (n >= 0.25) void patchSettings({ minutesPerMark: n }); }}
                   onBlur={(e) => { const n = Number(e.target.value); if (!(n >= 0.25)) { e.target.value = String(settings.minutesPerMark || DEFAULT_SETTINGS.minutesPerMark); } }} />
               </Row>
+              <Row title="Reset progress" help={`Every set counts as not done again, so new sessions draw from all of them. Sittings and marks stay in History.${settings.progressResetAt ? ` Last reset ${formatDate(settings.progressResetAt)}.` : ""}`}>
+                <button className="small" onClick={() => setResetting(true)}>Reset progress</button>
+              </Row>
+              {resetMsg && <p className="settings-message" role="status">{resetMsg}</p>}
             </div>
           </section>
 
@@ -283,6 +290,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <ConfirmDialog open={resetting} title="Reset progress?" confirmLabel="Reset progress" onCancel={() => setResetting(false)} onConfirm={() => { setResetting(false); void resetProgress().then(() => { requestSync(); setResetMsg("Progress reset. Every set comes round again."); }); }}>
+        <p>Every set counts as not done again and comes round in new sessions. Every sitting and mark stays in History, and nothing is deleted.</p>
+      </ConfirmDialog>
       <ConfirmDialog open={wiping} title="Delete all data on this device?" confirmLabel="Delete everything" destructive busy={wipeBusy} onCancel={() => setWiping(false)} onConfirm={() => void wipe()}>
         <p>Every question set, attempt and mark in this browser will be deleted, along with the saved AMBOSS login. Published sets come back from the shared bank; your answers do not.</p>
         {settings.cloudUser && <label className="check"><input type="checkbox" checked={wipeCloud} onChange={(e) => setWipeCloud(e.target.checked)} /><span>Also delete my synced answers and marks in the cloud. Leave this off to keep them for your other devices.</span></label>}

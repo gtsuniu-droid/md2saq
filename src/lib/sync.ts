@@ -8,6 +8,7 @@ import { syncNotes } from "./notes";
 import { belongsToAccount } from "./progressAccount";
 import { publishWeeklyCount } from "./leaderboard";
 import { newerSocial } from "./social";
+import { mergeProgressResets, sameProgressResets } from "./progressReset";
 
 /**
  * Offline-first sync of a signed-in person's own records: attempts (drafts
@@ -81,6 +82,8 @@ const SETTINGS_SYNCED: (keyof Settings)[] = [
   "ambossHighlights",
   "ambossOnPaper",
   "social",
+  "progressResetAt",
+  "presentationResetAt",
 ];
 
 /** Firestore rejects undefined; drop those fields recursively. Arrays are kept as is. */
@@ -329,6 +332,9 @@ async function pull(uid: string): Promise<{ applied: number; unresolved: number 
           // device's is the one kept, date the document now so the next push corrects the cloud copy.
           const social = newerSocial(local?.social, remoteSettings.social);
           if (social !== remoteSettings.social) Object.assign(merged, { social, _m: Date.now() });
+          // A reset made on either device stands: each time is the later of the two.
+          const resets = mergeProgressResets(local, remoteSettings);
+          if (!sameProgressResets(resets, remoteSettings)) Object.assign(merged, { ...resets, _m: Date.now() });
           await db.settings.put({ ...merged, [KEEP_STAMP]: true } as Settings);
           applied++;
         }

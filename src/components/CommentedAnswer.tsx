@@ -27,6 +27,9 @@ interface Props {
 }
 
 const CARD_GAP = 8;
+/** Folded cards (the ones above an open card) stack this close; when even that is too much, each still shows this much of its top. */
+const FOLD_GAP = 4;
+const FOLD_MIN = 12;
 
 /** Comments belong to the submitted answer, independently of whether it has been marked. */
 export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", comments, margin = false, actions, revision, showChanges = true, editor }: Props) {
@@ -51,7 +54,10 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   const [showList, setShowList] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  // Where each comment's highlight sits; a comment whose highlight is off the page for the moment
+  // (its words are being edited) keeps its last line, so its card never jumps to the top.
   const [tops, setTops] = useState<Record<string, number>>({});
+  const [found, setFound] = useState<Record<string, true>>({});
   const [marginHeight, setMarginHeight] = useState(0);
   const [resized, setResized] = useState(0);
   const all = comments.filter((c) => c.partLabel === partLabel);
@@ -135,13 +141,19 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   useLayoutEffect(() => {
     if (!margin || !root.current || !shell.current) return;
     const base = shell.current.getBoundingClientRect().top;
-    const next: Record<string, number> = {};
+    const measured: Record<string, number> = {};
     root.current.querySelectorAll<HTMLElement>("[data-comment-ids]").forEach((el) => {
       const ids = JSON.parse(el.dataset.commentIds ?? "[]") as string[];
       const top = el.getBoundingClientRect().top - base;
-      for (const id of ids) if (next[id] === undefined || top < next[id]) next[id] = top;
+      for (const id of ids) if (measured[id] === undefined || top < measured[id]) measured[id] = top;
     });
-    setTops((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
+    const seen = Object.fromEntries(Object.keys(measured).map((id) => [id, true as const]));
+    setFound((prev) => JSON.stringify(prev) === JSON.stringify(seen) ? prev : seen);
+    setTops((prev) => {
+      const next: Record<string, number> = {};
+      for (const c of mine) { const top = measured[c.id] ?? prev[c.id]; if (top !== undefined) next[c.id] = top; }
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
   }, [margin, rendered.html, mine.length, resized, revision, showChanges, !!editor]);
   useEffect(() => {
     if (!margin) return;
@@ -151,8 +163,8 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", onResize); };
   }, [margin]);
   // Each card sits level with its line unless the one above is in the way. The open card is
-  // given its line if the cards above can move up far enough to let it; they never overlap,
-  // and nothing moves further than it has to.
+  // given its line: the cards above fold to a strip each and move up only as far as needed,
+  // stacking tight above it when they must. Nothing moves further than it has to.
   useLayoutEffect(() => {
     if (!margin) return;
     const height = (id: string) => cardRefs.current.get(id)?.offsetHeight ?? 0;
@@ -165,13 +177,13 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     const at = cardOrder.findIndex((item) => item.id === openId);
     let start = 0;
     if (at >= 0) {
-      // The least room the cards above need, stacked tight from the top.
-      const needed = cardOrder.slice(0, at).reduce((n, item) => n + height(item.id) + CARD_GAP, 0);
+      // The least room the folded cards above need, stacked from the top.
+      const needed = at * FOLD_MIN;
       const openTop = Math.max(cardOrder[at].anchorTop, needed);
       next[cardOrder[at].id] = openTop;
-      // The cards above stay put unless the open card needs their room; then they move up, only as far as needed.
+      // A folded card stays on its line unless the open card needs its room; then it moves up, only as far as needed, into the stack.
       let above = openTop;
-      for (let k = at - 1; k >= 0; k--) { const id = cardOrder[k].id; next[id] = Math.max(0, Math.min(closed[id], above - height(id) - CARD_GAP)); above = next[id]; }
+      for (let k = at - 1; k >= 0; k--) { const id = cardOrder[k].id; next[id] = Math.max(k * FOLD_MIN, Math.min(closed[id], above - height(id) - FOLD_GAP)); above = next[id]; }
       start = at + 1;
     }
     let cursor = start ? next[cardOrder[start - 1].id] + height(cardOrder[start - 1].id) + CARD_GAP : 0;
@@ -183,7 +195,7 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     setLaid((prev) => JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
     setMarginHeight(Math.max(cursor, ...Object.values(next).map((top, i) => top + height(Object.keys(next)[i]))));
   }, [margin, cardOrder, active, draft?.id, draft?.text, status, reply, all.length]);
-  // Cards glide to their places rather than jumping; a card's first position is set outright.
+  // Cards glide to their places (the stylesheet eases `top`) rather than jumping; a card's first position is set outright.
   const placed = useRef(new Set<string>());
   useLayoutEffect(() => {
     if (!margin) return;
@@ -192,9 +204,15 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
     cardOrder.forEach((item, k) => {
       const el = cardRefs.current.get(item.id); const top = laid[item.id];
       if (!el || top === undefined) return;
-      const zIndex = k === at ? 2 : 1;
-      if (!placed.current.has(item.id) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { gsap.set(el, { top, zIndex }); placed.current.add(item.id); }
-      else gsap.to(el, { top, zIndex, duration: 0.28, ease: "power2.out", overwrite: "auto" });
+      // Lower cards lie over the ones above, so a stacked card shows its top; the open card lies over everything.
+      el.style.zIndex = String(k === at ? cardOrder.length + 1 : k + 1);
+      if (!placed.current.has(item.id)) {
+        el.style.transition = "none";
+        el.style.top = `${top}px`;
+        void el.offsetHeight;
+        el.style.transition = "";
+        placed.current.add(item.id);
+      } else el.style.top = `${top}px`;
     });
     for (const id of [...placed.current]) if (!(id in laid)) placed.current.delete(id);
   }, [margin, laid, cardOrder, active, draft?.id]);
@@ -331,6 +349,9 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
   const commentIcon = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9l-3.5 3v-3H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M10 7v5M7.5 9.5h5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>;
   // Long enough to be cut to two lines when closed.
   const long = (c: AnswerComment) => c.text.length > 110 || c.text.includes("\n");
+  // With one card open, the cards above it fold to a strip each, so the open card can sit level with its passage however low it is.
+  const openAt = cardOrder.findIndex((item) => item.id === (draft?.id ?? active));
+  const foldedIds = new Set(openAt > 0 ? cardOrder.slice(0, openAt).map((item) => item.id) : []);
   return <div ref={shell} className="commented-answer with-margin">
     <div ref={textBox} className="commented-answer-text">
       {answer}
@@ -342,11 +363,11 @@ export default function CommentedAnswer({ attemptId, partLabel, doc, text = "", 
         const open = c.id === active && !draft;
         const editing = draft?.id === c.id;
         if (editing) return draftCard(true);
-        return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (!isGeneralComment(c) && tops[c.id] === undefined ? " orphan" : "") + (isGeneralComment(c) ? " general" : "")} role="region" aria-label="Answer comment">
+        return <div key={c.id} ref={(el) => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }} className={"answer-comment-card" + (open ? " open" : "") + (foldedIds.has(c.id) ? " folded" : "") + (!isGeneralComment(c) && !found[c.id] && !editor ? " orphan" : "") + (isGeneralComment(c) ? " general" : "")} role="region" aria-label="Answer comment">
           <button type="button" className="comment-card-body" onClick={() => { setActive(open ? null : c.id); setDraft(null); setStatus(""); }} aria-expanded={open}>
             {c.by === "marker" ? marker(c.createdAt) : author(c.createdAt)}
             <p className="pre">{c.text}</p>
-            {long(c) && <span className="comment-more">{open ? "Show less" : "Show more"}</span>}
+            {long(c) && !foldedIds.has(c.id) && <span className="comment-more">{open ? "Show less" : "Show more"}</span>}
           </button>
           {open && <div className="row comment-actions">
             {!validCommentAnchor(rendered.plain, c) && <span className="muted comment-note">“{c.quote}” has changed.</span>}

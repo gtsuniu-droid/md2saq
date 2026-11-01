@@ -2,7 +2,9 @@ import HomeLeaderboard from "../components/HomeLeaderboard";
 import LibraryStatus from "../components/LibraryStatus";
 import { loadLibrary } from "../lib/library";
 import { ensureQuestionContent, ensureSetContent } from "../lib/bank";
-import { buildExamPaper, examSupply, examTiming, EXAM_MAX_STEMS, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
+import { buildExamPaper, examFreshCount, examSupply, examTiming, EXAM_MAX_STEMS, EXAM_STEMS, EXAM_READING_SEC, EXAM_WRITING_SEC } from "../lib/examPaper";
+import { attemptsSinceReset, countingMarks, resetProgress } from "../lib/progressReset";
+import { requestSync } from "../lib/sync";
 import { hasAnswerContent } from "../lib/answerContent";
 import AttemptHistory from "../components/AttemptHistory";
 import { belongsToAccount } from "../lib/progressAccount";
@@ -10,7 +12,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { db, getSettings } from "../data/db";
-import { PRESENTATIONS } from "../data/presentations";
+import { PRESENTATIONS, type Presentation } from "../data/presentations";
 import Heatmap from "../components/Heatmap";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AccountGate from "../components/AccountGate";
@@ -28,13 +30,19 @@ import { setLabel } from "../lib/sets";
 
 type Range = "week" | "year" | "overall";
 const DAY_MS = 24 * 3600 * 1000;
+/** Unattempted only is on for a new session until the student turns it off; the choice stays on this device. */
+const NEW_ONLY_KEY = "saq-new-only";
+const readNewOnly = () => { try { return localStorage.getItem(NEW_ONLY_KEY) !== "0"; } catch { return true; } };
+const ResetIcon = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.7-6.2" /><path d="M3.5 4v5h5" /></svg>;
 const PARENT_OF = new Map(PRESENTATIONS.filter((p) => p.parent).map((p) => [p.id, p.parent!]));
 
 export default function HomePage() {
   const nav = useNavigate();
   const [range, setRange] = useState<Range>("year");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [newOnly, setNewOnly] = useState(false);
+  const [newOnly, setNewOnlyState] = useState(readNewOnly);
+  const setNewOnly = (on: boolean) => { setNewOnlyState(on); try { localStorage.setItem(NEW_ONLY_KEY, on ? "1" : "0"); } catch { /* private mode */ } };
+  const [resetting, setResetting] = useState<Presentation | null>(null);
   const [count, setCount] = useState("");
   const [unit, setUnit] = useState<StudyUnit>("sets");
   const [chooseSets, setChooseSets] = useState(false);
@@ -73,8 +81,18 @@ export default function HomePage() {
     return { questions, attempts: attempts.filter((a) => belongsToAccount(a, ownerId)), marks: marks.filter((m) => belongsToAccount(m, ownerId)), settings, sets };
   }, []);
 
-  const stats = useMemo(() => {
+  // What counts as done: sittings since progress was last reset. Statistics and History keep every sitting.
+  const counting = useMemo(() => {
     if (!data) return null;
+    const attempts = attemptsSinceReset(data.attempts, data.questions, data.sets, data.settings);
+    const setOf = new Map(data.questions.map((q) => [q.id, q.setId]));
+    const setIds = new Set<string>();
+    for (const a of attempts) if (a.submittedAt !== undefined && setOf.has(a.questionId)) setIds.add(setOf.get(a.questionId)!);
+    return { attempts, marks: countingMarks(data.marks, attempts), setIds };
+  }, [data]);
+
+  const stats = useMemo(() => {
+    if (!data || !counting) return null;
     const now = Date.now();
     const submitted = data.attempts.filter((a) => a.submittedAt !== undefined);
     const first = submitted.length ? Math.min(...submitted.map((a) => a.submittedAt!)) : now;
@@ -84,23 +102,30 @@ export default function HomePage() {
     return {
       grid: heatGrid(perDay, now, days),
       summary: summarise(data.attempts, data.marks, range === "overall" ? undefined : from),
-      setProgress: setPresentationProgress(data.sets, data.questions, data.attempts, data.marks, PRESENTATIONS.map((p) => p.id)),
-      progress: presentationProgress(data.questions, data.attempts, data.marks, PRESENTATIONS.map((p) => p.id), PARENT_OF),
+      setProgress: setPresentationProgress(data.sets, data.questions, counting.attempts, counting.marks, PRESENTATIONS.map((p) => p.id)),
+      progress: presentationProgress(data.questions, counting.attempts, counting.marks, PRESENTATIONS.map((p) => p.id), PARENT_OF),
     };
-  }, [data, range]);
+  }, [data, counting, range]);
 
-  const selectedQuestions = useMemo(() => data ? buildSessionSelection({
-    unit, sets: data.sets, questions: data.questions, attempts: data.attempts, presentations: [...selected], newOnly,
+  const selectedQuestions = useMemo(() => data && counting ? buildSessionSelection({
+    unit, sets: data.sets, questions: data.questions, attempts: counting.attempts, presentations: [...selected], newOnly,
     count: count.trim() === "" ? undefined : Number(count), setIds: unit === "sets" && chooseSets ? [...selectedSets] : undefined,
     random: seededRandom(seed), parentOf: PARENT_OF,
-  }) : [], [data, unit, selected, newOnly, count, chooseSets, selectedSets, seed]);
+  }) : [], [data, counting, unit, selected, newOnly, count, chooseSets, selectedSets, seed]);
 
-  if (!data || !stats) return null;
+  if (!data || !counting || !stats) return null;
   const { summary } = stats;
   const progress = unit === "sets" ? stats.setProgress.progress : stats.progress;
   const allProgress = unit === "sets" ? stats.setProgress.all : {
     total: data.questions.length,
-    marked: new Set(data.marks.filter((m) => data.questions.some((q) => q.id === m.questionId)).map((m) => m.questionId)).size,
+    marked: new Set(counting.marks.filter((m) => data.questions.some((q) => q.id === m.questionId)).map((m) => m.questionId)).size,
+  };
+  const resetPresentation = async () => {
+    const p = resetting;
+    if (!p) return;
+    setResetting(null);
+    await resetProgress([p.id]);
+    requestSync();
   };
 
   const toggle = (id: string) =>
@@ -114,13 +139,18 @@ export default function HomePage() {
   const withQuestions = visible.filter((p) => (progress.get(p.id)?.total ?? 0) > 0);
   const allSelected = withQuestions.length > 0 && withQuestions.every((p) => selected.has(p.id));
 
-  const setPool = eligibleSessionSets(data.sets, data.questions, data.attempts, [...selected], newOnly, PARENT_OF);
-  const allQuestions = buildSessionSelection({ unit: "questions", sets: data.sets, questions: data.questions, attempts: data.attempts, presentations: [...selected], newOnly, random: () => 0.5, parentOf: PARENT_OF });
+  // Blank means every unattempted set or question; a larger number is made up from ones already sat.
+  const fullPool = eligibleSessionSets(data.sets, data.questions, counting.attempts, [...selected], false, PARENT_OF);
+  const setPool = newOnly ? fullPool.filter((s) => s.attempted === 0) : fullPool;
+  const questionsIn = (fresh: boolean) => buildSessionSelection({ unit: "questions", sets: data.sets, questions: data.questions, attempts: counting.attempts, presentations: [...selected], newOnly: fresh, random: () => 0.5, parentOf: PARENT_OF });
+  const allQuestions = questionsIn(newOnly);
   const poolCount = unit === "sets" ? setPool.length : allQuestions.length;
+  const poolMax = !newOnly ? poolCount : unit === "sets" ? fullPool.length : questionsIn(false).length;
   const pickedSetIds = new Set(selectedQuestions.map((q) => q.setId));
   const suggestedMinutes = suggestedSessionMinutes(selectedQuestions, data.sets, data.settings.minutesPerMark, unit);
   const validMinutes = minutes.trim() === "" || (Number.isFinite(Number(minutes)) && Number(minutes) >= 0);
-  const validCount = (unit === "sets" && chooseSets) || count.trim() === "" || (Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= poolCount);
+  const validCount = (unit === "sets" && chooseSets) || count.trim() === "" || (Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= poolMax);
+  const satToppedUp = newOnly && !(unit === "sets" && chooseSets) && validCount && count.trim() !== "" ? Math.max(0, Number(count) - poolCount) : 0;
   const start = async (force = false) => {
     if (starting) return;
     if (!selectedQuestions.length || !validMinutes || !validCount) return;
@@ -159,10 +189,13 @@ export default function HomePage() {
   const examSetsAvailable = examSupply(data.sets, data.questions, examPresentations);
   const examSize = Math.min(EXAM_MAX_STEMS, Math.max(1, Math.round(Number(examCount) || EXAM_STEMS)));
   const examReady = examSetsAvailable >= examSize && (examPick === "random" || selected.size > 0);
+  const examAttempted = newOnly ? counting.setIds : undefined;
+  // Unattempted sets first; when there are not enough, sets already sat make up the paper.
+  const examFresh = examReady && newOnly ? examFreshCount(data.sets, data.questions, { count: examSize, presentations: examPresentations, attempted: examAttempted }) : examSize;
   const examDefault = examTiming(examSize);
   const examMinutes = (raw: string, fallback: number, min: number) => { const n = Number(raw); return raw.trim() === "" || !Number.isFinite(n) ? fallback : Math.max(min, Math.round(n)) * 60; };
   const examClock = { readingSec: examMinutes(examReading, examDefault.readingSec, 0), totalSec: examMinutes(examWriting, examDefault.totalSec, 1) };
-  const buildExam = () => buildExamPaper(data.sets, data.questions, Math.random, { count: examSize, presentations: examPresentations });
+  const buildExam = () => buildExamPaper(data.sets, data.questions, Math.random, { count: examSize, presentations: examPresentations, attempted: examAttempted });
   const startExam = async (force = false) => {
     if (starting) return;
     setExamError("");
@@ -198,22 +231,22 @@ export default function HomePage() {
         <input type="checkbox" checked={allSelected} disabled={!withQuestions.length} onChange={() => setSelected((previous) => { const next = new Set(previous); withQuestions.forEach((p) => { if (allSelected) next.delete(p.id); else next.add(p.id); }); return next; })} />
         <span className="name">{search.trim() ? "Select all results" : "All presentations"}</span>
         <span className="bar" />
-        <span className="count muted">{!search.trim() && `${allProgress.marked} / ${allProgress.total}`}</span>
+        <span className="count muted">{!search.trim() && `${allProgress.marked}/${allProgress.total}`}</span>
       </label>
       {visible.map((p) => {
         const pr = progress.get(p.id)!;
         const markedPct = pr.total ? (100 * pr.marked) / pr.total : 0;
         const attemptedPct = pr.total ? (100 * (pr.attempted - pr.marked)) / pr.total : 0;
         return (
-          <label key={p.id} className={"pres-row" + (p.parent ? " child" : "") + (pr.total === 0 ? " none" : "")}>
-            <input type="checkbox" checked={selected.has(p.id)} disabled={pr.total === 0} onChange={() => toggle(p.id)} />
+          <div key={p.id} className={"pres-row" + (p.parent ? " child" : "") + (pr.total === 0 ? " none" : "")} onClick={(event) => { if (pr.total === 0 || (event.target as HTMLElement).closest("button, input")) return; toggle(p.id); }}>
+            <input type="checkbox" aria-label={p.name} checked={selected.has(p.id)} disabled={pr.total === 0} onChange={() => toggle(p.id)} />
             <span className="name"><span className="emoji">{p.emoji}</span>{p.name}</span>
             <span className="bar">
               <span className="fill marked" style={{ width: `${markedPct}%` }} />
               <span className="fill attempted" style={{ width: `${attemptedPct}%` }} />
             </span>
-            <span className="count muted">{pr.marked} / {pr.total}</span>
-          </label>
+            <span className="count muted">{pr.marked}/{pr.total}{pr.attempted > 0 && <button type="button" className="pres-reset" title={`Reset ${p.name}`} aria-label={`Reset progress for ${p.name}`} onClick={() => setResetting(p)}><ResetIcon /></button>}</span>
+          </div>
         );
       })}
     </div>
@@ -281,11 +314,13 @@ export default function HomePage() {
           {examPick === "choose" && presentationList}
           <div className="row exam-count-row">
             <label className="session-inline-label">How many sets?<input aria-label="Number of sets in the exam" type="number" min={1} max={EXAM_MAX_STEMS} step={1} value={examCount} onChange={(e) => setExamCount(e.target.value)} /></label>
+            {examPick === "random" && <label className="check"><input type="checkbox" checked={newOnly} onChange={(e) => setNewOnly(e.target.checked)} /> Unattempted sets only</label>}
             <span className="muted">Up to {EXAM_MAX_STEMS}. {examPick === "random" ? "One set from each of as many presentations as possible." : "One set from each chosen presentation first, then more from the same ones."}</span>
           </div>
           <div className="exam-format"><div><strong>{examSize} {examSize === 1 ? "stem" : "stems"}</strong><span>{examPick === "random" ? "Mixed presentations" : `${selected.size} chosen`}</span></div><div><label className="exam-time"><input aria-label="Reading time in minutes" type="number" min={0} step={1} placeholder={String(Math.round(examDefault.readingSec / 60))} value={examReading} onChange={(e) => setExamReading(e.target.value)} /><strong>min</strong></label><span>Reading time</span></div><div><label className="exam-time"><input aria-label="Writing time in minutes" type="number" min={1} step={1} placeholder={String(Math.round(examDefault.totalSec / 60))} value={examWriting} onChange={(e) => setExamWriting(e.target.value)} /><strong>min</strong></label><span>Writing time</span></div></div>
           <p className="muted">{examClock.readingSec ? "Answers unlock after reading time. " : "No reading time: answers open at once. "}The clock never stops, and the paper submits itself when it runs out.</p>
           {!examReady && <p role="status">{examPick === "choose" && !selected.size ? "Choose at least one presentation." : examPick === "choose" ? `Each set comes from a different presentation: ${examSetsAvailable} of the chosen ${selected.size === 1 ? "presentation has" : "presentations have"} sets, so choose ${examSize - examSetsAvailable} more or lower the number.` : `${examSetsAvailable} ${examSetsAvailable === 1 ? "set" : "sets"} available; lower the number or add sets.`}</p>}
+          {examReady && examFresh < examSize && <p role="status">{examFresh}/{examSize} sets unattempted, the rest already sat</p>}
           {examError && <p className="field-error" role="alert">{examError}</p>}
           <button className="primary" onClick={() => void startExam()} disabled={starting || !examReady}>{starting ? "Preparing exam…" : "Start exam"}</button>
         </div> : <>
@@ -296,7 +331,7 @@ export default function HomePage() {
         {presentationList}
 
         {unit === "sets" && selected.size > 0 && <div className="session-set-picker">
-          <div className="row spread"><span className="muted">{setPool.length} complete {setPool.length === 1 ? "set" : "sets"} available</span><div className="seg" role="group" aria-label="Set selection"><button className={!chooseSets ? "on" : ""} aria-pressed={!chooseSets} onClick={() => { setChooseSets(false); setCount(""); }}>Random sets</button><button className={chooseSets ? "on" : ""} aria-pressed={chooseSets} onClick={() => { setChooseSets(true); setCount(""); }}>Choose sets</button></div></div>
+          <div className="row spread"><span className="muted">{newOnly ? `${setPool.length}/${fullPool.length} sets unattempted` : `${setPool.length} complete ${setPool.length === 1 ? "set" : "sets"} available`}</span><div className="seg" role="group" aria-label="Set selection"><button className={!chooseSets ? "on" : ""} aria-pressed={!chooseSets} onClick={() => { setChooseSets(false); setCount(""); }}>Random sets</button><button className={chooseSets ? "on" : ""} aria-pressed={chooseSets} onClick={() => { setChooseSets(true); setCount(""); }}>Choose sets</button></div></div>
           {chooseSets && <div className="session-set-list">
             <div className="row"><button className="small link" onClick={() => setSelectedSets(new Set(setPool.map((s) => s.set.id)))}>Select all sets</button><button className="small link" onClick={() => setSelectedSets(new Set())}>Clear</button></div>
             {setPool.map((s) => <label key={s.set.id} className="session-set-row"><input type="checkbox" checked={selectedSets.has(s.set.id)} onChange={() => setSelectedSets((prev) => { const next = new Set(prev); if (next.has(s.set.id)) next.delete(s.set.id); else next.add(s.set.id); return next; })} /><span><strong>{setLabel(s.set)}</strong><span className="muted">{truncate(stemsOf(s.questions[0])[0] || s.questions[0].text, 110)}</span></span><small>{s.questions.length} questions, {s.attempted === 0 ? "New" : `${s.attempted} attempted`}</small></label>)}
@@ -305,11 +340,11 @@ export default function HomePage() {
         </div>}
         <div className="session-start-area">
           <div className="row">
-            {!(unit === "sets" && chooseSets) && <label className="session-inline-label">How many {unit}?<input aria-label={unit === "sets" ? "Number of sets" : "Number of questions"} aria-invalid={!validCount} aria-describedby={!validCount ? "session-count-error" : undefined} type="number" min={1} max={poolCount || 1} step={1} placeholder={`All (${poolCount})`} value={count} onChange={(e) => setCount(e.target.value)} /></label>}
+            {!(unit === "sets" && chooseSets) && <label className="session-inline-label">How many {unit}?<input aria-label={unit === "sets" ? "Number of sets" : "Number of questions"} aria-invalid={!validCount} aria-describedby={!validCount ? "session-count-error" : undefined} type="number" min={1} max={poolMax || 1} step={1} placeholder={`All (${poolCount})`} value={count} onChange={(e) => setCount(e.target.value)} /></label>}
             <label className="session-inline-label">Time (minutes)<input aria-label="Session time in minutes" aria-invalid={!validMinutes} aria-describedby={!validMinutes ? "session-time-error" : undefined} type="number" min={0} step={1} placeholder={String(suggestedMinutes)} value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>
             <span className="muted">Leave blank for the suggested time. Enter 0 for no timer.</span>
           </div>
-          {!validCount && <p id="session-count-error" role="alert" className="field-error">{poolCount ? `Choose a whole number from 1 to ${poolCount}, or leave blank for all.` : "Select a presentation with available questions first."}</p>}
+          {!validCount && <p id="session-count-error" role="alert" className="field-error">{poolMax ? `Choose a whole number from 1 to ${poolMax}, or leave blank for all.` : "Select a presentation with available questions first."}</p>}
           {!validMinutes && <p id="session-time-error" role="alert" className="field-error">Enter 0 for untimed practice or a positive number of minutes.</p>}
           <p className="session-guidance muted">Practice lets you submit and mark as you go.</p>
           {!!selectedQuestions.length && <details className="session-selection-preview"><summary>Preview selected {unit === "sets" ? "sets" : "questions"}</summary>{[...pickedSetIds].map((id) => {
@@ -321,6 +356,7 @@ export default function HomePage() {
           <div className="session-preview" aria-live="polite">
             <div><strong>{!selected.size ? "Select presentations to begin" : !selectedQuestions.length ? "No questions selected" : unit === "sets" ? `${pickedSetIds.size} whole ${pickedSetIds.size === 1 ? "set" : "sets"}, ${selectedQuestions.length} ${selectedQuestions.length === 1 ? "question" : "questions"}` : `${selectedQuestions.length} individual ${selectedQuestions.length === 1 ? "question" : "questions"}`}</strong>
               {!!selectedQuestions.length && <p className="muted">Practice, {minutes === "0" ? "Untimed" : `${minutes || suggestedMinutes} minutes`}</p>}
+              {satToppedUp > 0 && <p className="muted" role="status">{poolCount} unattempted, {satToppedUp} already sat</p>}
               {!selectedQuestions.length && selected.size > 0 && <p className="muted">{unit === "sets" && chooseSets ? "Tick the sets you want to study." : "Try changing the unattempted filter or the number requested."}</p>}
             </div>
             <div className="row">{!(unit === "sets" && chooseSets) && !!selectedQuestions.length && <button onClick={() => setSeed(Math.floor(Math.random() * 0xffffffff))}>Shuffle selection</button>}<button className="primary" onClick={() => void start()} disabled={starting || !selectedQuestions.length || !validMinutes || !validCount}>Start practice</button></div>
@@ -342,6 +378,9 @@ export default function HomePage() {
         <p>You have a paper in progress. Starting a new one replaces it. Answers you already submitted are kept; unsubmitted drafts are discarded.</p>
       </ConfirmDialog>
       <AccountGate open={gateOpen} guestSubmitted={gate.guestSubmitted} onClose={() => setGateOpen(false)} />
+      <ConfirmDialog open={resetting !== null} title={resetting ? `Reset ${resetting.name}?` : "Reset progress?"} confirmLabel="Reset" onCancel={() => setResetting(null)} onConfirm={() => void resetPresentation()}>
+        <p>Its sets count as not done again and come round in new sessions. Every sitting and mark stays in History.</p>
+      </ConfirmDialog>
       <ConfirmDialog open={discarding} title="Discard this session?" confirmLabel="Discard session" destructive onCancel={() => setDiscarding(false)} onConfirm={() => { setDiscarding(false); void discardSession(); }}>
         <p>Unsubmitted answers are deleted. {done > 0 ? `The ${done} submitted ${done === 1 ? "answer" : "answers"} and any marks are kept.` : "Submitted answers and marks are always kept."}</p>
       </ConfirmDialog>

@@ -22,6 +22,16 @@ describe("session selection", () => {
     expect(buildSessionSelection({ ...base, newOnly: true, attempts }).map((q) => q.id)).toEqual(["b1", "b2"]);
     expect(buildSessionSelection({ ...base, newOnly: true, attempts: [{ questionId: "a1" }] as Attempt[] })).toHaveLength(4);
   });
+  it("makes up a count larger than the unattempted pool from sets already sat, unattempted first", () => {
+    const attempts = [{ questionId: "a1", submittedAt: 9 }] as Attempt[];
+    for (let seed = 0; seed < 6; seed++) {
+      const picked = buildSessionSelection({ ...base, newOnly: true, attempts, count: 2, random: seededRandom(seed) });
+      expect(picked.map((q) => q.id)).toEqual(["b1", "b2", "a1", "a2"]);
+    }
+    expect(buildSessionSelection({ ...base, newOnly: true, attempts, count: 1 }).map((q) => q.id)).toEqual(["b1", "b2"]);
+    // Chosen sets are never made up from elsewhere.
+    expect(buildSessionSelection({ ...base, newOnly: true, attempts, setIds: ["a"] })).toEqual([]);
+  });
   it("supports child presentations, deduplicates matches, and requires an explicit selection", () => {
     const child = { ...base, questions: [q("a1", "a", 0, "back-pain")], presentations: ["musculoskeletal-pain", "back-pain"], parentOf: new Map([["back-pain", "musculoskeletal-pain"]]) };
     expect(buildSessionSelection(child)).toHaveLength(1);

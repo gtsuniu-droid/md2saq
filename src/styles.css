@@ -296,7 +296,9 @@ mark.user-hl { background: var(--hl); color: inherit; padding: 0; }
 .pres-row .fill { height: 100%; }
 .pres-row .fill.marked { background: var(--good); }
 .pres-row .fill.attempted { background: var(--warn); }
-.pres-row .count { text-align: right; font-size: 0.82rem; white-space: nowrap; }
+.pres-row .count { text-align: right; font-size: 0.82rem; white-space: nowrap; display: inline-flex; align-items: center; justify-content: flex-end; gap: .3rem; }
+.pres-reset { min-height: 0; padding: .1rem; border: 0; border-radius: 50%; background: transparent; color: var(--muted); line-height: 0; opacity: .55; }
+.pres-reset:hover:not(:disabled), .pres-reset:focus-visible { opacity: 1; color: var(--teal); background: transparent; }
 @media (max-width: 700px) { .pres-row { grid-template-columns: 1.4rem 1fr 5rem; } .pres-row .bar { display: none; } .stat-row { grid-template-columns: repeat(2, 1fr); row-gap: 0.8rem; } }
 
 /* Editor */
@@ -1116,12 +1118,25 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .browse-filters input, .browse-filters select { width: 100%; min-width: 0; font-size: .85rem; }
 .browse-count { padding: .3rem 1rem .7rem; color: var(--muted); font-size: .78rem; }
 .browse-set-list { overflow: auto; flex: 1; min-height: 0; }
-button.browse-set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .6rem; width: 100%; border: 0; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; border-radius: 0; text-align: left; padding: .85rem 1rem; background: transparent; color: var(--fg); }
-button.browse-set-row:hover:not(:disabled) { background: var(--bg); }
+button.browse-set-row, a.browse-set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .6rem; width: 100%; border: 0; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; border-radius: 0; text-align: left; padding: .85rem 1rem; background: transparent; color: var(--fg); }
+button.browse-set-row:hover:not(:disabled), a.browse-set-row:hover { background: var(--bg); }
+a.browse-set-row { text-decoration: none; font-size: inherit; }
 button.browse-set-row.selected { background: var(--teal-soft); border-left-color: var(--teal); }
 .browse-set-title { font-size: .88rem; font-weight: 600; }
 .browse-set-preview { grid-column: 1; font-size: .8rem; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .browse-set-count { grid-column: 2; grid-row: 1; color: var(--muted); font-size: .78rem; }
+.browse-set-sat { grid-column: 2; grid-row: 2; align-self: start; justify-self: end; display: inline-flex; flex-direction: column; align-items: flex-end; gap: .15rem; color: var(--muted); font-size: .72rem; white-space: nowrap; }
+.browse-set-score { font-size: .7rem; font-weight: 600; padding: 0 .4rem; border-radius: 999px; background: var(--teal-soft); color: var(--teal); }
+.browse-set-done { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; margin-right: .35rem; border-radius: 50%; background: var(--good); color: #fff; vertical-align: -.15rem; }
+.mt-suggested { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: .5rem; margin: .5rem 0 .3rem; padding: .55rem .7rem; border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--border)); border-radius: 8px; background: var(--brand-soft); font-size: .85rem; }
+.mt-suggested svg { width: 13px; height: 13px; margin-top: .25rem; color: var(--brand); }
+.mt-suggested p { margin: 0; line-height: 1.5; }
+.browse-chips { gap: .4rem; flex-wrap: wrap; }
+.browse-chips .seg { padding: .15rem; }
+.browse-chips .seg button { min-height: 26px; padding: .2rem .55rem; font-size: .76rem; }
+.browse-filters > .seg { justify-self: start; padding: .15rem; }
+.browse-filters > .seg button { min-height: 28px; padding: .25rem .7rem; font-size: .8rem; }
+.browse-question-row .browse-set-count.history-pct { font-size: .82rem; }
 .browse-detail { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .browse-detail-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); }
 .browse-detail-heading h2 { color: var(--fg); font-size: 1rem; text-transform: none; letter-spacing: normal; margin: 0; }
@@ -1393,7 +1408,7 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .commented-answer-text .answer-html { line-height: 1.65; }
 .comment-add { position: absolute; right: .6rem; bottom: .5rem; background: var(--card); box-shadow: 0 2px 8px #0002; }
 .comment-margin { position: relative; min-width: 0; }
-.comment-margin .answer-comment-card { position: absolute; left: 0; right: 0; margin: 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--border); border-left: 3px solid #bd8a22; border-radius: 8px; box-shadow: 0 1px 2px #0000000a; transition: box-shadow .15s ease; }
+.comment-margin .answer-comment-card { position: absolute; left: 0; right: 0; margin: 0; padding: .6rem .75rem; background: var(--card); border: 1px solid var(--border); border-left: 3px solid #bd8a22; border-radius: 8px; box-shadow: 0 1px 2px #0000000a; transition: box-shadow .15s ease, top .28s cubic-bezier(.2, .7, .2, 1); }
 .comment-margin .answer-comment-card.open, .comment-margin .answer-comment-card.draft { box-shadow: 0 8px 24px #0f172a1f; z-index: 2; }
 .comment-margin .answer-comment-card.orphan { border-left-color: var(--border); opacity: .75; }
 .comment-card-body { display: block; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; min-height: 0; font: inherit; color: inherit; cursor: pointer; }
@@ -1440,10 +1455,17 @@ button.browse-set-row.selected { background: var(--brand-soft); border-left-colo
 .comment-add { display: inline-flex; align-items: center; gap: .4rem; right: .7rem; bottom: .6rem; padding: .3rem .7rem; border-radius: 999px; border-color: transparent; background: var(--fg); color: var(--bg); font-weight: 600; box-shadow: 0 6px 18px #0f172a2a; }
 .comment-add:hover:not(:disabled) { background: var(--fg); color: var(--bg); border-color: transparent; opacity: .92; }
 .comment-add svg { width: 14px; height: 14px; }
-.comment-margin .answer-comment-card { padding: .7rem .8rem .65rem; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 2px 10px #0f172a0d; transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease; }
+.comment-margin .answer-comment-card { padding: .7rem .8rem .65rem; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 2px 10px #0f172a0d; transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease, top .28s cubic-bezier(.2, .7, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .comment-margin .answer-comment-card { transition-duration: 0s; } }
 .comment-margin .answer-comment-card:hover { border-color: color-mix(in srgb, #f0c74a 60%, var(--border)); }
 .comment-margin .answer-comment-card.open, .comment-margin .answer-comment-card.draft { border-color: #f0c74a; box-shadow: 0 10px 28px #0f172a1f; transform: translateX(-4px); z-index: 2; }
 .comment-margin .answer-comment-card.orphan { opacity: .6; }
+/* Above an open card, each card folds to one even strip: who said it, then what, in one line. */
+.comment-margin .answer-comment-card.folded { height: 38px; padding: 0 .8rem; overflow: hidden; box-shadow: 0 1px 4px #0f172a14; }
+.comment-margin .answer-comment-card.folded .comment-card-body { display: flex; align-items: center; gap: .5rem; height: 100%; min-width: 0; }
+.comment-margin .answer-comment-card.folded .comment-author { margin: 0; flex-shrink: 0; }
+.comment-margin .answer-comment-card.folded .comment-when, .comment-margin .answer-comment-card.folded .comment-thread, .comment-margin .answer-comment-card.folded .comment-more { display: none; }
+.comment-margin .answer-comment-card.folded:not(.open) .comment-card-body p { display: block; -webkit-line-clamp: unset; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; color: var(--muted); }
 .comment-quote { display: inline-block; max-width: 100%; margin-bottom: .4rem; padding: .05rem .4rem; border-radius: 4px; background: #ffeeb3; color: var(--fg); font-size: .76rem; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
 @media (prefers-color-scheme: dark) { .comment-quote { background: #4a3d12; } }
 .comment-card-body p { font-size: .88rem; line-height: 1.5; color: var(--fg); }

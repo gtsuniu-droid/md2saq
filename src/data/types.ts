@@ -248,6 +248,13 @@ export interface Settings {
   cloudUser?: { uid: string; email?: string; name?: string; photo?: string; verified?: boolean; provider?: string };
   /** Opt-in social features. Only the chosen username is ever shown to others. */
   social?: SocialSettings;
+  /**
+   * When progress was last reset for every set: a sitting submitted before this no longer
+   * counts as done, though History keeps it. Follows the account like other settings.
+   */
+  progressResetAt?: number;
+  /** The same, for one presentation at a time, by presentation id. */
+  presentationResetAt?: Record<string, number>;
 }
 
 export interface SocialSettings {

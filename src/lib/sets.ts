@@ -1,5 +1,6 @@
 import { loadLibrary } from "./library";
 import { belongsToAccount } from "./progressAccount";
+import { attemptsSinceReset, type ProgressResets } from "./progressReset";
 import { db, getSettings } from "../data/db";
 import type { Attempt, Mark, Question, QuestionSet } from "../data/types";
 import { totalMarks } from "./questions";
@@ -22,7 +23,12 @@ export interface SetSummary {
   set: QuestionSet;
   questions: Question[];
   marks: number;
+  /** Every submitted sitting, newest first, whatever has been reset since. */
   sittings: Sitting[];
+  /** The newest sitting, for lists. */
+  lastSat?: Sitting;
+  /** A submitted sitting since progress was last reset. */
+  done: boolean;
   /** Questions with at least one submitted attempt. */
   attemptedQuestions: number;
   /** Questions whose latest attempt is marked. */
@@ -63,8 +69,9 @@ export function sittingsFor(questions: Question[], attempts: Attempt[], marks: M
   return [...bySession.values()].sort((a, b) => b.submittedAt - a.submittedAt);
 }
 
-export function summarise(sets: QuestionSet[], questions: Question[], attempts: Attempt[], marks: Mark[]): SetSummary[] {
+export function summarise(sets: QuestionSet[], questions: Question[], attempts: Attempt[], marks: Mark[], resets: ProgressResets = {}): SetSummary[] {
   const attemptedQ = new Set(attempts.filter((a) => a.submittedAt !== undefined).map((a) => a.questionId));
+  const counting = new Set(attemptsSinceReset(attempts, questions, sets, resets).filter((a) => a.submittedAt !== undefined).map((a) => a.questionId));
   const markedQ = new Set(marks.map((m) => m.questionId));
   const byId = new Map<string, Question[]>();
   for (const q of questions) {
@@ -75,11 +82,14 @@ export function summarise(sets: QuestionSet[], questions: Question[], attempts: 
   return sets
     .map((set) => {
       const qs = (byId.get(set.id) ?? []).sort((a, b) => a.order - b.order);
+      const sittings = sittingsFor(qs, attempts, marks);
       return {
         set,
         questions: qs,
         marks: qs.reduce((acc, q) => acc + (totalMarks(q) ?? 0), 0),
-        sittings: sittingsFor(qs, attempts, marks),
+        sittings,
+        lastSat: sittings[0],
+        done: qs.some((q) => counting.has(q.id)),
         attemptedQuestions: qs.filter((q) => attemptedQ.has(q.id)).length,
         markedQuestions: qs.filter((q) => markedQ.has(q.id)).length,
         presentations: rankedPresentations(qs),
@@ -94,8 +104,9 @@ export async function loadSummaries(): Promise<SetSummary[]> {
     db.attempts.toArray(),
     db.marks.toArray(),
   ]);
-  const ownerId = (await getSettings()).cloudUser?.uid ?? "";
-  return summarise(sets, questions, attempts.filter((a) => belongsToAccount(a, ownerId)), marks.filter((m) => belongsToAccount(m, ownerId))).map(summary => ({ ...summary, contentReady: !pending.has(summary.set.id) }));
+  const settings = await getSettings();
+  const ownerId = settings.cloudUser?.uid ?? "";
+  return summarise(sets, questions, attempts.filter((a) => belongsToAccount(a, ownerId)), marks.filter((m) => belongsToAccount(m, ownerId)), settings).map(summary => ({ ...summary, contentReady: !pending.has(summary.set.id) }));
 }
 
 /** Default timer for a set: the paper's own suggestion, else marks times minutes per mark. */

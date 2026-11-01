@@ -4,7 +4,11 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { db, getSettings } from "../data/db";
 import type { Question, SubPart } from "../data/types";
 import AnswerHtml from "../components/AnswerHtml";
+import AssistantMenu from "../components/AssistantMenu";
 import ModelPanel from "../components/ModelPanel";
+import { isAdmin } from "../lib/admin";
+import { keepForMarking, markFilled, newSuggestions } from "../lib/suggestedMarks";
+import { buildRoomSetsForMarking, markTogetherPrompt, roomSuggestionsToMarks } from "../lib/studyMarking";
 import { Face, FriendComments, MarkChips } from "../components/StudyMarks";
 import { deleteComment, fetchRoom, formatCode, giveMark, postComment, resolveStudyQuestions, shareMyAnswers, studyRecord, type PeerMark, type PeerPartMark, type SharedAnswer, type StudyComment, type StudyRoomView } from "../lib/study";
 import { answerAt, average, commentsOn, markedByMe, marksOn, maxFor, peopleOf, type RoomPerson } from "../lib/studyRoom";
@@ -22,6 +26,8 @@ const partsOf = (lq: Question | undefined, marks: number | undefined): SubPart[]
 interface BlockProps {
   person: RoomPerson; answer: SharedAnswer | undefined; parts: SubPart[]; me: string; people: RoomPerson[]; max: number;
   marks: PeerMark[]; comments: StudyComment[]; myAttemptId?: string; hasLibrary: boolean;
+  /** Feedback the student's assistant sent for this answer, by part label, until it is posted or the page is left. */
+  notes?: Record<string, string>;
   draft: PeerPartMark[] | undefined; onDraft: (parts: PeerPartMark[]) => void;
   onComment: (text: string) => Promise<void>; onDelete: (id: string) => void;
 }
@@ -31,9 +37,14 @@ interface BlockProps {
  * score row per part, the answer as written, the model answer beneath with its tick list.
  * Your own answer shows the marks friends gave it; marking it is done on your set.
  */
-function PersonBlock({ person, answer, parts, me, people, max, marks, comments, myAttemptId, hasLibrary, draft, onDraft, onComment, onDelete }: BlockProps) {
+function PersonBlock({ person, answer, parts, me, people, max, marks, comments, myAttemptId, hasLibrary, notes, draft, onDraft, onComment, onDelete }: BlockProps) {
   const [commentDraft, setCommentDraft] = useState("");
   const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState<Record<string, boolean>>({});
+  const postNote = async (label: string, text: string) => {
+    setPosting(true); setError("");
+    try { await onComment(text.slice(0, 1000)); setPosted((p) => ({ ...p, [label]: true })); } catch (e) { setError(e instanceof Error ? e.message : "Could not post that."); } finally { setPosting(false); }
+  };
   const [error, setError] = useState("");
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   const [asTicks, setAsTicks] = useState<Record<string, boolean>>({});
@@ -92,6 +103,13 @@ function PersonBlock({ person, answer, parts, me, people, max, marks, comments, 
                 </div>
               )}
               {sp?.doc ? <AnswerHtml doc={sp.doc} /> : <p className="pre mt-answer-text">{sp?.text || "No answer written."}</p>}
+              {!mine && notes?.[part.label] && !posted[part.label] && (
+                <div className="mt-suggested" role="note">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.8 6l4.7.4-3.6 3 1.1 4.6L8 11.6 4 14l1.1-4.6-3.6-3L6.2 6z" fill="currentColor" /></svg>
+                  <p className="pre">{notes[part.label]}</p>
+                  <button type="button" className="small" disabled={posting} title={`Post this as your comment on ${person.name}'s answer`} onClick={() => void postNote(part.label, notes[part.label])}>Post</button>
+                </div>
+              )}
               {!mine && hasLibrary && (
                 <ModelPanel answer={part} list={list} asTicks={!!asTicks[part.label]} onAsTicks={(on) => setAsTicks((t) => ({ ...t, [part.label]: on }))} pointsHit={pm.pointsHit}
                   onTick={(i) => { const pointsHit = pm.pointsHit.includes(i) ? pm.pointsHit.filter((x) => x !== i) : [...pm.pointsHit, i]; setPart(part.label, { pointsHit, score: tickedScore(list!, pointsHit, pm.maxScore) }); }}
@@ -131,7 +149,11 @@ export default function StudyPage() {
   const [mine, setMine] = useState<"pending" | "shared" | "none" | "no-record" | "error">("pending");
   const [wholeFolded, setWholeFolded] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, PeerPartMark[]>>({});
+  // Feedback the assistant sent with its marks, by "question:person", shown under each part until posted.
+  const [notes, setNotes] = useState<Record<string, Record<string, string>>>({});
+  const [notice, setNotice] = useState("");
   const me = settings?.cloudUser?.uid;
+  const admin = isAdmin(settings);
   const roomRef = useRef(room);
   roomRef.current = room;
   // Marks typed here save a moment after the last change; what is waiting to save, by question and person.
@@ -206,6 +228,42 @@ export default function StudyPage() {
   }, [code, me, refresh]);
 
   const people = useMemo(() => room ? peopleOf(room.study, room.shared, me) : [], [room, me]);
+  // Each friend's answers laid out as a set for marking, kept in the student's store so their
+  // assistant can read them through the connector and send marks back to this page.
+  const roomSets = useMemo(() => room && me ? buildRoomSetsForMarking(room, people, local, me) : [], [room, people, local, me]);
+  const roomSetsJson = useMemo(() => JSON.stringify(roomSets), [roomSets]);
+  const roomSetsRef = useRef(roomSets);
+  roomSetsRef.current = roomSets;
+  useEffect(() => { if (me && roomSets.length) void Promise.all(roomSets.map((s) => keepForMarking(s))).catch(() => undefined); }, [me, roomSetsJson]);
+  const roomKeys = roomSets.map((s) => s.key).join("|");
+  useEffect(() => {
+    if (!me || !roomKeys) return;
+    let live = true;
+    // Marks the assistant sent for any friend fill in when the page opens and on coming back to it; they save as my marks.
+    const check = async () => {
+      const found = (await Promise.all(roomSetsRef.current.map(async (set) => { const marks = await newSuggestions(set.key).catch(() => null); return marks ? { set, marks } : null; }))).filter((f): f is NonNullable<typeof f> => !!f);
+      if (!found.length || !live) return;
+      const names: string[] = [];
+      for (const { set, marks } of found) {
+        const mine = roomSuggestionsToMarks(set, marks);
+        try {
+          for (const m of mine) {
+            const fresh = await giveMark(code, m.index, m.targetUid, m.score, m.maxScore, m.parts);
+            if (!live) return;
+            take(fresh);
+            setNotes((cur) => ({ ...cur, [`${m.index}:${m.targetUid}`]: m.feedback }));
+          }
+          markFilled(set.key, marks);
+          names.push(set.name.split(",")[0]);
+        } catch (e) { setError(e instanceof Error ? e.message : "Could not save the suggested marks."); }
+      }
+      if (live && names.length) { setDrafts({}); setNotice(`Suggested marks filled in for ${names.join(", ")}`); }
+    };
+    void check();
+    const onVisible = () => { if (document.visibilityState === "visible") void check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { live = false; document.removeEventListener("visibilitychange", onVisible); };
+  }, [me, code, roomKeys, take]);
   const count = room?.study.questions.length ?? 0;
   const index = Math.min(Math.max(0, Number(params.get("q") ?? 1) - 1 || 0), Math.max(0, count - 1));
   const go = (i: number) => { flushPending(); const next = new URLSearchParams(params); next.set("q", String(i + 1)); setParams(next, { replace: true }); setDrafts({}); document.querySelector(".mark-answers")?.scrollTo({ top: 0 }); };
@@ -250,6 +308,7 @@ export default function StudyPage() {
         <span style={{ flex: 1 }} />
         {mine === "no-record" && <span className="muted mt-notice">Sit this code from your home page and your answers join.</span>}
         {mine === "none" && <span className="muted mt-notice">Submit a question and your answers join.</span>}
+        {notice && !error && <span className="muted mt-notice" role="status">{notice}</span>}
         {error && <span className="field-error" role="alert">{error}</span>}
         <Link className="button" to={myAttemptId ? `/mark/${myAttemptId}` : "/home#history"}>{myAttemptId ? "Your set" : "Back to history"}</Link>
       </div>
@@ -269,7 +328,7 @@ export default function StudyPage() {
             {lq && !stems.length && <div className="muted">No case stem.</div>}
           </div>
           <div className="paper-answers mark-answers">
-            <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} /><span className="col-head-total">{index + 1} / {count}</span></div>
+            <div className="col-head"><span>Marking</span><span style={{ flex: 1 }} />{admin && roomSets.length > 0 && <AssistantMenu label="Mark with AI" title="Have your AI assistant mark every friend's answers in this session through the connector; the marks come back here as yours." prompt={markTogetherPrompt(code, roomSets)} hint="Your assistant reads each friend's answers, marks every part and sends the marks back. They fill in here as your marks when you return, with the feedback to post." beforeOpen={() => Promise.all(roomSets.map((s) => keepForMarking(s)))} />}<span className="col-head-total">{index + 1} / {count}</span></div>
             <section className="question-block mark-block" aria-label={`Question ${index + 1}`}>
               <div className="qhead"><span>{index + 1}</span></div>
               {(lq ? lq.text : q.text) && <div className="part-head" style={{ marginBottom: ".8rem" }}>
@@ -283,7 +342,7 @@ export default function StudyPage() {
                 // Without the set in this library, an answer in parts still reads part by part.
                 const personParts: SubPart[] = lq ? parts : (answer?.parts && answer.parts.length > 1 ? answer.parts.map((sp) => ({ label: sp.label, text: "" })) : parts);
                 return <PersonBlock key={`${index}:${p.uid}`} person={p} answer={answer} parts={personParts} me={me} people={people} max={maxFor(q, answer)} hasLibrary={!!lq}
-                  marks={marksOn(room.marks, index, p.uid)} comments={commentsOn(room.comments, index, p.uid)} myAttemptId={p.uid === me ? myAttemptId : undefined}
+                  marks={marksOn(room.marks, index, p.uid)} comments={commentsOn(room.comments, index, p.uid)} myAttemptId={p.uid === me ? myAttemptId : undefined} notes={notes[`${index}:${p.uid}`]}
                   draft={drafts[p.uid]} onDraft={(partsDraft) => draftFor(p.uid, partsDraft)}
                   onComment={async (text) => take(await postComment(code, index, p.uid, text))}
                   onDelete={(id) => void deleteComment(code, id).then(take).catch((e: unknown) => setError(e instanceof Error ? e.message : "Could not remove that comment."))} />;

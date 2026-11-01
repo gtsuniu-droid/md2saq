@@ -10,9 +10,11 @@ describe("sync helpers", () => {
   });
 
   it("sends only the settings that should follow the person", () => {
-    const s: Settings = { id: "settings", _m: 5, minutesPerMark: 2, autoImportBank: true, ambossHighlights: true, ambossOnPaper: false, bankPasscode: "secret", ambossToken: "tok", lastExportAt: 9 };
+    const s: Settings = { id: "settings", _m: 5, minutesPerMark: 2, autoImportBank: true, ambossHighlights: true, ambossOnPaper: false, bankPasscode: "secret", ambossToken: "tok", lastExportAt: 9, progressResetAt: 7, presentationResetAt: { cough: 8 } };
     const cloud = settingsForCloud(s) as Record<string, unknown>;
     expect(cloud.minutesPerMark).toBe(2);
+    expect(cloud.progressResetAt).toBe(7);
+    expect(cloud.presentationResetAt).toEqual({ cough: 8 });
     expect(cloud.ambossToken).toBeUndefined();
     expect(cloud.ambossUser).toBeUndefined();
     expect(cloud.ambossAccess).toBeUndefined();

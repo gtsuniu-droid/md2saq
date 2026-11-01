@@ -172,12 +172,15 @@ export function compileQuestions(
   const parentOf = options.parentOf ?? new Map<string, string>();
   const attemptedQ = new Set(attempts.filter((a) => a.submittedAt !== undefined).map((a) => a.questionId));
   let pool = questions.filter((q) => effectivePresentations(q, parentOf).some((p) => chosen.has(p)));
-  if (options.newOnly) pool = pool.filter((q) => !attemptedQ.has(q.id));
+  // Unattempted only: a count larger than the unattempted pool is made up from questions already sat.
+  const fillFromAttempted = !!options.newOnly && !!options.count && options.count > 0;
+  if (options.newOnly && !fillFromAttempted) pool = pool.filter((q) => !attemptedQ.has(q.id));
   // Fisher-Yates with the supplied random source.
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(options.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
+  if (fillFromAttempted) pool = [...pool.filter((q) => !attemptedQ.has(q.id)), ...pool.filter((q) => attemptedQ.has(q.id))];
   if (options.count && options.count > 0) pool = pool.slice(0, options.count);
   const setOrder = new Map<string, number>();
   for (const q of pool) if (!setOrder.has(q.setId)) setOrder.set(q.setId, setOrder.size);

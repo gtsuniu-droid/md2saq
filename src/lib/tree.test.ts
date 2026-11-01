@@ -7,6 +7,7 @@ const summary = (number: number, presentations: string[], tags: string[] = [], q
   questions: Array.from({ length: questions }, (_, i) => ({ id: `q${number}-${i}`, setId: `s${number}`, order: i, text: `Q${i}`, parts: [], presentations, tags: [], createdAt: 1 })),
   marks: 10,
   sittings: [],
+  done: false,
   attemptedQuestions: 0,
   markedQuestions: 0,
   presentations,

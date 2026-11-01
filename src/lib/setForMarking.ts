@@ -47,7 +47,8 @@ export function docText(doc: unknown): string {
   return lines.filter((l) => l.replace(/^[\s-]*/, "")).join("\n");
 }
 
-const modelOf = (answer: { modelAnswer?: string; modelAnswerDoc?: unknown }): string => answer.modelAnswer?.trim() || (answer.modelAnswerDoc ? docText(answer.modelAnswerDoc) : "");
+/** A model answer as plain text, from the text kept or the formatted document. */
+export const modelOf = (answer: { modelAnswer?: string; modelAnswerDoc?: unknown }): string => answer.modelAnswer?.trim() || (answer.modelAnswerDoc ? docText(answer.modelAnswerDoc) : "");
 
 export function buildSetForMarking(key: string, name: string, rows: { question?: Question; attempt?: Attempt; order: number }[], set?: QuestionSet): SetForMarking {
   const questions: MarkingQuestion[] = [];

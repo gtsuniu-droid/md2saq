@@ -30,7 +30,9 @@ export function buildSessionSelection(input: {
 }): Question[] {
   if (input.count !== undefined && (!Number.isInteger(input.count) || input.count <= 0)) return [];
   if (input.unit === "questions") return compileQuestions(input.questions, input.attempts, input.presentations, input);
-  let pool = eligibleSessionSets(input.sets, input.questions, input.attempts, input.presentations, input.newOnly, input.parentOf);
+  // Unattempted only: a count larger than the unattempted pool is made up from sets already sat.
+  const fillFromAttempted = input.newOnly && input.setIds === undefined && input.count !== undefined;
+  let pool = eligibleSessionSets(input.sets, input.questions, input.attempts, input.presentations, input.newOnly && !fillFromAttempted, input.parentOf);
   if (input.setIds !== undefined) {
     const selected = new Set(input.setIds);
     pool = pool.filter((s) => selected.has(s.set.id));
@@ -39,6 +41,7 @@ export function buildSessionSelection(input: {
     const j = Math.floor(input.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
+  if (fillFromAttempted) pool = [...pool.filter((s) => s.attempted === 0), ...pool.filter((s) => s.attempted > 0)];
   if (input.setIds === undefined && input.count !== undefined) pool = pool.slice(0, input.count);
   return pool.flatMap((s) => s.questions);
 }

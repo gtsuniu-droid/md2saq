@@ -3,12 +3,15 @@ import { useSetContent } from "../lib/useSetContent";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { getSettings } from "../data/db";
+import { db, getSettings } from "../data/db";
+import { belongsToAccount } from "../lib/progressAccount";
+import { browseQuestions, markedQuestions, type QuestionSort } from "../lib/browseQuestions";
+import { scoreBand } from "../lib/scoreBand";
 import { PRESENTATIONS } from "../data/presentations";
 import { loadSummaries, suggestedMinutesFor, type SetSummary } from "../lib/sets";
 import { loadSession, startSession } from "../lib/session";
 import { isAdmin } from "../lib/admin";
-import { browseSets, browseSetTitle } from "../lib/browseSets";
+import { browseSets, browseSetTitle, shortSatDate, type BrowseSort, type DoneFilter } from "../lib/browseSets";
 import { introducedStems } from "../lib/markingSet";
 import { hasModelAnswer, richAnswerDocument } from "../lib/modelAnswer";
 import { partLabel, totalMarks, truncate } from "../lib/questions";
@@ -44,13 +47,22 @@ export default function BrowsePage() {
     const settings = await getSettings();
     const personal = isAdmin(settings) ? new Map() : await loadPersonalSetEdits(settings.cloudUser?.uid ?? "");
     const summaries = (await loadSummaries()).map((summary) => ({ ...summary, questions: applyPersonalSetEdits(summary.questions, personal.get(summary.set.id)) }));
-    return { summaries, settings, personal };
+    const ownerId = settings.cloudUser?.uid ?? "";
+    const [attempts, marks] = await Promise.all([db.attempts.toArray(), db.marks.toArray()]);
+    return { summaries, settings, personal, marked: markedQuestions(summaries, attempts.filter((a) => belongsToAccount(a, ownerId)), marks.filter((m) => belongsToAccount(m, ownerId))) };
   }, []);
   const search = params.get("q") ?? "";
   const presentation = params.get("presentation") ?? "";
   const tag = params.get("tag");
   const collection = params.get("collection");
-  const sets = useMemo(() => browseSets(data?.summaries ?? [], search, presentation, tag, collection), [data, search, presentation, tag, collection]);
+  const doneFilter = (["done", "new"].includes(params.get("done") ?? "") ? params.get("done") : "") as DoneFilter;
+  const sort: BrowseSort = params.get("sort") === "sat" ? "sat" : "title";
+  // Sets, or the questions the student had marked: worst first to find what went badly, or latest first.
+  const questionsView = params.get("view") === "questions";
+  const questionSort: QuestionSort = params.get("sort") === "latest" ? "latest" : "worst";
+  const sets = useMemo(() => browseSets(data?.summaries ?? [], search, presentation, tag, collection, doneFilter, sort), [data, search, presentation, tag, collection, doneFilter, sort]);
+  const marked = useMemo(() => browseQuestions(data?.marked ?? [], search, presentation, questionSort), [data, search, presentation, questionSort]);
+  const doneCount = sets.filter((s) => s.done).length;
   const selected = sets.find((s) => s.set.id === params.get("set")) ?? sets[0];
   // Keep the editor mounted if live updates change the matching list mid-edit.
   const active = editing ? data?.summaries.find((s) => s.set.id === editing) : selected;
@@ -122,16 +134,42 @@ export default function BrowsePage() {
     <LibraryStatus /><div className="browse-panes">
       <aside className="browse-library" aria-label="Set library">
         <fieldset className="browse-filters" disabled={!!editing || deleting}>
+          <div className="seg" role="group" aria-label="View">
+            <button type="button" className={!questionsView ? "on" : ""} aria-pressed={!questionsView} onClick={() => { const next = new URLSearchParams(params); next.delete("view"); next.delete("sort"); setParams(next, { replace: true }); }}>Sets</button>
+            <button type="button" className={questionsView ? "on" : ""} aria-pressed={questionsView} onClick={() => { const next = new URLSearchParams(params); next.set("view", "questions"); next.delete("sort"); next.delete("done"); setParams(next, { replace: true }); }}>Questions</button>
+          </div>
           <input type="search" aria-label="Search sets and questions" placeholder="Search sets and questions" value={search} onChange={(e) => changeFilter("q", e.target.value)} />
           <select aria-label="Presentation" value={presentation} onChange={(e) => changeFilter("presentation", e.target.value)}>
             <option value="">All presentations</option>
             {PRESENTATIONS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             <option value="unassigned">Unassigned</option>
           </select>
+          {questionsView ? <div className="row browse-chips">
+            <div className="seg" role="group" aria-label="Sort">
+              {([["worst", "Lowest score"], ["latest", "Latest"]] as [QuestionSort, string][]).map(([value, label]) => <button key={value} type="button" className={questionSort === value ? "on" : ""} aria-pressed={questionSort === value} onClick={() => changeFilter("sort", value === "worst" ? "" : value)}>{label}</button>)}
+            </div>
+          </div> : <div className="row browse-chips">
+            <div className="seg" role="group" aria-label="Done">
+              {([["", "All"], ["new", "Not done"], ["done", "Done"]] as [DoneFilter, string][]).map(([value, label]) => <button key={value} type="button" className={doneFilter === value ? "on" : ""} aria-pressed={doneFilter === value} onClick={() => changeFilter("done", value)}>{label}</button>)}
+            </div>
+            <div className="seg" role="group" aria-label="Sort">
+              {([["title", "Title"], ["sat", "Last sat"]] as [BrowseSort, string][]).map(([value, label]) => <button key={value} type="button" className={sort === value ? "on" : ""} aria-pressed={sort === value} onClick={() => changeFilter("sort", value === "title" ? "" : value)}>{label}</button>)}
+            </div>
+          </div>}
           {(tag || collection) && <button className="small link" onClick={() => { const next = new URLSearchParams(params); next.delete("tag"); next.delete("collection"); setParams(next, { replace: true }); }}>Clear {tag ? "tag" : "collection"} filter</button>}
         </fieldset>
-        <div className="browse-count" role="status">{data ? `${sets.length} ${sets.length === 1 ? "set" : "sets"}` : "Loading…"}</div>
-        <div className="browse-set-list" role="list" aria-label="Sets">
+        <div className="browse-count" role="status">{!data ? "Loading…" : questionsView ? `${marked.length} marked ${marked.length === 1 ? "question" : "questions"}` : `${doneCount}/${sets.length} done`}</div>
+        {questionsView ? <div className="browse-set-list" role="list" aria-label="Marked questions">
+          {marked.map((row) => <div role="listitem" key={row.attemptId}>
+            <Link className="browse-set-row browse-question-row" to={`/history/${row.attemptId}`} title="Open this sitting">
+              <span className="browse-set-title">{browseSetTitle(row.summary)}, Q{row.number}</span>
+              <span className="browse-set-preview">{truncate(row.question.text || row.question.parts[0]?.text || "", 110)}</span>
+              <span className={`browse-set-count history-pct ${scoreBand(row.percent)}`}>{row.percent}%</span>
+              <span className="browse-set-sat"><time dateTime={new Date(row.at).toISOString()}>{shortSatDate(row.at)}</time><span className="browse-set-score">{row.score}/{row.maxScore}</span></span>
+            </Link>
+          </div>)}
+          {data && !marked.length && <p className="browse-empty">{data.marked.length ? "No matching questions." : "Mark a sitting and its questions appear here."}</p>}
+        </div> : <div className="browse-set-list" role="list" aria-label="Sets">
           {sets.map((summary, index) => <div role="listitem" key={summary.set.id}>
             <button className={`browse-set-row${active?.set.id === summary.set.id ? " selected" : ""}`} disabled={!!editing || deleting} aria-current={active?.set.id === summary.set.id ? "true" : undefined}
               onClick={() => select(summary.set.id)} onKeyDown={(event) => {
@@ -141,13 +179,14 @@ export default function BrowsePage() {
                 const next = sets[index + delta];
                 if (next) { select(next.set.id); const rows = event.currentTarget.closest('[role="list"]')?.querySelectorAll<HTMLButtonElement>(".browse-set-row"); rows?.[index + delta]?.focus(); }
               }}>
-              <span className="browse-set-title">{browseSetTitle(summary)}</span>
+              <span className="browse-set-title">{summary.done && <span className="browse-set-done" title="Done"><DoneIcon /></span>}{browseSetTitle(summary)}</span>
               <span className="browse-set-preview">{truncate(summary.questions[0]?.stems?.[0] || summary.questions[0]?.text || summary.set.source || "Empty set", 110)}</span>
               <span className="browse-set-count">{summary.questions.length}</span>
+              {summary.lastSat && <span className="browse-set-sat" title={`Last sat ${new Date(summary.lastSat.submittedAt).toLocaleDateString()}`}><time dateTime={new Date(summary.lastSat.submittedAt).toISOString()}>{shortSatDate(summary.lastSat.submittedAt)}</time>{summary.lastSat.maxScore > 0 && <span className="browse-set-score">{summary.lastSat.score}/{summary.lastSat.maxScore}</span>}</span>}
             </button>
           </div>)}
           {data && !sets.length && <p className="browse-empty">{data.summaries.length ? "No matching sets." : "No sets yet."}</p>}
-        </div>
+        </div>}
       </aside>
       <section className="browse-detail" aria-label="Selected set">
 
@@ -187,6 +226,8 @@ export default function BrowsePage() {
     </ConfirmDialog>
   </div>;
 }
+
+const DoneIcon = () => <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 8.5l3 3 7-7" /></svg>;
 
 function BrowseContent({ summary }: { summary: SetSummary }) {
   const seenImages = new Set<string>();

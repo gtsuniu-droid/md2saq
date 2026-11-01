@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Question, QuestionSet } from "../data/types";
 import { PRESENTATIONS } from "../data/presentations";
-import { buildExamPaper, examPresentationPool, examSupply } from "./examPaper";
+import { buildExamPaper, examFreshCount, examPresentationPool, examSupply } from "./examPaper";
 import { seededRandom } from "./sessionBuilder";
 import { primaryPresentation } from "./primaryPresentation";
 
@@ -40,5 +40,46 @@ describe("fixed exam paper", () => {
     const before = JSON.stringify({ sets, questions });
     expect(buildExamPaper(sets, questions, seededRandom(1))).not.toEqual(buildExamPaper(sets, questions, seededRandom(2)));
     expect(JSON.stringify({ sets, questions })).toBe(before);
+  });
+});
+
+describe("unattempted sets first", () => {
+  it("draws unattempted sets before sets already sat, and sat sets only to make up the count", () => {
+    // One set of each presentation sat: the paper is the other eight, never a sat one.
+    const attempted = new Set(sets.filter((s) => s.id.endsWith("-0")).map((s) => s.id));
+    for (let seed = 0; seed < 10; seed++) {
+      const paper = buildExamPaper(sets, questions, seededRandom(seed), { count: 8, attempted });
+      expect(new Set(paper.map((q) => q.setId)).size).toBe(8);
+      expect(paper.some((q) => attempted.has(q.setId))).toBe(false);
+    }
+    // Only three sets unattempted: a six-set paper has those three and three sat ones.
+    const mostly = new Set(sets.filter((s) => !["0-0", "1-0", "2-1"].includes(s.id)).map((s) => s.id));
+    const paper = buildExamPaper(sets, questions, seededRandom(5), { count: 6, attempted: mostly });
+    const ids = [...new Set(paper.map((q) => q.setId))];
+    expect(ids).toHaveLength(6);
+    expect(ids.filter((id) => !mostly.has(id)).sort()).toEqual(["0-0", "1-0", "2-1"]);
+    // Everything sat: the paper still draws, as before.
+    expect(buildExamPaper(sets, questions, seededRandom(1), { attempted: new Set(sets.map((s) => s.id)) })).toHaveLength(18);
+  });
+  it("says how many sets of the paper would be unattempted, as the draw itself turns out", () => {
+    const attempted = new Set(sets.filter((s) => s.id.endsWith("-0")).map((s) => s.id));
+    expect(examFreshCount(sets, questions, { count: 8, attempted })).toBe(8);
+    const mostly = new Set(sets.filter((s) => !["0-0", "1-0", "2-1"].includes(s.id)).map((s) => s.id));
+    expect(examFreshCount(sets, questions, { count: 6, attempted: mostly })).toBe(3);
+    expect(examFreshCount(sets, questions, { count: 6 })).toBe(6);
+    expect(examFreshCount(sets, questions, { count: 6, attempted: new Set(sets.map((s) => s.id)) })).toBe(0);
+    expect(examFreshCount(sets.slice(0, 4), questions, { count: 6 })).toBe(0);
+    // Unattempted sets in two presentations only: a six-set paper still spans six presentations, so two are unattempted.
+    const concentrated = new Set(sets.filter((s) => !s.id.startsWith("0-") && !s.id.startsWith("1-")).map((s) => s.id));
+    expect(examFreshCount(sets, questions, { count: 6, attempted: concentrated })).toBe(2);
+    for (let seed = 0; seed < 10; seed++) {
+      const paper = buildExamPaper(sets, questions, seededRandom(seed), { count: 6, attempted: concentrated });
+      expect([...new Set(paper.map((q) => q.setId))].filter((id) => !concentrated.has(id))).toHaveLength(2);
+    }
+    // A ten-set paper from the whole bank goes round again and picks up the remaining unattempted sets.
+    expect(examFreshCount(sets, questions, { count: 10, attempted: concentrated })).toBe(4);
+    // Chosen presentations: one set each, the unattempted one where there is one.
+    const chosen = PRESENTATIONS.slice(0, 5).map((p) => p.id);
+    expect(examFreshCount(sets, questions, { count: 5, presentations: chosen, attempted: concentrated })).toBe(2);
   });
 });
